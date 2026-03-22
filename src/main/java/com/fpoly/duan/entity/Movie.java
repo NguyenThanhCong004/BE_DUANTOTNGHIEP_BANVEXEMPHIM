@@ -15,10 +15,11 @@ public class Movie {
 
     private String title;
 
-    @Column(columnDefinition = "TEXT")
+    /** NVARCHAR(MAX): mô tả tiếng Việt (SQL Server) — tránh kiểu TEXT (không Unicode). */
+    @Column(columnDefinition = "NVARCHAR(MAX)")
     private String description;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "NVARCHAR(MAX)")
     private String content;
 
     private Integer duration;
@@ -31,7 +32,10 @@ public class Movie {
     @Column(name = "age_limit")
     private Integer ageLimit;
 
+    @Column(columnDefinition = "NVARCHAR(MAX)")
     private String poster;
+
+    @Column(columnDefinition = "NVARCHAR(MAX)")
     private String banner;
     private Integer status;
 

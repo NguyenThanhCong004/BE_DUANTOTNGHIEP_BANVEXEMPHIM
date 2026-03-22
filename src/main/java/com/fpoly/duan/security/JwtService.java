@@ -22,8 +22,11 @@ public class JwtService {
     @Value("${application.security.jwt.secret-key:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}")
     private String secretKey;
 
-    @Value("${application.security.jwt.expiration:86400000}")
+    @Value("${application.security.jwt.expiration:7200000}") // 2 hours
     private long jwtExpiration;
+
+    @Value("${application.security.jwt.refresh-token.expiration:864000000}") // 10 days
+    private long refreshExpiration;
 
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
@@ -39,13 +42,23 @@ public class JwtService {
     }
 
     public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails) {
-        return buildToken(extraClaims, userDetails, jwtExpiration);
+        return buildToken(extraClaims, userDetails, jwtExpiration, TokenType.ACCESS);
     }
 
-    private String buildToken(Map<String, Object> extraClaims, UserDetails userDetails, long expiration) {
+    public String generateRefreshToken(UserDetails userDetails) {
+        return buildToken(new HashMap<>(), userDetails, refreshExpiration, TokenType.REFRESH);
+    }
+
+    private String buildToken(Map<String, Object> extraClaims, UserDetails userDetails, long expiration, TokenType tokenType) {
+        Map<String, Object> claims = new HashMap<>(extraClaims);
+        if (userDetails instanceof CustomUserDetails customUser) {
+            claims.put("userId", customUser.getUserId());
+        }
+        claims.put("type", tokenType.name());
+        
         return Jwts
                 .builder()
-                .setClaims(extraClaims)
+                .setClaims(claims)
                 .setSubject(userDetails.getUsername())
                 .setIssuedAt(new Date(System.currentTimeMillis()))
                 .setExpiration(new Date(System.currentTimeMillis() + expiration))
@@ -53,9 +66,32 @@ public class JwtService {
                 .compact();
     }
 
+    public String extractUsernameAllowExpired(String token) {
+        return extractClaimAllowExpired(token, Claims::getSubject);
+    }
+
+    public TokenType extractTokenType(String token) {
+        String type = extractClaim(token, claims -> (String) claims.get("type"));
+        return TokenType.valueOf(type);
+    }
+
+    public TokenType extractTokenTypeAllowExpired(String token) {
+        String type = extractClaimAllowExpired(token, claims -> (String) claims.get("type"));
+        return TokenType.valueOf(type);
+    }
+
+    public Date extractExpirationAllowExpired(String token) {
+        return extractClaimAllowExpired(token, Claims::getExpiration);
+    }
+
     public boolean isTokenValid(String token, UserDetails userDetails) {
         final String username = extractUsername(token);
-        return (username.equals(userDetails.getUsername())) && !isTokenExpired(token);
+        return (username.equals(userDetails.getUsername())) && !isTokenExpired(token) && extractTokenType(token) == TokenType.ACCESS;
+    }
+
+    public boolean isRefreshTokenValid(String token, UserDetails userDetails) {
+        final String username = extractUsername(token);
+        return (username.equals(userDetails.getUsername())) && !isTokenExpired(token) && extractTokenType(token) == TokenType.REFRESH;
     }
 
     private boolean isTokenExpired(String token) {
@@ -73,6 +109,19 @@ public class JwtService {
                 .build()
                 .parseClaimsJws(token)
                 .getBody();
+    }
+
+    private <T> T extractClaimAllowExpired(String token, Function<Claims, T> claimsResolver) {
+        Claims claims = extractAllClaimsAllowExpired(token);
+        return claimsResolver.apply(claims);
+    }
+
+    private Claims extractAllClaimsAllowExpired(String token) {
+        try {
+            return extractAllClaims(token);
+        } catch (io.jsonwebtoken.ExpiredJwtException ex) {
+            return ex.getClaims();
+        }
     }
 
     private Key getSignInKey() {

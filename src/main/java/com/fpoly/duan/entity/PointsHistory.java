@@ -14,6 +14,7 @@ public class PointsHistory {
     private Integer pointHistoryId;
 
     private LocalDate date;
+    @Column(columnDefinition = "NVARCHAR(MAX)")
     private String description;
     private Integer points;
 

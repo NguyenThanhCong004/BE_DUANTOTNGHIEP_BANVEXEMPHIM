@@ -10,5 +10,7 @@ public interface UserService {
     UserDTO getUserByUsername(String username);
     UserDTO createUser(UserDTO userDTO, String password);
     UserDTO updateUser(Integer id, UserDTO userDTO);
-    void deleteUser(Integer id);
+
+    /** Đổi mật khẩu (xác minh mật khẩu hiện tại). */
+    void changePassword(Integer userId, String currentPassword, String newPassword);
 }
