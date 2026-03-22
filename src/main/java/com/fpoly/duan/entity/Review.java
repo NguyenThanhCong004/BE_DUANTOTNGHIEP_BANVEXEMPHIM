@@ -13,6 +13,7 @@ public class Review {
     private Integer reviewId;
 
     private Integer rating;
+    @Column(columnDefinition = "NVARCHAR(MAX)")
     private String comment;
 
     @ManyToOne

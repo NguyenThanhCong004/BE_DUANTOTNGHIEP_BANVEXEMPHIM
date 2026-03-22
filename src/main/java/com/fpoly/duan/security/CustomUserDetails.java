@@ -7,6 +7,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import com.fpoly.duan.entity.Staff;
 import com.fpoly.duan.entity.User;
 
 import lombok.AllArgsConstructor;
@@ -21,21 +22,35 @@ import lombok.NoArgsConstructor;
 public class CustomUserDetails implements UserDetails {
 
     private User user;
+    private Staff staff;
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        UserRole role = UserRole.fromValue(user.getRole());
-        return List.of(new SimpleGrantedAuthority(role.getAuthority()));
+        if (staff != null) {
+            // Staff roles (ADMIN, STAFF, etc.) from database
+            String role = staff.getRole();
+            if (role == null) role = "STAFF";
+            if (!role.startsWith("ROLE_")) {
+                role = "ROLE_" + role.toUpperCase();
+            }
+            return List.of(new SimpleGrantedAuthority(role));
+        }
+        // Customers are always ROLE_USER
+        return List.of(new SimpleGrantedAuthority("ROLE_USER"));
     }
 
     @Override
     public String getPassword() {
-        return user.getPassword();
+        return (staff != null) ? staff.getPassword() : user.getPassword();
     }
 
     @Override
     public String getUsername() {
-        return user.getUsername();
+        // Với staff: ưu tiên username, fallback email
+        if (staff == null) return user.getUsername();
+        return (staff.getUsername() != null && !staff.getUsername().trim().isEmpty())
+                ? staff.getUsername()
+                : staff.getEmail();
     }
 
     @Override
@@ -45,7 +60,8 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public boolean isAccountNonLocked() {
-        return user.getStatus() != 0;
+        Integer status = (staff != null) ? staff.getStatus() : user.getStatus();
+        return status != null && status != 0;
     }
 
     @Override
@@ -55,6 +71,11 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return user.getStatus() != 0;
+        Integer status = (staff != null) ? staff.getStatus() : user.getStatus();
+        return status != null && status != 0;
+    }
+
+    public Integer getUserId() {
+        return (staff != null) ? staff.getStaffId() : user.getUserId();
     }
 }

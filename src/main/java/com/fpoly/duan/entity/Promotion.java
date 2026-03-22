@@ -13,7 +13,7 @@ public class Promotion {
     @Column(name = "promotion_id")
     private Integer promotionId;
 
-    @Column(name = "promotion_name")
+    @Column(name = "promotion_name", length = 300)
     private String promotionName;
 
     @Column(name = "discount_percent")

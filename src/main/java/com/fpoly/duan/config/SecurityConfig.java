@@ -1,9 +1,11 @@
 package com.fpoly.duan.config;
 
+import java.io.IOException;
 import java.util.Arrays;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -22,8 +24,11 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.security.JwtAuthenticationFilter;
 
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 
 @Configuration
@@ -34,16 +39,42 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final UserDetailsService userDetailsService;
+    private final ObjectMapper objectMapper;
+
+    private void writeJsonApiResponse(HttpServletResponse response, int httpStatus, String message) throws IOException {
+        response.setStatus(httpStatus);
+        response.setContentType("application/json;charset=UTF-8");
+        ApiResponse<Void> body = ApiResponse.<Void>builder()
+                .status(httpStatus)
+                .message(message)
+                .build();
+        objectMapper.writeValue(response.getOutputStream(), body);
+        response.flushBuffer();
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> writeJsonApiResponse(response,
+                                HttpServletResponse.SC_UNAUTHORIZED,
+                                "Chưa đăng nhập hoặc token không hợp lệ. Vui lòng đăng nhập tài khoản khách và gửi Bearer token."))
+                        .accessDeniedHandler((request, response, accessDeniedException) -> writeJsonApiResponse(response,
+                                HttpServletResponse.SC_FORBIDDEN,
+                                "Không có quyền truy cập API này (ví dụ: JWT nhân viên không dùng cho đặt vé/đồ ăn online — hãy đăng nhập khách).")))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
+                        .requestMatchers("/api/v1/payments/payos/webhook").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        .anyRequest().permitAll() // Temporarily permit all for testing, change to .authenticated() later
+                        /* Nhân viên sàn: chỉ xem ca của mình — bắt buộc JWT hợp lệ */
+                        .requestMatchers("/api/v1/shifts/me").authenticated()
+                        .requestMatchers("/api/v1/ticket-orders/**").authenticated()
+                        .requestMatchers("/api/v1/food-orders/**").authenticated()
+                        .requestMatchers("/api/v1/me/**").authenticated()
+                        .anyRequest().permitAll()
                 )
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
@@ -74,7 +105,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173"));
+        configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "http://localhost:5174"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With"));
         configuration.setAllowCredentials(true);

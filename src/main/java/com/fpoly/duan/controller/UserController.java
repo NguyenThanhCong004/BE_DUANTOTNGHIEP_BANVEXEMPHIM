@@ -4,7 +4,7 @@ import java.util.List;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -13,21 +13,33 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.UserDTO;
+import com.fpoly.duan.dto.UserPasswordChangeRequest;
 import com.fpoly.duan.dto.UserRequest;
 import com.fpoly.duan.service.UserService;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/v1/users")
 @RequiredArgsConstructor
+@CrossOrigin(origins = "*", maxAge = 3600)
+@Tag(name = "2. Người dùng (Users)", description = """
+        CRUD khách hàng. FE: `Profile.jsx`, `MembershipStatus.jsx`, `PointsHistory.jsx`, `super-admin/Users.jsx`.
+        JSON dùng **camelCase** (`userId`, không phải `user_id`).
+        """)
+@SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
 public class UserController {
 
     private final UserService userService;
 
     @GetMapping
+    @Operation(summary = "Danh sách tất cả user")
     public ResponseEntity<ApiResponse<List<UserDTO>>> getAllUsers() {
         List<UserDTO> users = userService.getAllUsers();
         return ResponseEntity.ok(ApiResponse.<List<UserDTO>>builder()
@@ -38,6 +50,7 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
+    @Operation(summary = "Chi tiết user theo id", description = "Khớp với `GET /api/v1/users/{id}` mà FE gọi sau khi decode JWT.")
     public ResponseEntity<ApiResponse<UserDTO>> getUserById(@PathVariable Integer id) {
         UserDTO user = userService.getUserById(id);
         return ResponseEntity.ok(ApiResponse.<UserDTO>builder()
@@ -48,6 +61,7 @@ public class UserController {
     }
 
     @PostMapping
+    @Operation(summary = "Tạo user (Super Admin / nội bộ)")
     public ResponseEntity<ApiResponse<UserDTO>> createUser(@RequestBody UserRequest userRequest) {
         UserDTO userDTO = UserDTO.builder()
                 .username(userRequest.getUsername())
@@ -56,7 +70,6 @@ public class UserController {
                 .phone(userRequest.getPhone())
                 .birthday(userRequest.getBirthday())
                 .avatar(userRequest.getAvatar())
-                .role(userRequest.getRole())
                 .build();
         UserDTO createdUser = userService.createUser(userDTO, userRequest.getPassword());
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<UserDTO>builder()
@@ -67,6 +80,7 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
+    @Operation(summary = "Cập nhật user")
     public ResponseEntity<ApiResponse<UserDTO>> updateUser(@PathVariable Integer id, @RequestBody UserDTO userDTO) {
         UserDTO updatedUser = userService.updateUser(id, userDTO);
         return ResponseEntity.ok(ApiResponse.<UserDTO>builder()
@@ -76,12 +90,18 @@ public class UserController {
                 .build());
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> deleteUser(@PathVariable Integer id) {
-        userService.deleteUser(id);
+    @PutMapping("/{id}/password")
+    @Operation(summary = "Đổi mật khẩu (khách)", description = "Body: currentPassword, newPassword — dùng cho trang Hồ sơ.")
+    public ResponseEntity<ApiResponse<Void>> changePassword(@PathVariable Integer id,
+            @RequestBody UserPasswordChangeRequest body) {
+        if (body == null || body.getNewPassword() == null) {
+            throw new RuntimeException("Thiếu dữ liệu đổi mật khẩu");
+        }
+        userService.changePassword(id, body.getCurrentPassword(), body.getNewPassword());
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(200)
-                .message("Xóa người dùng thành công")
+                .message("Đổi mật khẩu thành công")
                 .build());
     }
+
 }

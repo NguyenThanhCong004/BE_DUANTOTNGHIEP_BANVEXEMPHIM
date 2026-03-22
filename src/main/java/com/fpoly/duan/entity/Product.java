@@ -12,9 +12,15 @@ public class Product {
     @Column(name = "product_id")
     private Integer productId;
 
+    @Column(length = 300)
     private String name;
+
+    @Column(columnDefinition = "NVARCHAR(MAX)")
     private String description;
+
     private Double price;
+
+    @Column(columnDefinition = "NVARCHAR(MAX)")
     private String image;
     private Integer status;
 

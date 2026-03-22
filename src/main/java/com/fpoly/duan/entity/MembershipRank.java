@@ -18,6 +18,7 @@ public class MembershipRank {
     @Column(name = "min_spending")
     private Double minSpending;
 
+    @Column(columnDefinition = "NVARCHAR(MAX)")
     private String description;
 
     @Column(name = "discount_percent")

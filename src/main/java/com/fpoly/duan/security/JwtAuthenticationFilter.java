@@ -23,6 +23,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
+    private final com.fpoly.duan.repository.RevokedTokenRepository revokedTokenRepository;
 
     @Override
     protected void doFilterInternal(
@@ -40,7 +41,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         jwt = authHeader.substring(7);
-        username = jwtService.extractUsername(jwt);
+        
+        // Check if token is revoked
+        if (revokedTokenRepository.existsByToken(jwt)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        try {
+            username = jwtService.extractUsername(jwt);
+        } catch (Exception e) {
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
