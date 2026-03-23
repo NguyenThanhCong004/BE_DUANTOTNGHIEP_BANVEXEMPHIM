@@ -1,15 +1,19 @@
 # 🍿 BE_DUANTOTNGHIEP_BANVEXEMPHIM (SPRING BOOT REST API)
 
-Dự án này là Backend cho hệ thống bán vé xem phim, cung cấp các REST API cho Frontend.
+Backend bán vé xem phim — REST dưới prefix **`/api/v1`**, tài liệu đầy đủ trên **Swagger**.
 
-## 🚀 CÁCH CHẠY DỰ ÁN
-1. **Dùng Eclipse/VS Code:** Mở thư mục này.
-2. **Chạy file:** `BeDuantotnghiepBanvexemphimApplication.java`.
-3. **API URL:** `http://localhost:8080`.
-4. **Swagger (Tài liệu API):** `http://localhost:8080/swagger-ui.html`.
+## 🚀 Chạy nhanh
+1. JDK 17, Maven; cấu hình `src/main/resources/application.properties` (MySQL, v.v.).
+2. Chạy `BeDuantotnghiepBanvexemphimApplication.java` hoặc `mvn spring-boot:run`.
+3. **API:** `http://localhost:8080`  
+4. **Swagger UI:** `http://localhost:8080/swagger-ui.html`  
+5. **OpenAPI JSON:** `http://localhost:8080/v3/api-docs`
 
-## 📦 THƯ VIỆN ĐÃ TÍCH HỢP
-- **Spring Boot 3.5.11**, **MySQL**, **Cloudinary**, **PayOS**, **Spring Mail**, **JWT**.
+## 📦 Gói chính
+Spring Boot **3.5.11**, Spring Security + **JWT**, Spring Data JPA (**MySQL**), SpringDoc OpenAPI, PayOS, Mail, Cloudinary (theo `pom.xml`).
+
+## 📂 Controller
+Package `com.fpoly.duan.controller` — **23** `@RestController` (auth, users, staff, movies, cinemas, showtimes, seats, PayOS, `/me`, …). Chi tiết bảng mapping: **`backend.md`** ở thư mục gốc repo `JAVA6`.
 
 ---
-*Vui lòng xem chi tiết hướng dẫn tại file `backend.md` và `ghichu.md` ở thư mục gốc của dự án.*
+*Tham chiếu thêm: `README.md`, `KET_NOI_BE_FE.md`, `API_DOCUMENTATION.md`, `doc.md` (cùng thư mục gốc).*
