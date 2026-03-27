@@ -38,7 +38,7 @@ import lombok.RequiredArgsConstructor;
 @RequestMapping("/api/v1/cinemas/{cinemaId}/product-menu")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*", maxAge = 3600)
-@Tag(name = "8g. Menu sản phẩm theo rạp", description = "Đang bán / chưa bán — bảng cinema_products")
+@Tag(name = "Table: cinema_products", description = "Quản lý sản phẩm đang bán theo từng rạp (bảng cinema_products).")
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
 public class CinemaProductMenuController {
 
