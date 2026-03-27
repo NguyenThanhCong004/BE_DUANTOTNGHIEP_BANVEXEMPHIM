@@ -19,7 +19,9 @@ import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.CinemaDTO;
 import com.fpoly.duan.entity.Cinema;
+import com.fpoly.duan.entity.Room;
 import com.fpoly.duan.repository.CinemaRepository;
+import com.fpoly.duan.repository.RoomRepository;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -35,6 +37,7 @@ import lombok.RequiredArgsConstructor;
 public class CinemaController {
 
     private final CinemaRepository cinemaRepository;
+    private final RoomRepository roomRepository;
 
     @GetMapping
     @Operation(summary = "Danh sách rạp")
@@ -101,6 +104,14 @@ public class CinemaController {
         if (!cinemaRepository.existsById(id)) {
             throw new RuntimeException("Không tìm thấy rạp với id: " + id);
         }
+        
+        // Kiểm tra xem có phòng chiếu nào đang sử dụng rạp này không
+        List<Room> roomsInCinema = roomRepository.findByCinema_CinemaId(id);
+        if (!roomsInCinema.isEmpty()) {
+            throw new RuntimeException("Không thể xóa rạp này vì đang có " + roomsInCinema.size() + 
+                " phòng chiếu sử dụng. Vui lòng xóa hoặc chuyển phòng chiếu sang rạp khác trước.");
+        }
+        
         cinemaRepository.deleteById(id);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
