@@ -1,11 +1,13 @@
 package com.fpoly.duan.controller;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -40,9 +42,7 @@ import lombok.RequiredArgsConstructor;
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*", maxAge = 3600)
-@Tag(name = "5. Ghế & loại ghế", description = """
-        Base path `/api/v1`: `GET /seat-types`, `GET /seats?roomId=`, `PUT /seats` (lưu sơ đồ).
-        """)
+@Tag(name = "Table: seats", description = "CRUD và layout ghế theo phòng (bảng seats).")
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
 public class SeatController {
     private final SeatRepository seatRepository;
@@ -50,7 +50,7 @@ public class SeatController {
     private final RoomRepository roomRepository;
 
     @GetMapping("/seat-types/{id}")
-    @Operation(summary = "Chi tiết loại ghế")
+    @Operation(summary = "Chi tiết loại ghế", tags = { "Table: seat_types" })
     public ResponseEntity<ApiResponse<SeatTypeDTO>> getSeatTypeById(@PathVariable Integer id) {
         SeatType t = seatTypeRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy loại ghế với id: " + id));
@@ -67,7 +67,7 @@ public class SeatController {
     }
 
     @PostMapping("/seat-types")
-    @Operation(summary = "Tạo loại ghế")
+    @Operation(summary = "Tạo loại ghế", tags = { "Table: seat_types" })
     public ResponseEntity<ApiResponse<SeatTypeDTO>> createSeatType(@RequestBody SeatTypeDTO dto) {
         if (dto == null || dto.getName() == null || dto.getName().trim().isEmpty()) {
             throw new RuntimeException("Tên loại ghế không được để trống");
@@ -91,7 +91,7 @@ public class SeatController {
     }
 
     @PutMapping("/seat-types/{id}")
-    @Operation(summary = "Cập nhật loại ghế")
+    @Operation(summary = "Cập nhật loại ghế", tags = { "Table: seat_types" })
     public ResponseEntity<ApiResponse<SeatTypeDTO>> updateSeatType(@PathVariable Integer id,
             @RequestBody SeatTypeDTO dto) {
         SeatType t = seatTypeRepository.findById(id)
@@ -120,7 +120,7 @@ public class SeatController {
     }
 
     @DeleteMapping("/seat-types/{id}")
-    @Operation(summary = "Xóa loại ghế")
+    @Operation(summary = "Xóa loại ghế", tags = { "Table: seat_types" })
     public ResponseEntity<ApiResponse<Void>> deleteSeatType(@PathVariable Integer id) {
         if (!seatTypeRepository.existsById(id)) {
             throw new RuntimeException("Không tìm thấy loại ghế với id: " + id);
@@ -137,7 +137,7 @@ public class SeatController {
     }
 
     @GetMapping("/seat-types")
-    @Operation(summary = "Danh sách loại ghế")
+    @Operation(summary = "Danh sách loại ghế", tags = { "Table: seat_types" })
     public ResponseEntity<ApiResponse<List<SeatTypeDTO>>> getSeatTypes() {
         List<SeatTypeDTO> data = seatTypeRepository.findAll().stream()
                 .map(t -> SeatTypeDTO.builder()
@@ -154,8 +154,31 @@ public class SeatController {
                 .build());
     }
 
+    @PutMapping("/seats/{id}/status")
+    @Operation(summary = "Cập nhật trạng thái ghế", description = "Cập nhật trạng thái ghế: available, locked, maintenance", tags = { "Table: seats" })
+    public ResponseEntity<ApiResponse<Void>> updateSeatStatus(
+            @PathVariable Integer id,
+            @RequestBody Map<String, String> request) {
+        
+        String status = request.get("status");
+        if (status == null || (!status.equals("available") && !status.equals("locked") && !status.equals("maintenance"))) {
+            throw new RuntimeException("Trạng thái không hợp lệ. Phải là: available, locked, maintenance");
+        }
+        
+        Seat seat = seatRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy ghế với id: " + id));
+        
+        seat.setStatus(status);
+        seatRepository.save(seat);
+        
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .status(HttpStatus.OK.value())
+                .message("Cập nhật trạng thái ghế thành công")
+                .build());
+    }
+
     @GetMapping("/seats")
-    @Operation(summary = "Danh sách ghế theo phòng")
+    @Operation(summary = "Danh sách ghế theo phòng", tags = { "Table: seats" })
     public ResponseEntity<ApiResponse<List<SeatDTO>>> getSeats(
             @Parameter(description = "ID phòng chiếu", required = true) @RequestParam Integer roomId) {
         List<Seat> seats = seatRepository.findByRoom_RoomId(roomId);
@@ -170,7 +193,9 @@ public class SeatController {
     }
 
     @PutMapping("/seats")
-    @Operation(summary = "Lưu / đồng bộ sơ đồ ghế phòng", description = "Xóa ghế cũ của phòng rồi tạo lại theo payload.")
+    @Transactional
+    @Operation(summary = "Lưu / đồng bộ sơ đồ ghế phòng", description = "Xóa ghế cũ của phòng rồi tạo lại theo payload.", tags = {
+            "Table: seats" })
     public ResponseEntity<ApiResponse<Void>> saveSeatLayout(@RequestBody SeatLayoutRequest request) {
         if (request == null || request.getRoomId() == null) {
             throw new RuntimeException("roomId không hợp lệ");
@@ -211,6 +236,7 @@ public class SeatController {
                 .number(s.getNumber())
                 .seatTypeName(st != null ? st.getName() : null)
                 .seatTypeSurcharge(st != null && st.getSurcharge() != null ? st.getSurcharge() : 0.0)
+                .status(s.getStatus() != null ? s.getStatus() : "available")
                 .build();
     }
 

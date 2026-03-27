@@ -56,19 +56,10 @@ public class UserServiceImpl implements UserService {
         if (userRepository.existsByEmail(userDTO.getEmail())) {
             throw new RuntimeException("Email đã tồn tại");
         }
-        if (staffRepository.existsByEmail(userDTO.getEmail().trim())) {
-            throw new RuntimeException("Email đã được dùng cho tài khoản nhân viên");
-        }
-        if (staffRepository.existsByUsername(userDTO.getUsername().trim())) {
-            throw new RuntimeException("Tên đăng nhập đã được dùng cho tài khoản nhân viên");
-        }
         String phoneCreate = userDTO.getPhone() != null ? userDTO.getPhone().trim() : "";
         if (!phoneCreate.isEmpty()) {
             if (Boolean.TRUE.equals(userRepository.existsByPhone(phoneCreate))) {
                 throw new RuntimeException("Số điện thoại đã tồn tại");
-            }
-            if (Boolean.TRUE.equals(staffRepository.existsByPhone(phoneCreate))) {
-                throw new RuntimeException("Số điện thoại đã được dùng cho tài khoản nhân viên");
             }
         }
 
