@@ -56,29 +56,33 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
+                // Kích hoạt CORS với cấu hình bên dưới
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((request, response, authException) -> writeJsonApiResponse(response,
                                 HttpServletResponse.SC_UNAUTHORIZED,
                                 "Chưa đăng nhập hoặc token không hợp lệ. Vui lòng đăng nhập tài khoản khách và gửi Bearer token."))
-                        .accessDeniedHandler((request, response, accessDeniedException) -> writeJsonApiResponse(response,
+                        .accessDeniedHandler((request, response, accessDeniedException) -> writeJsonApiResponse(
+                                response,
                                 HttpServletResponse.SC_FORBIDDEN,
                                 "Không có quyền truy cập API này (ví dụ: JWT nhân viên không dùng cho đặt vé/đồ ăn online — hãy đăng nhập khách).")))
                 .authorizeHttpRequests(auth -> auth
+                        // Cho phép các yêu cầu tiền kiểm (Preflight) của trình duyệt
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/payments/payos/webhook").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        /* Nhân viên sàn: chỉ xem ca của mình — bắt buộc JWT hợp lệ */
+                        
+                        // Các API cần quyền đăng nhập
                         .requestMatchers("/api/v1/shifts/me").authenticated()
                         .requestMatchers("/api/v1/ticket-orders/**").authenticated()
                         .requestMatchers("/api/v1/food-orders/**").authenticated()
                         .requestMatchers("/api/v1/me/**").authenticated()
-                        .anyRequest().permitAll()
-                )
+                        
+                        // Tất cả các yêu cầu GET công khai (Phim, Rạp, Banner...)
+                        .anyRequest().permitAll())
                 .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                )
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
@@ -105,10 +109,36 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "http://localhost:5174"));
+        
+        // 1. Cho phép các nguồn gốc (Origin) gọi API
+        configuration.setAllowedOrigins(Arrays.asList(
+            "http://localhost:5173", 
+            "http://localhost:5174", 
+            "http://localhost:3000",
+            "http://nguyencong.id.vn",      // Tên miền của bạn (nếu có FE trên đó)
+            "https://nguyencong.id.vn"
+        ));
+        
+        // 2. Cho phép các phương thức HTTP
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With"));
+        
+        // 3. Cho phép tất cả các Header quan trọng (SỬA LỖI 403 Ở ĐÂY)
+        configuration.setAllowedHeaders(Arrays.asList(
+            "Authorization", 
+            "Content-Type", 
+            "X-Requested-With", 
+            "Accept", 
+            "Origin", 
+            "Access-Control-Request-Method", 
+            "Access-Control-Request-Headers"
+        ));
+        
+        // 4. Cho phép gửi Cookie/Token
         configuration.setAllowCredentials(true);
+        
+        // 5. Thời gian cache cấu hình CORS (1 tiếng)
+        configuration.setMaxAge(3600L);
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
