@@ -32,6 +32,7 @@ import lombok.RequiredArgsConstructor;
 @CrossOrigin(origins = "*", maxAge = 3600)
 @Tag(name = "8c. Tin tức", description = "CRUD tin tức — Super Admin.")
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
+// [SUPER ADMIN ONLY] - This section belongs to Super Admin. Do not modify without authorization.
 public class NewsController {
 
     private final NewsRepository newsRepository;

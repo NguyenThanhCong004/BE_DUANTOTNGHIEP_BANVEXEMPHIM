@@ -13,4 +13,6 @@ public interface UserVoucherRepository extends JpaRepository<UserVoucher, Intege
     List<UserVoucher> findByUser_UserIdOrderByUserVoucherIdDesc(Integer userId);
 
     boolean existsByUser_UserIdAndVoucher_VouchersIdAndStatus(Integer userId, Integer vouchersId, Integer status);
+
+    boolean existsByVoucher_VouchersId(Integer vouchersId);
 }

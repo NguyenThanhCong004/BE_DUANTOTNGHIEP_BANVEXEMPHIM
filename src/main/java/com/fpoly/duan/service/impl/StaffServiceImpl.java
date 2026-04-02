@@ -37,6 +37,16 @@ public class StaffServiceImpl implements StaffService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<StaffDTO> getAllStaffForSuperAdmin() {
+        // Lấy trực tiếp từ repository mà không dùng filter stream để tránh nhầm lẫn logic
+        List<Staff> staffList = staffRepository.findAllExceptSuperAdmin();
+        return staffList.stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<StaffDTO> listStaffByCinema(Integer cinemaId) {
         return staffRepository.findAll()
                 .stream()
@@ -135,7 +145,8 @@ public class StaffServiceImpl implements StaffService {
         staff.setFullname(staffDTO.getFullname().trim());
         staff.setPhone(phone);
         staff.setBirthday(staffDTO.getBirthday());
-        staff.setRole(staffDTO.getRole().trim());
+        String finalRole = staffDTO.getRole().trim().toUpperCase();
+        staff.setRole(finalRole);
         staff.setStatus(nextStatus);
         staff.setAvatar(staffDTO.getAvatar().trim());
         staff.setPassword(passwordEncoder.encode(defaultPassword));
@@ -144,6 +155,15 @@ public class StaffServiceImpl implements StaffService {
         if (cinemaId != null) {
             Cinema cinema = cinemaRepository.findById(cinemaId)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với mã: " + cinemaId));
+            
+            // Ràng buộc: Mỗi rạp chỉ có 1 Admin hoạt động
+            if ("ADMIN".equalsIgnoreCase(finalRole) && nextStatus == 1) {
+                List<Staff> existingAdmins = staffRepository.findByCinema_CinemaIdAndRoleAndStatus(cinemaId, "ADMIN", 1);
+                if (!existingAdmins.isEmpty()) {
+                    Staff activeAdmin = existingAdmins.get(0);
+                    throw new RuntimeException("Rạp \"" + cinema.getName() + "\" đã có Quản lý \"" + activeAdmin.getFullname() + "\" đang hoạt động. Vui lòng khóa tài khoản này trước.");
+                }
+            }
             staff.setCinema(cinema);
         }
 
@@ -195,7 +215,8 @@ public class StaffServiceImpl implements StaffService {
             throw new RuntimeException("Trạng thái không hợp lệ");
         }
 
-        // Update username nếu có
+        // KHÔNG cho phép cập nhật username để đảm bảo tính nhất quán của định danh (Chống hack F12)
+        /*
         if (staffDTO.getUsername() != null && !staffDTO.getUsername().trim().isEmpty()) {
             String nextUsername = staffDTO.getUsername().trim();
             if (!nextUsername.equals(staff.getUsername())) {
@@ -208,6 +229,7 @@ public class StaffServiceImpl implements StaffService {
             }
             staff.setUsername(nextUsername);
         }
+        */
 
         if (!email.equalsIgnoreCase(staff.getEmail() == null ? "" : staff.getEmail())) {
             if (Boolean.TRUE.equals(staffRepository.existsByEmailAndStaffIdNot(email, id))) {
@@ -231,7 +253,8 @@ public class StaffServiceImpl implements StaffService {
         staff.setFullname(staffDTO.getFullname().trim());
         staff.setPhone(phone);
         staff.setBirthday(staffDTO.getBirthday());
-        staff.setRole(staffDTO.getRole().trim());
+        String nextRole = staffDTO.getRole().trim().toUpperCase();
+        staff.setRole(nextRole);
         staff.setStatus(staffDTO.getStatus());
         staff.setAvatar(staffDTO.getAvatar().trim());
 
@@ -239,7 +262,21 @@ public class StaffServiceImpl implements StaffService {
         if (cinemaId != null) {
             Cinema cinema = cinemaRepository.findById(cinemaId)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với mã: " + cinemaId));
+            
+            // Ràng buộc: Mỗi rạp chỉ có 1 Admin hoạt động
+            if ("ADMIN".equalsIgnoreCase(nextRole) && staffDTO.getStatus() == 1) {
+                List<Staff> existingAdmins = staffRepository.findByCinema_CinemaIdAndRoleAndStatus(cinemaId, "ADMIN", 1);
+                // Loại trừ chính mình nếu đang là admin hoạt động của rạp này
+                boolean alreadyHasOtherAdmin = existingAdmins.stream()
+                        .anyMatch(s -> !s.getStaffId().equals(id));
+                
+                if (alreadyHasOtherAdmin) {
+                    throw new RuntimeException("Rạp \"" + cinema.getName() + "\" đã có một Admin khác đang hoạt động. Vui lòng tạm ngưng tài khoản Admin kia trước khi kích hoạt tài khoản này.");
+                }
+            }
             staff.setCinema(cinema);
+        } else {
+            staff.setCinema(null);
         }
 
         // Không thay đổi password ở update.

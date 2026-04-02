@@ -35,6 +35,7 @@ import lombok.RequiredArgsConstructor;
 @CrossOrigin(origins = "*", maxAge = 3600)
 @Tag(name = "1c. Thể loại phim (Genres)", description = "Danh sách thể loại — FE Super Admin.")
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
+// [SUPER ADMIN ONLY] - This section belongs to Super Admin. Do not modify without authorization.
 public class GenreController {
 
     private final GenreRepository genreRepository;
