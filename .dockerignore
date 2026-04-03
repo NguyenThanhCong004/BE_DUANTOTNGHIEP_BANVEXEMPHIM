@@ -1,0 +1,14 @@
+.git
+.github
+.idea
+.vscode
+target
+docs
+uploads
+*.iml
+.classpath
+.project
+.settings
+.env
+.env.*
+README.md
