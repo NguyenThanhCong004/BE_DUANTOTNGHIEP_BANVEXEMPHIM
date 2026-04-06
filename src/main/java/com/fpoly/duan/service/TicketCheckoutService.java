@@ -436,12 +436,12 @@ public class TicketCheckoutService {
         }
     }
 
-    /** Giá vé cơ bản (đã VAT) — cùng công thức {@link com.fpoly.duan.controller.ShowtimeController#toDTO}. */
+    /** Giá vé cơ bản (đã phụ thu) — cùng công thức {@link com.fpoly.duan.controller.ShowtimeController#toDTO}. */
     public static double computeUnitBasePrice(Showtime s) {
         Movie movie = s.getMovie();
         double basePrice = movie != null && movie.getBasePrice() != null ? movie.getBasePrice() : 0.0;
-        double vat = s.getVatPercent() != null ? s.getVatPercent() : 0.0;
-        return basePrice * (1 + vat / 100.0);
+        double surcharge = s.getSurcharge() != null ? s.getSurcharge() : 0.0;
+        return basePrice + surcharge;
     }
 
     private static String truncate(String s, int max) {

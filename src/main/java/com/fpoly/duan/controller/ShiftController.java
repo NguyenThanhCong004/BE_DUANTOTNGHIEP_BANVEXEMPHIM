@@ -193,10 +193,10 @@ public class ShiftController {
         for (StaffShift ss : group) {
             Staff st = ss.getStaff();
             if (st == null) continue;
-            String role = st.getRole();
-            if ("Bán vé".equals(role)) banveId = st.getStaffId();
-            else if ("Soát vé".equals(role)) soatveId = st.getStaffId();
-            else if ("Phục vụ".equals(role)) phucvuId = st.getStaffId();
+            String pos = ss.getRole(); // Lấy vị trí từ StaffShift
+            if ("Bán vé".equals(pos)) banveId = st.getStaffId();
+            else if ("Soát vé".equals(pos)) soatveId = st.getStaffId();
+            else if ("Phục vụ".equals(pos)) phucvuId = st.getStaffId();
         }
 
         ShiftGroupResponse resp = ShiftGroupResponse.builder()
@@ -296,9 +296,9 @@ public class ShiftController {
         Staff stPhucVu = staffRepository.findById(request.getStaffPhucVuId())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy staff Phục vụ"));
 
-        StaffShift s1 = buildShift(request.getShiftType(), date, range[0], range[1], stBanve);
-        StaffShift s2 = buildShift(request.getShiftType(), date, range[0], range[1], stSoatVe);
-        StaffShift s3 = buildShift(request.getShiftType(), date, range[0], range[1], stPhucVu);
+        StaffShift s1 = buildShift(request.getShiftType(), date, range[0], range[1], stBanve, "Bán vé");
+        StaffShift s2 = buildShift(request.getShiftType(), date, range[0], range[1], stSoatVe, "Soát vé");
+        StaffShift s3 = buildShift(request.getShiftType(), date, range[0], range[1], stPhucVu, "Phục vụ");
 
         StaffShift created1 = staffShiftRepository.save(s1);
         staffShiftRepository.save(s2);
@@ -334,9 +334,9 @@ public class ShiftController {
         Staff stPhucVu = staffRepository.findById(request.getStaffPhucVuId())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy staff Phục vụ"));
 
-        StaffShift s1 = buildShift(request.getShiftType(), date, range[0], range[1], stBanve);
-        StaffShift s2 = buildShift(request.getShiftType(), date, range[0], range[1], stSoatVe);
-        StaffShift s3 = buildShift(request.getShiftType(), date, range[0], range[1], stPhucVu);
+        StaffShift s1 = buildShift(request.getShiftType(), date, range[0], range[1], stBanve, "Bán vé");
+        StaffShift s2 = buildShift(request.getShiftType(), date, range[0], range[1], stSoatVe, "Soát vé");
+        StaffShift s3 = buildShift(request.getShiftType(), date, range[0], range[1], stPhucVu, "Phục vụ");
 
         StaffShift created1 = staffShiftRepository.save(s1);
         staffShiftRepository.save(s2);
@@ -368,17 +368,18 @@ public class ShiftController {
         if (request == null) throw new RuntimeException("Dữ liệu ca làm không hợp lệ");
         if (request.getDate() == null) throw new RuntimeException("Vui lòng chọn ngày ca làm");
         if (request.getShiftType() == null || request.getShiftType().trim().isEmpty()) throw new RuntimeException("Vui lòng chọn loại ca");
-        if (request.getStaffBanveId() == null) throw new RuntimeException("Thiếu staff Bán vé");
-        if (request.getStaffSoatVeId() == null) throw new RuntimeException("Thiếu staff Soát vé");
-        if (request.getStaffPhucVuId() == null) throw new RuntimeException("Thiếu staff Phục vụ");
+        if (request.getStaffBanveId() == null) throw new RuntimeException("Thiếu nhân viên vị trí Bán vé");
+        if (request.getStaffSoatVeId() == null) throw new RuntimeException("Thiếu nhân viên vị trí Soát vé");
+        if (request.getStaffPhucVuId() == null) throw new RuntimeException("Thiếu nhân viên vị trí Phục vụ");
     }
 
-    private StaffShift buildShift(String shiftType, LocalDate date, LocalDateTime start, LocalDateTime end, Staff staff) {
+    private StaffShift buildShift(String shiftType, LocalDate date, LocalDateTime start, LocalDateTime end, Staff staff, String posRole) {
         StaffShift s = new StaffShift();
         s.setDate(date);
         s.setStartTime(start);
         s.setEndTime(end);
         s.setStaff(staff);
+        s.setRole(posRole);
         return s;
     }
 
