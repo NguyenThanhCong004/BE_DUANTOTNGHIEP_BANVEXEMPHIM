@@ -4,7 +4,11 @@ services:
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     platform: linux/amd64
+<<<<<<< HEAD
     container_name: sqlserver_db
+=======
+    container_name: JAVA6 
+>>>>>>> 5fc493a92115f21ee289cee34af6b9c07694d03b
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_SA_PASSWORD: ${DB_PASSWORD}
