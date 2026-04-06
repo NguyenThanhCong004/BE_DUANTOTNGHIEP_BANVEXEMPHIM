@@ -15,6 +15,7 @@ import com.fpoly.duan.entity.Cinema;
 import com.fpoly.duan.entity.Staff;
 import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.StaffRepository;
+import com.fpoly.duan.repository.StaffShiftRepository;
 import com.fpoly.duan.repository.UserRepository;
 import com.fpoly.duan.service.StaffService;
 
@@ -28,6 +29,7 @@ public class StaffServiceImpl implements StaffService {
     private final CinemaRepository cinemaRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final StaffShiftRepository staffShiftRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -100,6 +102,12 @@ public class StaffServiceImpl implements StaffService {
 
         if (staffDTO.getBirthday() == null) {
             throw new RuntimeException("Ngày sinh không được để trống");
+        }
+        
+        java.time.LocalDate today = java.time.LocalDate.now();
+        java.time.LocalDate birthDate = staffDTO.getBirthday();
+        if (java.time.Period.between(birthDate, today).getYears() < 18) {
+            throw new RuntimeException("Nhân viên phải từ đủ 18 tuổi trở lên");
         }
         if (staffDTO.getRole() == null || staffDTO.getRole().trim().isEmpty()) {
             throw new RuntimeException("Vai trò không được để trống");
@@ -179,84 +187,73 @@ public class StaffServiceImpl implements StaffService {
         Staff staff = staffRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân viên với mã: " + id));
 
-        // Vì form admin bắt buộc nhập (trừ cinemaId), xử lý theo hướng kiểm tra not-null để dữ liệu không bị thiếu.
-        if (staffDTO.getFullname() == null || staffDTO.getFullname().trim().isEmpty()) {
-            throw new RuntimeException("Họ tên không được để trống");
+        // Cập nhật các trường nếu có trong DTO
+        if (staffDTO.getFullname() != null && !staffDTO.getFullname().trim().isEmpty()) {
+            staff.setFullname(staffDTO.getFullname().trim());
         }
-        if (staffDTO.getEmail() == null || staffDTO.getEmail().trim().isEmpty()) {
-            throw new RuntimeException("Email không được để trống");
-        }
-        String email = staffDTO.getEmail().trim();
-        if (!email.matches("(?i)^[a-z0-9._%+-]+@gmail\\.com$")) {
-            throw new RuntimeException("Email phải đúng định dạng Gmail (vd: abc@gmail.com)");
-        }
-
-        if (staffDTO.getPhone() == null || staffDTO.getPhone().trim().isEmpty()) {
-            throw new RuntimeException("Số điện thoại không được để trống");
-        }
-        String phone = staffDTO.getPhone().trim();
-        if (!phone.matches("^[0-9]{10}$")) {
-            throw new RuntimeException("Số điện thoại phải có 10 chữ số");
-        }
-
-        if (staffDTO.getBirthday() == null) {
-            throw new RuntimeException("Ngày sinh không được để trống");
-        }
-        if (staffDTO.getRole() == null || staffDTO.getRole().trim().isEmpty()) {
-            throw new RuntimeException("Vai trò không được để trống");
-        }
-        if (staffDTO.getAvatar() == null || staffDTO.getAvatar().trim().isEmpty()) {
-            throw new RuntimeException("Hình ảnh không được để trống");
-        }
-        if (staffDTO.getStatus() == null) {
-            throw new RuntimeException("Trạng thái không được để trống");
-        }
-        if (!(staffDTO.getStatus().equals(0) || staffDTO.getStatus().equals(1))) {
-            throw new RuntimeException("Trạng thái không hợp lệ");
-        }
-
-        // KHÔNG cho phép cập nhật username để đảm bảo tính nhất quán của định danh (Chống hack F12)
-        /*
-        if (staffDTO.getUsername() != null && !staffDTO.getUsername().trim().isEmpty()) {
-            String nextUsername = staffDTO.getUsername().trim();
-            if (!nextUsername.equals(staff.getUsername())) {
-                if (Boolean.TRUE.equals(staffRepository.existsByUsernameAndStaffIdNot(nextUsername, id))) {
-                    throw new RuntimeException("Username đã tồn tại");
-                }
-                if (userRepository.existsByUsername(nextUsername)) {
-                    throw new RuntimeException("Tên đăng nhập đã được dùng cho tài khoản khách hàng");
+        
+        if (staffDTO.getEmail() != null && !staffDTO.getEmail().trim().isEmpty()) {
+            String email = staffDTO.getEmail().trim();
+            if (!email.matches("(?i)^[a-z0-9._%+-]+@gmail\\.com$")) {
+                throw new RuntimeException("Email phải đúng định dạng Gmail");
+            }
+            if (!email.equalsIgnoreCase(staff.getEmail())) {
+                if (Boolean.TRUE.equals(staffRepository.existsByEmailAndStaffIdNot(email, id))) {
+                    throw new RuntimeException("Email đã tồn tại");
                 }
             }
-            staff.setUsername(nextUsername);
-        }
-        */
-
-        if (!email.equalsIgnoreCase(staff.getEmail() == null ? "" : staff.getEmail())) {
-            if (Boolean.TRUE.equals(staffRepository.existsByEmailAndStaffIdNot(email, id))) {
-                throw new RuntimeException("Email đã tồn tại");
-            }
-            if (userRepository.existsByEmail(email)) {
-                throw new RuntimeException("Email đã được dùng cho tài khoản khách hàng");
-            }
+            staff.setEmail(email);
         }
 
-        if (!phone.equals(staff.getPhone() == null ? "" : staff.getPhone().trim())) {
-            if (Boolean.TRUE.equals(staffRepository.existsByPhoneAndStaffIdNot(phone, id))) {
-                throw new RuntimeException("Số điện thoại đã tồn tại");
+        if (staffDTO.getPhone() != null && !staffDTO.getPhone().trim().isEmpty()) {
+            String phone = staffDTO.getPhone().trim();
+            if (!phone.matches("^[0-9]{10}$")) {
+                throw new RuntimeException("Số điện thoại phải có 10 chữ số");
             }
-            if (Boolean.TRUE.equals(userRepository.existsByPhone(phone))) {
-                throw new RuntimeException("Số điện thoại đã được dùng cho tài khoản khách hàng");
+            if (!phone.equals(staff.getPhone())) {
+                if (Boolean.TRUE.equals(staffRepository.existsByPhoneAndStaffIdNot(phone, id))) {
+                    throw new RuntimeException("Số điện thoại đã tồn tại");
+                }
             }
+            staff.setPhone(phone);
         }
 
-        staff.setEmail(email);
-        staff.setFullname(staffDTO.getFullname().trim());
-        staff.setPhone(phone);
-        staff.setBirthday(staffDTO.getBirthday());
-        String nextRole = staffDTO.getRole().trim().toUpperCase();
-        staff.setRole(nextRole);
-        staff.setStatus(staffDTO.getStatus());
-        staff.setAvatar(staffDTO.getAvatar().trim());
+        if (staffDTO.getBirthday() != null) {
+            java.time.LocalDate today = java.time.LocalDate.now();
+            java.time.LocalDate birthDate = staffDTO.getBirthday();
+            if (java.time.Period.between(birthDate, today).getYears() < 18) {
+                throw new RuntimeException("Nhân viên phải từ đủ 18 tuổi trở lên");
+            }
+            staff.setBirthday(birthDate);
+        }
+
+        String nextRole = staff.getRole();
+        if (staffDTO.getRole() != null) {
+            nextRole = staffDTO.getRole().trim().toUpperCase();
+            staff.setRole(nextRole);
+        }
+
+        if (staffDTO.getAvatar() != null) {
+            staff.setAvatar(staffDTO.getAvatar().trim());
+        }
+
+        if (staffDTO.getStatus() != null) {
+            Integer oldStatus = staff.getStatus();
+            Integer nextStatus = staffDTO.getStatus();
+            staff.setStatus(nextStatus);
+
+            // Logic xử lý ca làm khi khóa tài khoản (chuyển từ 1 -> 0)
+            if (oldStatus == 1 && nextStatus == 0) {
+                List<com.fpoly.duan.entity.StaffShift> futureShifts = staffShiftRepository.findByStaffStaffIdOrderByDateDescStartTimeAsc(id);
+                java.time.LocalDate today = java.time.LocalDate.now();
+                for (com.fpoly.duan.entity.StaffShift ss : futureShifts) {
+                    if (ss.getDate() != null && !ss.getDate().isBefore(today)) {
+                        ss.setStaff(null);
+                        staffShiftRepository.save(ss);
+                    }
+                }
+            }
+        }
 
         Integer cinemaId = staffDTO.getCinemaId();
         if (cinemaId != null) {
@@ -264,7 +261,7 @@ public class StaffServiceImpl implements StaffService {
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với mã: " + cinemaId));
             
             // Ràng buộc: Mỗi rạp chỉ có 1 Admin hoạt động
-            if ("ADMIN".equalsIgnoreCase(nextRole) && staffDTO.getStatus() == 1) {
+            if ("ADMIN".equalsIgnoreCase(nextRole) && staff.getStatus() == 1) {
                 List<Staff> existingAdmins = staffRepository.findByCinema_CinemaIdAndRoleAndStatus(cinemaId, "ADMIN", 1);
                 // Loại trừ chính mình nếu đang là admin hoạt động của rạp này
                 boolean alreadyHasOtherAdmin = existingAdmins.stream()

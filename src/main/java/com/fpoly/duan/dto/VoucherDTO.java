@@ -14,6 +14,7 @@ import lombok.NoArgsConstructor;
 public class VoucherDTO {
     private Integer id;
     private String code;
+    private String discountType;
     private Double value;
     private Double minOrderValue;
     private Double maxDiscountAmount;

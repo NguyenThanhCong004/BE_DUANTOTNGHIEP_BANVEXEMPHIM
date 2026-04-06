@@ -16,6 +16,9 @@ public class Voucher {
     @Column(name = "code", unique = true, nullable = false)
     private String code;
 
+    @Column(name = "discount_type")
+    private String discountType;
+
     @Column(name = "value")
     private Double value;
 
