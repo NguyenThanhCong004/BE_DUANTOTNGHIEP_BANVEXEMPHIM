@@ -1,4 +1,5 @@
 .git
+<<<<<<< HEAD
 .github
 .idea
 .vscode
@@ -12,3 +13,12 @@ uploads
 .env
 .env.*
 README.md
+=======
+target
+docs
+uploads
+.env
+.env.*
+.idea
+.vscode
+>>>>>>> 5fc493a92115f21ee289cee34af6b9c07694d03b
