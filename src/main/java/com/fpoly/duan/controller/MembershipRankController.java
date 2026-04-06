@@ -32,6 +32,7 @@ import lombok.RequiredArgsConstructor;
 @CrossOrigin(origins = "*", maxAge = 3600)
 @Tag(name = "8d. Hạng hội viên", description = "CRUD membership rank — Super Admin.")
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
+// [SUPER ADMIN ONLY] - This section belongs to Super Admin. Do not modify without authorization.
 public class MembershipRankController {
 
     private final MembershipRankRepository membershipRankRepository;

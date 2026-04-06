@@ -7,6 +7,9 @@ import com.fpoly.duan.dto.StaffDTO;
 public interface StaffService {
     List<StaffDTO> getAllStaff();
 
+    /** New method for Super Admin: Get all staff except Super Admin without cinema filtering */
+    List<StaffDTO> getAllStaffForSuperAdmin();
+
     /** {@code cinemaId == null}: toàn bộ; ngược lại: nhân viên thuộc rạp đó hoặc chưa gán rạp (null). */
     List<StaffDTO> listStaffByCinema(Integer cinemaId);
 

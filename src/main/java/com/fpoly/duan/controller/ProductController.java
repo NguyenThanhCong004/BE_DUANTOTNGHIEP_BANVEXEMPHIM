@@ -22,6 +22,8 @@ import com.fpoly.duan.dto.ProductDTO;
 import com.fpoly.duan.entity.CategoryProduct;
 import com.fpoly.duan.entity.Product;
 import com.fpoly.duan.repository.CategoryProductRepository;
+import com.fpoly.duan.repository.CinemaProductRepository;
+import com.fpoly.duan.repository.OrderDetailFoodRepository;
 import com.fpoly.duan.repository.ProductRepository;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -35,10 +37,13 @@ import lombok.RequiredArgsConstructor;
 @CrossOrigin(origins = "*", maxAge = 3600)
 @Tag(name = "8f. Sản phẩm (đồ ăn)", description = "CRUD sản phẩm — Super Admin.")
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
+// [SUPER ADMIN ONLY] - This section belongs to Super Admin. Do not modify without authorization.
 public class ProductController {
 
     private final ProductRepository productRepository;
     private final CategoryProductRepository categoryProductRepository;
+    private final OrderDetailFoodRepository orderDetailFoodRepository;
+    private final CinemaProductRepository cinemaProductRepository;
 
     @GetMapping
     @Operation(summary = "Danh sách sản phẩm")
@@ -100,6 +105,17 @@ public class ProductController {
         if (!productRepository.existsById(id)) {
             throw new RuntimeException("Không tìm thấy sản phẩm với id: " + id);
         }
+
+        // Kiểm tra xem sản phẩm đã từng bán (có trong hóa đơn) chưa
+        if (orderDetailFoodRepository.existsByProduct_ProductId(id)) {
+            throw new RuntimeException("Không thể xóa sản phẩm này vì đã có dữ liệu bán hàng (hóa đơn). Hãy chuyển sang trạng thái Ngừng bán.");
+        }
+
+        // Kiểm tra xem sản phẩm có đang được gán cho rạp nào không
+        if (cinemaProductRepository.existsByProduct_ProductId(id)) {
+            throw new RuntimeException("Sản phẩm đang được gán cho một hoặc nhiều rạp. Hãy gỡ bỏ khỏi rạp trước khi xóa.");
+        }
+
         productRepository.deleteById(id);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
