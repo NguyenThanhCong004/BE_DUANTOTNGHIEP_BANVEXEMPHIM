@@ -1,6 +1,7 @@
 package com.fpoly.duan.config;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -49,7 +50,11 @@ public class OpenApiConfig {
                                 .email("dev@local.test"))
                         .license(new License()
                                 .name("Nội bộ")
-                                .url("https://localhost")))
+                                .url("https://localhost"))
+                        .extensions(Map.of(
+                                "x-logo", Map.of(
+                                        "url", "https://raw.githubusercontent.com/swagger-api/swagger.io/wordpress/images/assets/SW-logo-clr.png",
+                                        "altText", "Cinema Booking API"))))
                 .servers(List.of(
                         new Server()
                                 .url("http://localhost:8080")

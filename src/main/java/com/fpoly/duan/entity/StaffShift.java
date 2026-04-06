@@ -21,6 +21,9 @@ public class StaffShift {
     private LocalDateTime endTime;
 
     private LocalDate date;
+    
+    @Column(name = "role")
+    private String role;
 
     @ManyToOne
     @JoinColumn(name = "staff_id")

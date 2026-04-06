@@ -23,7 +23,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
-import com.fpoly.duan.dto.MovieDTO;
 import com.fpoly.duan.dto.PromotionGroupRequest;
 import com.fpoly.duan.dto.PromotionGroupResponse;
 import com.fpoly.duan.entity.Cinema;

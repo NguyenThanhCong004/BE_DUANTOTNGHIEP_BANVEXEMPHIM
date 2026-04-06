@@ -1,0 +1,59 @@
+/* Minimal, clean tweaks for springdoc Swagger UI */
+
+/* Slightly modernize typography */
+html, body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+/* Header: less bulky */
+.swagger-ui .topbar {
+  background: linear-gradient(90deg, #0b1220, #111a2e);
+  padding: 10px 0;
+}
+
+/* Hide the default "Swagger" top-left image to keep it clean */
+.swagger-ui .topbar .link img {
+  display: none;
+}
+
+/* Make the title area nicer */
+.swagger-ui .info {
+  margin: 22px 0;
+}
+.swagger-ui .info .title {
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+/* Round cards a bit */
+.swagger-ui .opblock {
+  border-radius: 10px;
+  overflow: hidden;
+}
+.swagger-ui .opblock .opblock-summary {
+  padding: 10px 12px;
+}
+
+/* Buttons: a touch more modern */
+.swagger-ui .btn {
+  border-radius: 10px;
+}
+.swagger-ui .btn.authorize {
+  border-radius: 999px;
+}
+
+/* Inputs: consistent rounding */
+.swagger-ui input[type="text"],
+.swagger-ui input[type="password"],
+.swagger-ui input[type="search"],
+.swagger-ui textarea,
+.swagger-ui select {
+  border-radius: 10px;
+}
+
+/* Code blocks: slightly more readable */
+.swagger-ui .markdown code,
+.swagger-ui .renderedMarkdown code {
+  border-radius: 8px;
+}
+

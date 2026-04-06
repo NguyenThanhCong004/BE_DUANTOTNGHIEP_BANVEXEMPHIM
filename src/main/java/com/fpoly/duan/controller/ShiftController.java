@@ -3,7 +3,9 @@ package com.fpoly.duan.controller;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
@@ -25,6 +27,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 
 import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
+import com.fpoly.duan.dto.IndividualShiftRequest;
 import com.fpoly.duan.dto.ShiftGroupRequest;
 import com.fpoly.duan.dto.ShiftGroupResponse;
 import com.fpoly.duan.dto.ShiftItemResponse;
@@ -54,6 +57,41 @@ public class ShiftController {
     private final StaffRepository staffRepository;
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
+
+    @GetMapping("/debug")
+    @Operation(summary = "Debug - Xem tất cả data trong database")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> debugData() {
+        List<StaffShift> all = staffShiftRepository.findAll();
+        
+        List<Map<String, Object>> debugData = all.stream()
+                .map(ss -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("staffShiftId", ss.getStaffShiftId());
+                    map.put("date", ss.getDate());
+                    map.put("startTime", ss.getStartTime());
+                    map.put("endTime", ss.getEndTime());
+                    map.put("role", ss.getRole()); // Thêm role từ StaffShift
+                    
+                    Staff st = ss.getStaff();
+                    if (st != null) {
+                        map.put("staffId", st.getStaffId());
+                        map.put("staffName", st.getFullname());
+                        map.put("staffRole", st.getRole());
+                        if (st.getCinema() != null) {
+                            map.put("cinemaId", st.getCinema().getCinemaId());
+                        }
+                    }
+                    
+                    return map;
+                })
+                .collect(Collectors.toList());
+                
+        return ResponseEntity.ok(ApiResponse.<List<Map<String, Object>>>builder()
+                .status(HttpStatus.OK.value())
+                .message("Debug data")
+                .data(debugData)
+                .build());
+    }
 
     @GetMapping
     @Operation(summary = "Danh sách ca (theo rạp nếu có cinemaId)", description = "startDate/endDate (yyyy-MM-dd): lọc theo ngày ca — khớp lịch tuần FE.")
@@ -155,10 +193,10 @@ public class ShiftController {
         for (StaffShift ss : group) {
             Staff st = ss.getStaff();
             if (st == null) continue;
-            String role = st.getRole();
-            if ("Bán vé".equals(role)) banveId = st.getStaffId();
-            else if ("Soát vé".equals(role)) soatveId = st.getStaffId();
-            else if ("Phục vụ".equals(role)) phucvuId = st.getStaffId();
+            String pos = ss.getRole(); // Lấy vị trí từ StaffShift
+            if ("Bán vé".equals(pos)) banveId = st.getStaffId();
+            else if ("Soát vé".equals(pos)) soatveId = st.getStaffId();
+            else if ("Phục vụ".equals(pos)) phucvuId = st.getStaffId();
         }
 
         ShiftGroupResponse resp = ShiftGroupResponse.builder()
@@ -173,6 +211,72 @@ public class ShiftController {
                 .status(HttpStatus.OK.value())
                 .message("Lấy chi tiết ca làm thành công")
                 .data(resp)
+                .build());
+    }
+
+    @PostMapping("/individual")
+    @Operation(summary = "Tạo một ca đơn lẻ", description = "Tạo một ca đơn lẻ cho một nhân viên")
+    @Transactional
+    public ResponseEntity<ApiResponse<Integer>> createIndividualShift(@RequestBody IndividualShiftRequest request) {
+        if (request.getStaffId() == null) throw new RuntimeException("Thiếu staffId");
+        if (request.getDate() == null) throw new RuntimeException("Thiếu ngày");
+        if (request.getShiftType() == null) throw new RuntimeException("Thiếu loại ca");
+        if (request.getStartTime() == null) throw new RuntimeException("Thiếu thời gian bắt đầu");
+        if (request.getEndTime() == null) throw new RuntimeException("Thiếu thời gian kết thúc");
+
+        Staff staff = staffRepository.findById(request.getStaffId())
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân viên"));
+
+        // Chuyển startTime và endTime từ string sang LocalDateTime
+        LocalDate date = request.getDate();
+        LocalDateTime[] range = resolveTimeRange(request.getShiftType(), date);
+
+        StaffShift shift = new StaffShift();
+        shift.setDate(date);
+        shift.setStartTime(range[0]);
+        shift.setEndTime(range[1]);
+        shift.setStaff(staff);
+        shift.setRole(request.getRole()); // Lưu role từ request
+
+        StaffShift saved = staffShiftRepository.save(shift);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<Integer>builder()
+                .status(HttpStatus.CREATED.value())
+                .message("Tạo ca làm thành công")
+                .data(saved.getStaffShiftId())
+                .build());
+    }
+
+    @PutMapping("/{id}/individual")
+    @Operation(summary = "Cập nhật một ca đơn lẻ", description = "Cập nhật một ca đơn lẻ cho một nhân viên")
+    @Transactional
+    public ResponseEntity<ApiResponse<Integer>> updateIndividualShift(@PathVariable Integer id, @RequestBody IndividualShiftRequest request) {
+        if (request.getStaffId() == null) throw new RuntimeException("Thiếu staffId");
+        if (request.getDate() == null) throw new RuntimeException("Thiếu ngày");
+        if (request.getShiftType() == null) throw new RuntimeException("Thiếu loại ca");
+        if (request.getStartTime() == null) throw new RuntimeException("Thiếu thời gian bắt đầu");
+        if (request.getEndTime() == null) throw new RuntimeException("Thiếu thời gian kết thúc");
+
+        StaffShift shift = staffShiftRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy ca làm với id: " + id));
+
+        Staff staff = staffRepository.findById(request.getStaffId())
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân viên"));
+
+        // Chuyển startTime và endTime từ string sang LocalDateTime
+        LocalDate date = request.getDate();
+        LocalDateTime[] range = resolveTimeRange(request.getShiftType(), date);
+
+        shift.setDate(date);
+        shift.setStartTime(range[0]);
+        shift.setEndTime(range[1]);
+        shift.setStaff(staff);
+        shift.setRole(request.getRole()); // Cập nhật role từ request
+
+        StaffShift saved = staffShiftRepository.save(shift);
+        return ResponseEntity.ok(ApiResponse.<Integer>builder()
+                .status(HttpStatus.OK.value())
+                .message("Cập nhật ca làm thành công")
+                .data(saved.getStaffShiftId())
                 .build());
     }
 
@@ -192,9 +296,9 @@ public class ShiftController {
         Staff stPhucVu = staffRepository.findById(request.getStaffPhucVuId())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy staff Phục vụ"));
 
-        StaffShift s1 = buildShift(request.getShiftType(), date, range[0], range[1], stBanve);
-        StaffShift s2 = buildShift(request.getShiftType(), date, range[0], range[1], stSoatVe);
-        StaffShift s3 = buildShift(request.getShiftType(), date, range[0], range[1], stPhucVu);
+        StaffShift s1 = buildShift(request.getShiftType(), date, range[0], range[1], stBanve, "Bán vé");
+        StaffShift s2 = buildShift(request.getShiftType(), date, range[0], range[1], stSoatVe, "Soát vé");
+        StaffShift s3 = buildShift(request.getShiftType(), date, range[0], range[1], stPhucVu, "Phục vụ");
 
         StaffShift created1 = staffShiftRepository.save(s1);
         staffShiftRepository.save(s2);
@@ -230,9 +334,9 @@ public class ShiftController {
         Staff stPhucVu = staffRepository.findById(request.getStaffPhucVuId())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy staff Phục vụ"));
 
-        StaffShift s1 = buildShift(request.getShiftType(), date, range[0], range[1], stBanve);
-        StaffShift s2 = buildShift(request.getShiftType(), date, range[0], range[1], stSoatVe);
-        StaffShift s3 = buildShift(request.getShiftType(), date, range[0], range[1], stPhucVu);
+        StaffShift s1 = buildShift(request.getShiftType(), date, range[0], range[1], stBanve, "Bán vé");
+        StaffShift s2 = buildShift(request.getShiftType(), date, range[0], range[1], stSoatVe, "Soát vé");
+        StaffShift s3 = buildShift(request.getShiftType(), date, range[0], range[1], stPhucVu, "Phục vụ");
 
         StaffShift created1 = staffShiftRepository.save(s1);
         staffShiftRepository.save(s2);
@@ -264,17 +368,18 @@ public class ShiftController {
         if (request == null) throw new RuntimeException("Dữ liệu ca làm không hợp lệ");
         if (request.getDate() == null) throw new RuntimeException("Vui lòng chọn ngày ca làm");
         if (request.getShiftType() == null || request.getShiftType().trim().isEmpty()) throw new RuntimeException("Vui lòng chọn loại ca");
-        if (request.getStaffBanveId() == null) throw new RuntimeException("Thiếu staff Bán vé");
-        if (request.getStaffSoatVeId() == null) throw new RuntimeException("Thiếu staff Soát vé");
-        if (request.getStaffPhucVuId() == null) throw new RuntimeException("Thiếu staff Phục vụ");
+        if (request.getStaffBanveId() == null) throw new RuntimeException("Thiếu nhân viên vị trí Bán vé");
+        if (request.getStaffSoatVeId() == null) throw new RuntimeException("Thiếu nhân viên vị trí Soát vé");
+        if (request.getStaffPhucVuId() == null) throw new RuntimeException("Thiếu nhân viên vị trí Phục vụ");
     }
 
-    private StaffShift buildShift(String shiftType, LocalDate date, LocalDateTime start, LocalDateTime end, Staff staff) {
+    private StaffShift buildShift(String shiftType, LocalDate date, LocalDateTime start, LocalDateTime end, Staff staff, String posRole) {
         StaffShift s = new StaffShift();
         s.setDate(date);
         s.setStartTime(start);
         s.setEndTime(end);
         s.setStaff(staff);
+        s.setRole(posRole);
         return s;
     }
 
@@ -318,7 +423,8 @@ public class ShiftController {
 
     private ShiftItemResponse toShiftItemResponse(StaffShift ss, LocalDateTime now) {
         Staff st = ss.getStaff();
-        String role = st != null ? st.getRole() : null;
+        // Ưu tiên lấy role từ StaffShift, nếu không có thì lấy từ Staff
+        String role = ss.getRole() != null ? ss.getRole() : (st != null ? st.getRole() : null);
         String roleLabel;
         if ("Bán vé".equals(role)) roleLabel = "Bán vé";
         else if ("Soát vé".equals(role)) roleLabel = "Soát vé";

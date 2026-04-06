@@ -18,5 +18,7 @@ public class SeatDTO {
     private String seatTypeName;
     /** Phụ thu loại ghế (cộng vào giá vé suất chiếu) */
     private Double seatTypeSurcharge;
+    /** Trạng thái ghế: available, locked, maintenance */
+    private String status;
 }
 

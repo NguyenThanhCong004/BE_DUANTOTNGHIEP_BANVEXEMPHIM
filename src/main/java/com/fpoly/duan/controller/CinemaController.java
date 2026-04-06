@@ -2,7 +2,6 @@ package com.fpoly.duan.controller;
 
 import java.util.List;
 import java.util.stream.Collectors;
-
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -19,7 +18,9 @@ import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.CinemaDTO;
 import com.fpoly.duan.entity.Cinema;
+import com.fpoly.duan.entity.Room;
 import com.fpoly.duan.repository.CinemaRepository;
+import com.fpoly.duan.repository.RoomRepository;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -32,9 +33,11 @@ import lombok.RequiredArgsConstructor;
 @CrossOrigin(origins = "*", maxAge = 3600)
 @Tag(name = "1b. Rạp (Cinemas)", description = "Danh sách rạp — FE Super Admin chọn rạp.")
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
+// [SUPER ADMIN ONLY] - This section belongs to Super Admin. Do not modify without authorization.
 public class CinemaController {
 
     private final CinemaRepository cinemaRepository;
+    private final RoomRepository roomRepository;
 
     @GetMapping
     @Operation(summary = "Danh sách rạp")
@@ -67,9 +70,20 @@ public class CinemaController {
         if (dto == null || dto.getName() == null || dto.getName().trim().isEmpty()) {
             throw new RuntimeException("Tên rạp không được để trống");
         }
+        
+        String name = dto.getName().trim();
+        String address = dto.getAddress() != null ? dto.getAddress().trim() : "";
+
+        if (cinemaRepository.existsByNameIgnoreCase(name)) {
+            throw new RuntimeException("Tên rạp '" + name + "' đã tồn tại");
+        }
+        if (!address.isEmpty() && cinemaRepository.existsByAddressIgnoreCase(address)) {
+            throw new RuntimeException("Địa chỉ '" + address + "' đã được sử dụng bởi rạp khác");
+        }
+
         Cinema c = new Cinema();
-        c.setName(dto.getName().trim());
-        c.setAddress(dto.getAddress());
+        c.setName(name);
+        c.setAddress(address);
         c.setStatus(dto.getStatus() != null ? dto.getStatus() : 1);
         Cinema saved = cinemaRepository.save(c);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<CinemaDTO>builder()
@@ -84,8 +98,24 @@ public class CinemaController {
     public ResponseEntity<ApiResponse<CinemaDTO>> update(@PathVariable Integer id, @RequestBody CinemaDTO dto) {
         Cinema c = cinemaRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với id: " + id));
-        if (dto.getName() != null) c.setName(dto.getName().trim());
-        if (dto.getAddress() != null) c.setAddress(dto.getAddress());
+        
+        if (dto.getName() != null) {
+            String name = dto.getName().trim();
+            if (name.isEmpty()) throw new RuntimeException("Tên rạp không được để trống");
+            if (cinemaRepository.existsByNameIgnoreCaseAndCinemaIdNot(name, id)) {
+                throw new RuntimeException("Tên rạp '" + name + "' đã tồn tại ở chi nhánh khác");
+            }
+            c.setName(name);
+        }
+        
+        if (dto.getAddress() != null) {
+            String address = dto.getAddress().trim();
+            if (!address.isEmpty() && cinemaRepository.existsByAddressIgnoreCaseAndCinemaIdNot(address, id)) {
+                throw new RuntimeException("Địa chỉ '" + address + "' đã được sử dụng bởi rạp khác");
+            }
+            c.setAddress(address);
+        }
+
         if (dto.getStatus() != null) c.setStatus(dto.getStatus());
         Cinema saved = cinemaRepository.save(c);
         return ResponseEntity.ok(ApiResponse.<CinemaDTO>builder()
@@ -101,6 +131,14 @@ public class CinemaController {
         if (!cinemaRepository.existsById(id)) {
             throw new RuntimeException("Không tìm thấy rạp với id: " + id);
         }
+        
+        // Kiểm tra xem có phòng chiếu nào đang sử dụng rạp này không
+        List<Room> roomsInCinema = roomRepository.findByCinema_CinemaId(id);
+        if (!roomsInCinema.isEmpty()) {
+            throw new RuntimeException("Không thể xóa rạp này vì đang có " + roomsInCinema.size() + 
+                " phòng chiếu sử dụng. Vui lòng xóa hoặc chuyển phòng chiếu sang rạp khác trước.");
+        }
+        
         cinemaRepository.deleteById(id);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())

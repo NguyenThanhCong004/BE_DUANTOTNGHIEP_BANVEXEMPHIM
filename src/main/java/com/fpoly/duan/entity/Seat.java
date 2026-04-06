@@ -16,6 +16,9 @@ public class Seat {
     private String row;
     private Integer x;
     private Integer y;
+    
+    @Column(name = "status")
+    private String status = "1"; // available, locked, maintenance
 
     @ManyToOne
     @JoinColumn(name = "room_id")

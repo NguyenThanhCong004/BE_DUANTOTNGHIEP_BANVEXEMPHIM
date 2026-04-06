@@ -171,6 +171,7 @@ public class MovieController {
     @DeleteMapping("/{id}")
     @Operation(summary = "Xóa phim")
     @Transactional
+    // [SUPER ADMIN ONLY] - This section belongs to Super Admin. Do not modify without authorization.
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
         if (!movieRepository.existsById(id)) {
             throw new RuntimeException("Không tìm thấy phim với id: " + id);
