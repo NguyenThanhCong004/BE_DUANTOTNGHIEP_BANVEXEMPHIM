@@ -25,7 +25,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @RestController
 @RequestMapping("/api/v1/orders-online")
 @CrossOrigin(origins = "*", maxAge = 3600)
-@Tag(name = "8g. Đơn online", description = "Danh sách đơn — Admin hóa đơn.")
+@Tag(name = "Table: order_online", description = "Danh sách và quản lý đơn đặt online (bảng order_online).")
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
 public class OrderOnlineController {
 
