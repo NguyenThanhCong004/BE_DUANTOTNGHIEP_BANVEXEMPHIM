@@ -8,7 +8,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.fpoly.duan.dto.UserDTO;
+import com.fpoly.duan.entity.MembershipRank;
 import com.fpoly.duan.entity.User;
+import com.fpoly.duan.repository.MembershipRankRepository;
 import com.fpoly.duan.repository.StaffRepository;
 import com.fpoly.duan.repository.UserRepository;
 import com.fpoly.duan.service.UserService;
@@ -22,14 +24,36 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final StaffRepository staffRepository;
+    private final MembershipRankRepository membershipRankRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<UserDTO> getAllUsers() {
-        return userRepository.findAll().stream()
+        List<User> users = userRepository.findAll();
+        // Mỗi khi tải trang danh sách, tự động quét và cập nhật hạng cho tất cả User
+        users.forEach(this::syncRank);
+        return users.stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
+    }
+
+    private void syncRank(User user) {
+        double totalSpending = user.getTotalSpending() != null ? user.getTotalSpending() : 0.0;
+        MembershipRank bestRank = membershipRankRepository.findAll().stream()
+                .filter(r -> totalSpending >= (r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .sorted((r1, r2) -> {
+                    double v1 = r1.getMinSpending() != null ? r1.getMinSpending() : 0.0;
+                    double v2 = r2.getMinSpending() != null ? r2.getMinSpending() : 0.0;
+                    return Double.compare(v2, v1);
+                })
+                .findFirst()
+                .orElse(null);
+
+        if (bestRank != null && (user.getRank() == null || !bestRank.getRankId().equals(user.getRank().getRankId()))) {
+            user.setRank(bestRank);
+            userRepository.save(user);
+        }
     }
 
     @Override
@@ -50,19 +74,6 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserDTO createUser(UserDTO userDTO, String password) {
-        if (userRepository.existsByUsername(userDTO.getUsername())) {
-            throw new RuntimeException("Tên đăng nhập đã tồn tại");
-        }
-        if (userRepository.existsByEmail(userDTO.getEmail())) {
-            throw new RuntimeException("Email đã tồn tại");
-        }
-        String phoneCreate = userDTO.getPhone() != null ? userDTO.getPhone().trim() : "";
-        if (!phoneCreate.isEmpty()) {
-            if (Boolean.TRUE.equals(userRepository.existsByPhone(phoneCreate))) {
-                throw new RuntimeException("Số điện thoại đã tồn tại");
-            }
-        }
-
         User user = convertToEntity(userDTO);
         user.setPassword(passwordEncoder.encode(password));
         return convertToDTO(userRepository.save(user));
@@ -73,55 +84,39 @@ public class UserServiceImpl implements UserService {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng với mã: " + id));
 
+        // Cập nhật mọi trường thông tin được gửi lên (Khôi phục lại như lúc đầu)
         if (userDTO.getEmail() != null && !userDTO.getEmail().isBlank()) {
-            String newEmail = userDTO.getEmail().trim();
-            if (!newEmail.equalsIgnoreCase(user.getEmail() == null ? "" : user.getEmail())) {
-                userRepository.findByEmail(newEmail).ifPresent(other -> {
-                    if (!other.getUserId().equals(id)) {
-                        throw new RuntimeException("Email đã được sử dụng bởi tài khoản khác");
-                    }
-                });
-                if (staffRepository.existsByEmail(newEmail)) {
-                    throw new RuntimeException("Email đã được dùng cho tài khoản nhân viên");
-                }
-            }
-            user.setEmail(newEmail);
+            user.setEmail(userDTO.getEmail().trim());
         }
-
         if (userDTO.getFullname() != null) {
             user.setFullname(userDTO.getFullname().trim());
         }
         if (userDTO.getPhone() != null) {
-            String newPhone = userDTO.getPhone().trim();
-            String oldPhone = user.getPhone() == null ? "" : user.getPhone().trim();
-            if (!newPhone.equals(oldPhone)) {
-                if (Boolean.TRUE.equals(userRepository.existsByPhoneAndUserIdNot(newPhone, id))) {
-                    throw new RuntimeException("Số điện thoại đã được sử dụng bởi tài khoản khác");
-                }
-                if (Boolean.TRUE.equals(staffRepository.existsByPhone(newPhone))) {
-                    throw new RuntimeException("Số điện thoại đã được dùng cho tài khoản nhân viên");
-                }
-            }
-            user.setPhone(newPhone);
+            user.setPhone(userDTO.getPhone().trim());
         }
         if (userDTO.getStatus() != null) {
             user.setStatus(userDTO.getStatus());
         }
-        user.setBirthday(userDTO.getBirthday());
-        if (userDTO.getAvatar() != null) {
-            user.setAvatar(userDTO.getAvatar().trim().isEmpty() ? null : userDTO.getAvatar().trim());
+        if (userDTO.getBirthday() != null) {
+            user.setBirthday(userDTO.getBirthday());
         }
+        if (userDTO.getAvatar() != null) {
+            user.setAvatar(userDTO.getAvatar().trim());
+        }
+        if (userDTO.getPoints() != null) {
+            user.setPoints(userDTO.getPoints());
+        }
+
+        // Tự động đồng bộ hạng sau khi cập nhật
+        syncRank(user);
 
         return convertToDTO(userRepository.save(user));
     }
 
     @Override
     public void changePassword(Integer userId, String currentPassword, String newPassword) {
-        if (newPassword == null || newPassword.length() < 8) {
-            throw new RuntimeException("Mật khẩu mới tối thiểu 8 ký tự");
-        }
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng với mã: " + userId));
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng"));
         if (currentPassword == null || !passwordEncoder.matches(currentPassword, user.getPassword())) {
             throw new RuntimeException("Mật khẩu hiện tại không đúng");
         }
@@ -142,6 +137,7 @@ public class UserServiceImpl implements UserService {
                 .avatar(user.getAvatar())
                 .points(user.getPoints())
                 .totalSpending(user.getTotalSpending())
+                .rankId(rank != null ? rank.getRankId() : null)
                 .rankName(rank != null ? rank.getRankName() : null)
                 .build();
     }

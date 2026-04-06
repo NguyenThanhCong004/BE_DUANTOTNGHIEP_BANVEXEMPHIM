@@ -36,5 +36,8 @@ public interface TicketRepository extends JpaRepository<Ticket, Integer> {
             + "AND t.orderOnline IS NOT NULL AND t.orderOnline.status IN (0, 1)")
     long countHeldOrPaidTicketsForSeats(@Param("sid") Integer showtimeId, @Param("seatIds") Collection<Integer> seatIds);
 
+    @Query(value = "SELECT CAST(COUNT(*) AS BIGINT) FROM tickets t JOIN orders_online o ON t.order_online_id = o.order_online_id WHERE o.status = 1", nativeQuery = true)
+    Object countAllPaidTickets();
+
     List<Ticket> findByOrderOnline_OrderOnlineId(Integer orderOnlineId);
 }

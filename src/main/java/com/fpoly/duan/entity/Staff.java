@@ -27,8 +27,8 @@ public class Staff {
     private String fullname;
 
     // Bit: 0/1 (tương ứng Khóa/Hoạt động). Mặc định = 1 (Hoạt động)
-    @Column(nullable = false, columnDefinition = "BIT DEFAULT 1")
-    private Integer status;
+    @Column(nullable = false)
+    private Integer status = 1;
 
     @Column(nullable = false, columnDefinition = "NVARCHAR(20)")
     private String phone;

@@ -12,4 +12,6 @@ public interface CinemaProductRepository extends JpaRepository<CinemaProduct, In
     List<CinemaProduct> findByCinema_CinemaId(Integer cinemaId);
 
     Optional<CinemaProduct> findByCinema_CinemaIdAndProduct_ProductId(Integer cinemaId, Integer productId);
+
+    boolean existsByProduct_ProductId(Integer productId);
 }
