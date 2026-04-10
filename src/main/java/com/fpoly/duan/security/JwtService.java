@@ -16,6 +16,9 @@ import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 
+import java.util.stream.Collectors;
+import org.springframework.security.core.GrantedAuthority;
+
 @Service
 public class JwtService {
 
@@ -54,6 +57,10 @@ public class JwtService {
         if (userDetails instanceof CustomUserDetails customUser) {
             claims.put("userId", customUser.getUserId());
         }
+        // Thêm danh sách quyền vào claim "authorities"
+        claims.put("authorities", userDetails.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toList()));
         claims.put("type", tokenType.name());
         
         return Jwts

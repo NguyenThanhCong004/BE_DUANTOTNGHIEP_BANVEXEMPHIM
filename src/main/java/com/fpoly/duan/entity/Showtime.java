@@ -16,8 +16,8 @@ public class Showtime {
     @Column(name = "start_time")
     private LocalDateTime startTime;
 
-    @Column(name = "VAT%")
-    private Double vatPercent;
+    @Column(name = "surcharge")
+    private Double surcharge;
 
     @ManyToOne
     @JoinColumn(name = "movie_id")

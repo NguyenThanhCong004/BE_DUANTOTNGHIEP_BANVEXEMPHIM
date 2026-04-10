@@ -11,4 +11,6 @@ import com.fpoly.duan.entity.OrderDetailFood;
 public interface OrderDetailFoodRepository extends JpaRepository<OrderDetailFood, Integer> {
 
     List<OrderDetailFood> findByOrderOnline_OrderOnlineId(Integer orderOnlineId);
+
+    boolean existsByProduct_ProductId(Integer productId);
 }
