@@ -18,6 +18,7 @@ public class ShowtimeSlotResponse {
     private Integer id;
     private String date;
     private String time;
+    private String endTime;
 
     @JsonProperty("movie_id")
     private Integer movieId;
@@ -37,7 +38,7 @@ public class ShowtimeSlotResponse {
     @JsonProperty("cinema_name")
     private String cinemaName;
 
-    private Double vat;
+    private Double surcharge;
 
     @JsonProperty("base_price")
     private Double basePrice;

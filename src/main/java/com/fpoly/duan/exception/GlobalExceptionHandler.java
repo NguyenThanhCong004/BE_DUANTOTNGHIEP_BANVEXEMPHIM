@@ -28,8 +28,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ApiResponse<Object>> handleRuntimeException(RuntimeException ex) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.builder()
-                .status(HttpStatus.BAD_REQUEST.value())
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ApiResponse.builder()
+                .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
                 .message(ex.getMessage())
                 .build());
     }
