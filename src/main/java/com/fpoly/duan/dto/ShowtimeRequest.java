@@ -15,6 +15,6 @@ public class ShowtimeRequest {
     private Integer movieId;
     private Integer roomId;
     private LocalDateTime startTime;
-    private Double vatPercent;
+    private Double surcharge;
 }
 

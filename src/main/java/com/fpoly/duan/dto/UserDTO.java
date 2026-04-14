@@ -22,6 +22,8 @@ public class UserDTO {
     private String avatar;
     private Integer points;
     private Double totalSpending;
+    /** ID hạng hội viên để cập nhật */
+    private Integer rankId;
     /** Tên hạng hội viên (đọc từ rank), chỉ hiển thị */
     private String rankName;
 }

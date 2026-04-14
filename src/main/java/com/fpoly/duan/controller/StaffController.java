@@ -4,16 +4,7 @@ import java.util.List;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
@@ -30,20 +21,30 @@ import lombok.RequiredArgsConstructor;
 @RequestMapping("/api/v1/staff")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*", maxAge = 3600)
-@Tag(name = "3. Nhân viên (Staff)", description = "CRUD nhân viên — FE: `AdminShiftForm.jsx` load danh sách staff.")
+@Tag(name = "3. Nhân viên (Staff)", description = "CRUD nhân viên")
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
 public class StaffController {
     private final StaffService staffService;
 
     @GetMapping
-    @Operation(summary = "Danh sách nhân viên", description = "Query cinemaId (tùy chọn): lọc theo rạp + nhân viên chưa gán rạp.")
+    @Operation(summary = "Danh sách nhân viên (Admin dùng)")
     public ResponseEntity<ApiResponse<List<StaffDTO>>> getAllStaff(
             @RequestParam(required = false) Integer cinemaId) {
         List<StaffDTO> staff = cinemaId == null ? staffService.getAllStaff() : staffService.listStaffByCinema(cinemaId);
         return ResponseEntity.ok(ApiResponse.<List<StaffDTO>>builder()
                 .status(HttpStatus.OK.value())
-                .message("Lấy danh sách nhân viên thành công")
+                .message("Thành công")
                 .data(staff)
+                .build());
+    }
+
+    @GetMapping("/super-admin-view")
+    @Operation(summary = "Danh sách nhân viên (Super Admin dùng)")
+    public ResponseEntity<ApiResponse<List<StaffDTO>>> getStaffForSuperAdmin() {
+        return ResponseEntity.ok(ApiResponse.<List<StaffDTO>>builder()
+                .status(HttpStatus.OK.value())
+                .message("Thành công")
+                .data(staffService.getAllStaffForSuperAdmin())
                 .build());
     }
 
@@ -53,13 +54,13 @@ public class StaffController {
         StaffDTO staff = staffService.getStaffById(id);
         return ResponseEntity.ok(ApiResponse.<StaffDTO>builder()
                 .status(HttpStatus.OK.value())
-                .message("Lấy thông tin nhân viên thành công")
+                .message("Thành công")
                 .data(staff)
                 .build());
     }
 
     @PostMapping
-    @Operation(summary = "Tạo nhân viên")
+    @Operation(summary = "Tạo nhân viên", description = "Dữ liệu avatar gửi kèm dạng Base64 string trong JSON.")
     public ResponseEntity<ApiResponse<StaffDTO>> createStaff(@RequestBody StaffDTO staffDTO) {
         StaffDTO created = staffService.createStaff(staffDTO);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<StaffDTO>builder()
@@ -75,18 +76,14 @@ public class StaffController {
         StaffDTO updated = staffService.updateStaff(id, staffDTO);
         return ResponseEntity.ok(ApiResponse.<StaffDTO>builder()
                 .status(HttpStatus.OK.value())
-                .message("Cập nhật nhân viên thành công")
+                .message("Cập nhật thành công")
                 .data(updated)
                 .build());
     }
 
     @PutMapping("/{id}/password")
-    @Operation(summary = "Đổi mật khẩu (nhân viên)", description = "Chỉ tài khoản đang đăng nhập được đổi mật khẩu của chính mình (staffId khớp JWT).")
     public ResponseEntity<ApiResponse<Void>> changePassword(@PathVariable Integer id,
             @RequestBody UserPasswordChangeRequest body) {
-        if (body == null || body.getNewPassword() == null) {
-            throw new RuntimeException("Thiếu dữ liệu đổi mật khẩu");
-        }
         staffService.changePassword(id, body.getCurrentPassword(), body.getNewPassword());
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
@@ -95,13 +92,12 @@ public class StaffController {
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Xóa nhân viên")
+    // [SUPER ADMIN ONLY] - This section belongs to Super Admin. Do not modify without authorization.
     public ResponseEntity<ApiResponse<Void>> deleteStaff(@PathVariable Integer id) {
         staffService.deleteStaff(id);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
-                .message("Xóa nhân viên thành công")
+                .message("Xóa thành công")
                 .build());
     }
 }
-

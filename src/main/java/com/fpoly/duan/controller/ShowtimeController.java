@@ -122,7 +122,7 @@ public class ShowtimeController {
         s.setMovie(movie);
         s.setRoom(room);
         s.setStartTime(request.getStartTime());
-        s.setVatPercent(request.getVatPercent());
+        s.setSurcharge(request.getSurcharge());
 
         assertNoRoomOverlap(null, room, movie, request.getStartTime());
 
@@ -153,7 +153,7 @@ public class ShowtimeController {
         s.setMovie(movie);
         s.setRoom(room);
         s.setStartTime(request.getStartTime());
-        s.setVatPercent(request.getVatPercent());
+        s.setSurcharge(request.getSurcharge());
 
         assertNoRoomOverlap(id, room, movie, request.getStartTime());
 
@@ -184,8 +184,8 @@ public class ShowtimeController {
         Movie movie = s.getMovie();
         Room room = s.getRoom();
         Double basePrice = movie != null ? movie.getBasePrice() : 0.0;
-        Double vat = s.getVatPercent() != null ? s.getVatPercent() : 0.0;
-        Double price = basePrice * (1 + vat / 100);
+        Double surcharge = s.getSurcharge() != null ? s.getSurcharge() : 0.0;
+        Double price = basePrice + surcharge;
 
         String status = "Đã chiếu";
         if (s.getStartTime() != null) {
@@ -200,11 +200,18 @@ public class ShowtimeController {
 
         String date = s.getStartTime() != null ? s.getStartTime().toLocalDate().toString() : null;
         String time = s.getStartTime() != null ? s.getStartTime().toLocalTime().format(TIME_FMT) : null;
+        
+        String endTimeStr = null;
+        if (s.getStartTime() != null) {
+            int durationMin = movie != null && movie.getDuration() != null ? movie.getDuration() : 120;
+            endTimeStr = s.getStartTime().plusMinutes(durationMin).toLocalTime().format(TIME_FMT);
+        }
 
         ShowtimeSlotResponse dto = new ShowtimeSlotResponse();
         dto.setId(s.getShowtimeId());
         dto.setDate(date);
         dto.setTime(time);
+        dto.setEndTime(endTimeStr);
         dto.setMovieId(movie != null ? movie.getMovieId() : null);
         dto.setMovieTitle(movie != null ? movie.getTitle() : null);
         dto.setRoomId(room != null ? room.getRoomId() : null);
@@ -213,7 +220,7 @@ public class ShowtimeController {
             dto.setCinemaId(room.getCinema().getCinemaId());
             dto.setCinemaName(room.getCinema().getName());
         }
-        dto.setVat(vat);
+        dto.setSurcharge(surcharge);
         dto.setBasePrice(basePrice);
         dto.setPrice(price);
         dto.setStatus(status);
@@ -233,8 +240,11 @@ public class ShowtimeController {
         if (request.getStartTime() == null) {
             throw new RuntimeException("Vui lòng chọn thời gian suất chiếu");
         }
-        if (request.getVatPercent() == null) {
-            throw new RuntimeException("Vui lòng nhập VAT");
+        if (request.getSurcharge() == null) {
+            throw new RuntimeException("Vui lòng nhập Phụ thu");
+        }
+        if (request.getSurcharge() < 0) {
+            throw new RuntimeException("Phụ thu không được nhỏ hơn 0");
         }
     }
 
