@@ -52,7 +52,7 @@ public class CinemaProductMenuController {
         cinemaRepository.findById(cinemaId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với id: " + cinemaId));
 
-        List<Product> allProducts = productRepository.findAll();
+        List<Product> allProducts = productRepository.findAllByOrderByProductIdDesc();
         List<CinemaProduct> links = cinemaProductRepository.findByCinema_CinemaId(cinemaId);
         Map<Integer, CinemaProduct> byProductId = links.stream()
                 .filter(cp -> cp.getProduct() != null && cp.getProduct().getProductId() != null)

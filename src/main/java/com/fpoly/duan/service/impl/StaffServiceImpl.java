@@ -1,5 +1,6 @@
 package com.fpoly.duan.service.impl;
 
+import java.security.SecureRandom;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -17,19 +18,28 @@ import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.StaffRepository;
 import com.fpoly.duan.repository.StaffShiftRepository;
 import com.fpoly.duan.repository.UserRepository;
+import com.fpoly.duan.service.EmailService;
 import com.fpoly.duan.service.StaffService;
 
+import jakarta.mail.MessagingException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
 @Transactional
+@Slf4j
 public class StaffServiceImpl implements StaffService {
+
+    private static final String NEW_STAFF_EMAIL_SUBJECT = "[ERROR404] Tài khoản nhân viên mới";
+    private static final String PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+
     private final StaffRepository staffRepository;
     private final CinemaRepository cinemaRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final StaffShiftRepository staffShiftRepository;
+    private final EmailService emailService;
 
     @Override
     @Transactional(readOnly = true)
@@ -91,6 +101,9 @@ public class StaffServiceImpl implements StaffService {
         if (username == null || username.isEmpty()) {
             username = email;
         }
+        if (username.length() < 6 || username.length() > 50) {
+            throw new RuntimeException("Tên đăng nhập phải từ 6 đến 50 ký tự");
+        }
 
         if (staffDTO.getPhone() == null || staffDTO.getPhone().trim().isEmpty()) {
             throw new RuntimeException("Số điện thoại không được để trống");
@@ -141,10 +154,18 @@ public class StaffServiceImpl implements StaffService {
             throw new RuntimeException("Số điện thoại đã được dùng cho tài khoản khách hàng");
         }
 
-        // Password mặc định phải > 6 ký tự
-        String defaultPassword = "12345678";
-        if (defaultPassword.length() <= 6) {
-            throw new RuntimeException("Mật khẩu mặc định phải trên 6 ký tự");
+        String passwordField = staffDTO.getPassword() != null ? staffDTO.getPassword().trim() : "";
+        final String plainPassword;
+        final boolean sendPasswordByEmail;
+        if (!passwordField.isEmpty()) {
+            if (passwordField.length() < 6) {
+                throw new RuntimeException("Mật khẩu phải có ít nhất 6 ký tự");
+            }
+            plainPassword = passwordField;
+            sendPasswordByEmail = false;
+        } else {
+            plainPassword = randomPassword(12);
+            sendPasswordByEmail = true;
         }
 
         Staff staff = new Staff();
@@ -157,7 +178,7 @@ public class StaffServiceImpl implements StaffService {
         staff.setRole(finalRole);
         staff.setStatus(nextStatus);
         staff.setAvatar(staffDTO.getAvatar().trim());
-        staff.setPassword(passwordEncoder.encode(defaultPassword));
+        staff.setPassword(passwordEncoder.encode(plainPassword));
 
         Integer cinemaId = staffDTO.getCinemaId();
         if (cinemaId != null) {
@@ -175,7 +196,52 @@ public class StaffServiceImpl implements StaffService {
             staff.setCinema(cinema);
         }
 
-        return convertToDTO(staffRepository.save(staff));
+        Staff saved = staffRepository.save(staff);
+
+        if (sendPasswordByEmail) {
+            try {
+                emailService.sendHtml(
+                        email,
+                        NEW_STAFF_EMAIL_SUBJECT,
+                        buildNewStaffCredentialsHtml(
+                                staff.getFullname(),
+                                email,
+                                username,
+                                plainPassword));
+            } catch (MessagingException e) {
+                log.error("Không gửi được email mật khẩu nhân viên tới {}: {}", email, e.getMessage());
+                throw new RuntimeException(
+                        "Đã tạo tài khoản nhưng không gửi được email. Kiểm tra cấu hình SMTP hoặc thử lại sau.");
+            }
+        }
+
+        return convertToDTO(saved);
+    }
+
+    private static String randomPassword(int length) {
+        SecureRandom r = new SecureRandom();
+        StringBuilder sb = new StringBuilder(length);
+        for (int i = 0; i < length; i++) {
+            sb.append(PASSWORD_CHARS.charAt(r.nextInt(PASSWORD_CHARS.length())));
+        }
+        return sb.toString();
+    }
+
+    private static String buildNewStaffCredentialsHtml(
+            String fullname, String email, String username, String plainPassword) {
+        String name = fullname != null && !fullname.isBlank() ? fullname : "bạn";
+        return """
+                <!DOCTYPE html>
+                <html><head><meta charset="UTF-8"></head><body style="font-family:sans-serif;line-height:1.6;color:#111;">
+                <p>Xin chào %s,</p>
+                <p>Tài khoản nhân viên của bạn đã được tạo trên hệ thống ERROR404.</p>
+                <p><strong>Đăng nhập bằng email:</strong> %s</p>
+                <p><strong>Username:</strong> %s</p>
+                <p><strong>Mật khẩu tạm:</strong> <span style="font-size:18px;font-weight:bold;letter-spacing:1px;">%s</span></p>
+                <p style="color:#555;font-size:14px;">Vui lòng đăng nhập và đổi mật khẩu trong phần hồ sơ nếu cần.</p>
+                </body></html>
+                """
+                .formatted(name, email, username, plainPassword);
     }
 
     @Override

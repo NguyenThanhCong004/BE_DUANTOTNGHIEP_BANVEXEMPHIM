@@ -25,6 +25,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final UserDetailsService userDetailsService;
     private final com.fpoly.duan.repository.RevokedTokenRepository revokedTokenRepository;
 
+    private boolean isProtectedPath(String path) {
+        return path.startsWith("/api/v1/shifts/me")
+                || path.startsWith("/api/v1/ticket-orders")
+                || path.startsWith("/api/v1/food-orders")
+                || path.startsWith("/api/v1/me");
+    }
+
+    @Override
+    protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
+        final String path = request.getServletPath();
+        return !isProtectedPath(path);
+    }
+
     @Override
     protected void doFilterInternal(
             @NonNull HttpServletRequest request,
