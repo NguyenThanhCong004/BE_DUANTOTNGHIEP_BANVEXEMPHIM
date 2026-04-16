@@ -15,6 +15,8 @@ import com.fpoly.duan.dto.UserRequest;
 import com.fpoly.duan.entity.Staff;
 import com.fpoly.duan.entity.RevokedToken;
 import com.fpoly.duan.repository.RevokedTokenRepository;
+import com.fpoly.duan.repository.StaffRepository;
+import com.fpoly.duan.repository.UserRepository;
 import com.fpoly.duan.security.CustomUserDetails;
 import com.fpoly.duan.security.JwtService;
 import com.fpoly.duan.security.TokenType;
@@ -26,22 +28,27 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
+    private static final String STRONG_PASSWORD_REGEX =
+            "^(?=.*[a-z])(?=.*[A-Z])(?=.*[^A-Za-z0-9]).{8,}$";
 
     private final AuthenticationManager authenticationManager;
     private final UserDetailsService userDetailsService;
     private final JwtService jwtService;
     private final UserService userService;
     private final RevokedTokenRepository revokedTokenRepository;
+    private final UserRepository userRepository;
+    private final StaffRepository staffRepository;
 
     @Override
     public AuthResponse login(LoginRequest loginRequest) {
+        String loginKey = loginRequest.getUsername() != null ? loginRequest.getUsername().trim() : "";
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
-                        loginRequest.getUsername(),
+                        loginKey,
                         loginRequest.getPassword()
                 )
         );
-        CustomUserDetails userDetails = (CustomUserDetails) userDetailsService.loadUserByUsername(loginRequest.getUsername());
+        CustomUserDetails userDetails = (CustomUserDetails) userDetailsService.loadUserByUsername(loginKey);
         String token = jwtService.generateToken(userDetails);
         String refreshToken = jwtService.generateRefreshToken(userDetails);
         
@@ -52,7 +59,7 @@ public class AuthServiceImpl implements AuthService {
         if (userDetails.getStaff() != null) {
             responseBuilder.staff(convertToStaffDTO(userDetails.getStaff()));
         } else {
-            responseBuilder.user(userService.getUserByUsername(loginRequest.getUsername()));
+            responseBuilder.user(userService.getUserByUsernameOrEmail(loginKey));
         }
         
         return responseBuilder.build();
@@ -60,17 +67,36 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResponse register(UserRequest userRequest) {
+        String username = userRequest.getUsername() != null ? userRequest.getUsername().trim() : "";
+        String email = userRequest.getEmail() != null ? userRequest.getEmail().trim() : "";
+        String phone = userRequest.getPhone() != null ? userRequest.getPhone().trim() : "";
+        String password = userRequest.getPassword() != null ? userRequest.getPassword() : "";
+
+        if (!password.matches(STRONG_PASSWORD_REGEX)) {
+            throw new RuntimeException("Mật khẩu phải có ít nhất 8 ký tự, gồm chữ thường, chữ hoa và ký tự đặc biệt");
+        }
+
+        if (userRepository.existsByUsername(username) || staffRepository.existsByUsername(username)) {
+            throw new RuntimeException("Tên đăng nhập đã tồn tại");
+        }
+        if (userRepository.existsByEmail(email) || staffRepository.existsByEmail(email)) {
+            throw new RuntimeException("Email đã tồn tại");
+        }
+        if (userRepository.existsByPhone(phone) || staffRepository.existsByPhone(phone)) {
+            throw new RuntimeException("Số điện thoại đã tồn tại");
+        }
+
         UserDTO userDTO = UserDTO.builder()
-                .username(userRequest.getUsername())
+                .username(username)
                 .fullname(userRequest.getFullname())
-                .email(userRequest.getEmail())
-                .phone(userRequest.getPhone())
+                .email(email)
+                .phone(phone)
                 .birthday(userRequest.getBirthday())
                 .avatar(userRequest.getAvatar())
                 .status(1) // Default status is ACTIVE
                 .build();
         
-        UserDTO createdUser = userService.createUser(userDTO, userRequest.getPassword());
+        UserDTO createdUser = userService.createUser(userDTO, password);
         
         UserDetails userDetails = userDetailsService.loadUserByUsername(createdUser.getUsername());
         String token = jwtService.generateToken(userDetails);

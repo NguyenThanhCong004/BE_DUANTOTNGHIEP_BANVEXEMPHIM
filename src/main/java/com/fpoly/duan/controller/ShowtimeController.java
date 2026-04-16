@@ -1,5 +1,6 @@
 package com.fpoly.duan.controller;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -79,8 +80,12 @@ public class ShowtimeController {
         }
 
         LocalDateTime now = LocalDateTime.now();
+        LocalDate maxDate = now.toLocalDate().plusDays(7); // Chỉ lấy đến 7 ngày sau
 
         List<ShowtimeSlotResponse> slotList = showtimes.stream()
+                .filter(s -> s.getStartTime() != null)
+                .filter(s -> !s.getStartTime().toLocalDate().isBefore(now.toLocalDate())) // Từ hôm nay
+                .filter(s -> !s.getStartTime().toLocalDate().isAfter(maxDate)) // Đến 7 ngày sau
                 .map(s -> toDTO(s, now, null))
                 .collect(Collectors.toList());
 

@@ -217,6 +217,14 @@ public class PromotionController {
         Promotion rep = promotionRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy khuyến mãi với id: " + id));
 
+        LocalDate today = LocalDate.now();
+        if (computeStatus(rep.getStartDate(), rep.getEndDate(), today) == 1) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.<Void>builder()
+                    .status(HttpStatus.BAD_REQUEST.value())
+                    .message("Không được xóa khuyến mãi đang diễn ra.")
+                    .build());
+        }
+
         PromotionGroupKey key = groupKey(rep);
 
         List<Promotion> group = promotionRepository.findByCinema_CinemaId(key.cinemaId).stream()

@@ -1,7 +1,9 @@
 package com.fpoly.duan.service;
 
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -25,6 +27,7 @@ import com.fpoly.duan.dto.payos.PayOSCheckoutData;
 import com.fpoly.duan.dto.payos.PayOSCreatePaymentLinkRequest;
 import com.fpoly.duan.entity.CinemaProduct;
 import com.fpoly.duan.entity.Movie;
+import com.fpoly.duan.entity.MembershipRank;
 import com.fpoly.duan.entity.OrderDetailFood;
 import com.fpoly.duan.entity.OrderOnline;
 import com.fpoly.duan.entity.Product;
@@ -37,11 +40,17 @@ import com.fpoly.duan.repository.CinemaProductRepository;
 import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.OrderDetailFoodRepository;
 import com.fpoly.duan.repository.OrderOnlineRepository;
+import com.fpoly.duan.repository.MembershipRankRepository;
+import com.fpoly.duan.repository.PromotionRepository;
 import com.fpoly.duan.repository.ProductRepository;
 import com.fpoly.duan.repository.SeatRepository;
 import com.fpoly.duan.repository.ShowtimeRepository;
 import com.fpoly.duan.repository.TicketRepository;
 import com.fpoly.duan.repository.UserRepository;
+import com.fpoly.duan.repository.UserVoucherRepository;
+import com.fpoly.duan.entity.Promotion;
+import com.fpoly.duan.entity.UserVoucher;
+import com.fpoly.duan.entity.Voucher;
 
 import lombok.RequiredArgsConstructor;
 
@@ -51,22 +60,28 @@ public class TicketCheckoutService {
 
     private static final int ORDER_STATUS_PENDING = 0;
     private static final int ORDER_STATUS_PAID = 1;
+    private static final int ORDER_STATUS_CANCELLED = 2;
     private static final int TICKET_STATUS_PENDING = 0;
     private static final int TICKET_STATUS_PAID = 1;
+    private static final int TICKET_STATUS_CANCELLED = 2;
     private static final int FOOD_STATUS_PENDING = 0;
     private static final int FOOD_STATUS_PAID = 1;
+    private static final int FOOD_STATUS_CANCELLED = 2;
 
     private final ShowtimeRepository showtimeRepository;
     private final SeatRepository seatRepository;
     private final TicketRepository ticketRepository;
     private final OrderOnlineRepository orderOnlineRepository;
     private final UserRepository userRepository;
+    private final UserVoucherRepository userVoucherRepository;
     private final PayOSService payOSService;
     private final CinemaProductRepository cinemaProductRepository;
     private final ProductRepository productRepository;
     private final OrderDetailFoodRepository orderDetailFoodRepository;
+    private final MembershipRankRepository membershipRankRepository;
     private final CinemaRepository cinemaRepository;
     private final EphemeralSeatHoldService ephemeralSeatHoldService;
+    private final PromotionRepository promotionRepository;
 
     @Transactional
     public TicketCheckoutResponse checkout(Integer userId, TicketCheckoutRequest req) {
@@ -88,7 +103,7 @@ public class TicketCheckoutService {
         Integer roomId = showtime.getRoom().getRoomId();
         Integer cinemaId = showtime.getRoom().getCinema() != null ? showtime.getRoom().getCinema().getCinemaId() : null;
 
-        List<Seat> seats = seatRepository.findAllById(seatIdSet);
+        List<Seat> seats = seatRepository.findAllByIdWithType(seatIdSet);
         if (seats.size() != seatIdSet.size()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Một hoặc nhiều ghế không tồn tại");
         }
@@ -119,17 +134,45 @@ public class TicketCheckoutService {
         }
 
         double unitBase = computeUnitBasePrice(showtime);
+
+        // Tìm khuyến mãi phim đang active
+        Integer movieId = showtime.getMovie() != null ? showtime.getMovie().getMovieId() : null;
+        LocalDate today = LocalDate.now();
+        List<Promotion> promotions = promotionRepository.findActivePromotions(movieId, cinemaId, today);
+        double promotionDiscountPercent = 0.0;
+        if (!promotions.isEmpty()) {
+            Promotion promo = promotions.get(0); // Ưu tiên cao nhất theo ORDER BY
+            promotionDiscountPercent = promo.getDiscountPercent() != null ? promo.getDiscountPercent() : 0.0;
+        }
+
+        // Tính giá vé: basePrice áp dụng promotion, sau đó cộng surcharges
         List<Double> linePrices = new ArrayList<>();
         int ticketVnd = 0;
+        // Giá phim sau khuyến mãi (không bao gồm surcharges)
+        double basePriceWithPromotion = unitBase;
+        if (promotionDiscountPercent > 0) {
+            basePriceWithPromotion = unitBase * (1 - promotionDiscountPercent / 100.0);
+        }
+
         for (Seat seat : seats) {
             double surcharge = 0.0;
+            boolean isCouple = false;
             SeatType st = seat.getSeatType();
-            if (st != null && st.getSurcharge() != null) {
-                surcharge = st.getSurcharge();
+            if (st != null) {
+                if (st.getSurcharge() != null) {
+                    surcharge = st.getSurcharge();
+                }
+                isCouple = Boolean.TRUE.equals(st.getCoupleSeat());
             }
-            double line = unitBase + surcharge;
-            linePrices.add(line);
-            ticketVnd += (int) Math.round(line);
+            // Giá vé cuối = giá phim sau KM + showtime surcharge + seatType surcharge
+            double linePrice = basePriceWithPromotion + surcharge;
+            // Ghế đôi x2 giá
+            if (isCouple) {
+                linePrice = linePrice * 2;
+            }
+            long lineRounded = Math.round(linePrice);
+            linePrices.add((double) lineRounded);
+            ticketVnd += (int) lineRounded;
         }
         double ticketDouble = linePrices.stream().mapToDouble(Double::doubleValue).sum();
 
@@ -175,9 +218,51 @@ public class TicketCheckoutService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Số tiền thanh toán không hợp lệ (tối thiểu 1.000đ)");
         }
 
+        // Xử lý voucher giảm giá
+        UserVoucher userVoucher = null;
+        double discountAmount = 0.0;
+        if (req.getUserVoucherId() != null) {
+            userVoucher = userVoucherRepository.findById(req.getUserVoucherId()).orElse(null);
+            if (userVoucher == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher không tồn tại");
+            }
+            if (!userVoucher.getUser().getUserId().equals(userId)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Voucher không thuộc tài khoản của bạn");
+            }
+            if (userVoucher.getStatus() == null || userVoucher.getStatus() != 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher đã được sử dụng");
+            }
+            Voucher voucher = userVoucher.getVoucher();
+            if (voucher == null || voucher.getStatus() == null || voucher.getStatus() != 1) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher không khả dụng");
+            }
+            LocalDate todayVoucher = LocalDate.now();
+            if (voucher.getStartDate() != null && todayVoucher.isBefore(voucher.getStartDate())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher chưa có hiệu lực");
+            }
+            if (voucher.getEndDate() != null && todayVoucher.isAfter(voucher.getEndDate())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher đã hết hạn");
+            }
+            // Kiểm tra giá trị đơn hàng tối thiểu
+            double minOrderValue = voucher.getMinOrderValue() != null ? voucher.getMinOrderValue() : 0;
+            if (totalDouble < minOrderValue) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Đơn hàng tối thiểu " + minOrderValue + "đ để áp dụng voucher");
+            }
+            // Tính giảm giá (round giống FE)
+            discountAmount = Math.round(calculateDiscount(totalDouble, voucher));
+            // Cập nhật trạng thái voucher thành đã dùng
+            userVoucher.setStatus(0);
+            userVoucherRepository.save(userVoucher);
+        }
+
+        double finalAmount = totalDouble - discountAmount;
+        if (finalAmount < 0) finalAmount = 0;
+
         order.setOriginalAmount(totalDouble);
-        order.setDiscountAmount(0.0);
-        order.setFinalAmount(totalDouble);
+        order.setDiscountAmount(discountAmount);
+        order.setFinalAmount(finalAmount);
+        order.setUserVoucher(userVoucher);
         orderOnlineRepository.save(order);
 
         if (!foodRows.isEmpty()) {
@@ -192,11 +277,13 @@ public class TicketCheckoutService {
                 snackVnd > 0 ? ("Ve + BNN #" + order.getOrderOnlineId()) : ("Ve xem phim #" + order.getOrderOnlineId()),
                 240);
 
-        return finalizePayos(user, payosOrderCode, amountVnd, description, req.getReturnUrl(), req.getCancelUrl(), order);
+        // Use final amount after discount for PayOS
+        int finalAmountVnd = (int) Math.round(finalAmount);
+        return finalizePayos(user, payosOrderCode, finalAmountVnd, description, req.getReturnUrl(), req.getCancelUrl(), order);
     }
 
     /**
-     * Khách hủy thanh toán PayOS — xóa đơn chờ, vé chờ, chi tiết đồ ăn chờ để trả ghế.
+     * Khách hủy thanh toán PayOS — giữ lịch sử đơn nhưng chuyển trạng thái hủy để trả ghế.
      */
     @Transactional
     public void cancelPendingOrderByPayosCode(Integer userId, long payosOrderCode) {
@@ -223,9 +310,25 @@ public class TicketCheckoutService {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
-        ticketRepository.deleteAll(tickets);
-        orderDetailFoodRepository.deleteAll(foods);
-        orderOnlineRepository.delete(o);
+        o.setStatus(ORDER_STATUS_CANCELLED);
+        orderOnlineRepository.save(o);
+
+        for (Ticket t : tickets) {
+            t.setStatus(TICKET_STATUS_CANCELLED);
+        }
+        ticketRepository.saveAll(tickets);
+
+        for (OrderDetailFood f : foods) {
+            f.setStatus(FOOD_STATUS_CANCELLED);
+        }
+        orderDetailFoodRepository.saveAll(foods);
+
+        // Khôi phục voucher để dùng lại
+        UserVoucher userVoucher = o.getUserVoucher();
+        if (userVoucher != null && userVoucher.getStatus() != null && userVoucher.getStatus() == 0) {
+            userVoucher.setStatus(1); // Khôi phục về trạng thái chưa dùng
+            userVoucherRepository.save(userVoucher);
+        }
 
         if (stId != null && !seatIds.isEmpty()) {
             ephemeralSeatHoldService.releaseSeats(stId, seatIds);
@@ -344,8 +447,7 @@ public class TicketCheckoutService {
 
             double unit = p.getPrice() != null ? p.getPrice() : 0.0;
             double lineD = unit * qty;
-            int lineV = (int) Math.round(lineD);
-            vndTotal += lineV;
+            vndTotal = (int) Math.round(vndTotal + lineD);
             doubleTotal += lineD;
 
             OrderDetailFood od = new OrderDetailFood();
@@ -411,6 +513,29 @@ public class TicketCheckoutService {
             f.setStatus(FOOD_STATUS_PAID);
         }
         orderDetailFoodRepository.saveAll(foods);
+
+        if (order.getUser() != null) {
+            recalculateUserRankFromPaidOrders(order.getUser());
+        }
+    }
+
+    private void recalculateUserRankFromPaidOrders(User user) {
+        int currentYear = LocalDate.now().getYear();
+        double completedRevenue = orderOnlineRepository
+                .sumCompletedRevenueByUserAndYear(user.getUserId(), currentYear);
+
+        MembershipRank matched = membershipRankRepository.findAll().stream()
+                .filter(r -> r.getStatus() == null || r.getStatus() == 1)
+                .filter(r -> completedRevenue >= (r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .max(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .orElseGet(() -> membershipRankRepository.findAll().stream()
+                        .filter(r -> r.getStatus() == null || r.getStatus() == 1)
+                        .min(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                        .orElse(null));
+
+        user.setTotalSpending(completedRevenue);
+        user.setRankId(matched != null ? matched.getRankId() : null);
+        userRepository.save(user);
     }
 
     private long allocateUniquePayosOrderCode() {
@@ -449,5 +574,31 @@ public class TicketCheckoutService {
             return "";
         }
         return s.length() <= max ? s : s.substring(0, max);
+    }
+
+    private double calculateDiscount(double orderTotal, Voucher voucher) {
+        if (voucher == null || voucher.getValue() == null) {
+            return 0.0;
+        }
+        String type = voucher.getDiscountType();
+        double value = voucher.getValue();
+        double maxDiscount = voucher.getMaxDiscountAmount() != null ? voucher.getMaxDiscountAmount() : Double.MAX_VALUE;
+
+        double discount = 0.0;
+        if ("PERCENT".equalsIgnoreCase(type) || "%".equals(type)) {
+            discount = orderTotal * (value / 100.0);
+        } else {
+            // FIXED amount
+            discount = value;
+        }
+        // Apply max discount limit
+        if (discount > maxDiscount) {
+            discount = maxDiscount;
+        }
+        // Cannot discount more than order total
+        if (discount > orderTotal) {
+            discount = orderTotal;
+        }
+        return discount;
     }
 }
