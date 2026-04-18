@@ -139,10 +139,10 @@ public class DatabaseSeedService {
         seedVoucherTemplates();
         seedProductCatalog();
         seedStaffAccounts();
-        seedUserAccounts();
+        // seedUserAccounts();
         backfillMissingUserRanks();
         seedRoomsSeatsAndShowtimes();
-        seedUserActivitiesAndOrders();
+        // seedUserActivitiesAndOrders();
     }
 
     private void backfillMissingMembershipRankStatus() {

@@ -147,34 +147,45 @@ public class TicketCheckoutService {
 
         // Tính giá vé: basePrice áp dụng promotion, sau đó cộng surcharges
         List<Double> linePrices = new ArrayList<>();
+        List<Double> originalPrices = new ArrayList<>();
+        List<Double> promotionDiscounts = new ArrayList<>();
         int ticketVnd = 0;
-        // Giá phim sau khuyến mãi (không bao gồm surcharges)
-        double basePriceWithPromotion = unitBase;
-        if (promotionDiscountPercent > 0) {
-            basePriceWithPromotion = unitBase * (1 - promotionDiscountPercent / 100.0);
-        }
 
         for (Seat seat : seats) {
-            double surcharge = 0.0;
+            double seatSurcharge = 0.0;
             boolean isCouple = false;
             SeatType st = seat.getSeatType();
             if (st != null) {
                 if (st.getSurcharge() != null) {
-                    surcharge = st.getSurcharge();
+                    seatSurcharge = st.getSurcharge();
                 }
                 isCouple = Boolean.TRUE.equals(st.getCoupleSeat());
             }
-            // Giá vé cuối = giá phim sau KM + showtime surcharge + seatType surcharge
-            double linePrice = basePriceWithPromotion + surcharge;
-            // Ghế đôi x2 giá
+
+            // 1. Giá gốc của 1 ghế (chưa giảm KM) = (Giá phim + Phụ thu suất chiếu + Phụ thu loại ghế)
+            double originalLinePrice = (unitBase + seatSurcharge);
+            // 2. Số tiền giảm giá cho 1 ghế = (Giá phim + Phụ thu suất chiếu) * % KM
+            // (Thường KM áp dụng trên giá cơ sở của phim + suất chiếu)
+            double discountLineAmount = (unitBase) * (promotionDiscountPercent / 100.0);
+
             if (isCouple) {
-                linePrice = linePrice * 2;
+                originalLinePrice *= 2;
+                discountLineAmount *= 2;
             }
-            long lineRounded = Math.round(linePrice);
-            linePrices.add((double) lineRounded);
-            ticketVnd += (int) lineRounded;
+
+            double finalLinePrice = originalLinePrice - discountLineAmount;
+
+            long originalRounded = Math.round(originalLinePrice);
+            long discountRounded = Math.round(discountLineAmount);
+            long finalRounded = Math.round(finalLinePrice);
+
+            originalPrices.add((double) originalRounded);
+            promotionDiscounts.add((double) discountRounded);
+            linePrices.add((double) finalRounded);
+            
+            ticketVnd += (int) finalRounded;
         }
-        double ticketDouble = linePrices.stream().mapToDouble(Double::doubleValue).sum();
+        double ticketDouble = (double) ticketVnd;
 
         if (req.getSnacks() != null && !req.getSnacks().isEmpty() && cinemaId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Suất chiếu chưa gắn rạp — không thể thêm bắp nước");
@@ -196,6 +207,8 @@ public class TicketCheckoutService {
             t.setShowtime(showtime);
             t.setSeat(seats.get(i));
             t.setOrderOnline(order);
+            t.setOriginalPrice(originalPrices.get(i));
+            t.setPromotionDiscount(promotionDiscounts.get(i));
             t.setPrice(linePrices.get(i));
             t.setStatus(TICKET_STATUS_PENDING);
             tickets.add(t);
