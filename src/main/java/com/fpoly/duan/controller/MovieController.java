@@ -142,6 +142,27 @@ public class MovieController {
                 .build());
     }
 
+    @GetMapping("/promotion-eligible")
+    @Operation(summary = "Lọc phim phù hợp cho khuyến mãi", description = "Lọc phim đang hoạt động để áp dụng khuyến mãi.")
+    public ResponseEntity<ApiResponse<List<MovieDTO>>> getPromotionEligible(
+            @org.springframework.web.bind.annotation.RequestParam Integer cinemaId,
+            @org.springframework.web.bind.annotation.RequestParam String startDate,
+            @org.springframework.web.bind.annotation.RequestParam String endDate) {
+        
+        // Trả về tất cả phim đang hoạt động (status != 2)
+        // Admin rạp nào thì rạp đó tự biết phim nào mình sẽ chiếu
+        List<MovieDTO> movies = movieRepository.findAll().stream()
+                .filter(m -> m.getStatus() != null && m.getStatus() != 2) // status 2 thường là ngừng chiếu
+                .map(this::toDTO)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(ApiResponse.<List<MovieDTO>>builder()
+                .status(HttpStatus.OK.value())
+                .message("OK")
+                .data(movies)
+                .build());
+    }
+
     @PostMapping
     @Operation(summary = "Tạo phim")
     @Transactional

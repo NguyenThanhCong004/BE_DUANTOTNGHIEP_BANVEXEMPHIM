@@ -20,12 +20,12 @@ public interface PromotionRepository extends JpaRepository<Promotion, Integer> {
      * Ưu tiên: (movie + cinema) > (movie only) > (cinema only) > general
      */
     @Query("SELECT p FROM Promotion p WHERE " +
-           "p.status = 1 AND " +
            "(p.startDate IS NULL OR p.startDate <= :today) AND " +
            "(p.endDate IS NULL OR p.endDate >= :today) AND " +
            "(p.movie.movieId = :movieId OR p.movie IS NULL) AND " +
            "(p.cinema.cinemaId = :cinemaId OR p.cinema IS NULL) " +
-           "ORDER BY CASE WHEN p.movie IS NOT NULL THEN 1 ELSE 0 END DESC, " +
+           "ORDER BY p.discountPercent DESC, " +
+           "CASE WHEN p.movie IS NOT NULL THEN 1 ELSE 0 END DESC, " +
            "CASE WHEN p.cinema IS NOT NULL THEN 1 ELSE 0 END DESC")
     List<Promotion> findActivePromotions(@Param("movieId") Integer movieId,
                                          @Param("cinemaId") Integer cinemaId,

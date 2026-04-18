@@ -46,6 +46,9 @@ public class ShowtimeSlotResponse {
     private Double price;
     private String status;
 
+    @JsonProperty("sold_tickets_count")
+    private Integer soldTicketsCount;
+
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private List<Integer> bookedSeatIds;
 }

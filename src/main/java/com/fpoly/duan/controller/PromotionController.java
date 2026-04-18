@@ -64,7 +64,7 @@ public class PromotionController {
 
         List<PromotionGroupResponse> response = grouped.entrySet().stream()
                 .map(entry -> toGroupResponse(entry.getKey(), entry.getValue(), today))
-                .sorted(Comparator.comparing(PromotionGroupResponse::getId, Comparator.nullsLast(Integer::compareTo)))
+                .sorted(Comparator.comparing(PromotionGroupResponse::getId, Comparator.nullsLast(Integer::compareTo)).reversed())
                 .collect(Collectors.toList());
 
         return ResponseEntity.status(HttpStatus.OK).body(ApiResponse.<List<PromotionGroupResponse>>builder()
@@ -159,19 +159,20 @@ public class PromotionController {
 
         PromotionGroupKey oldKey = groupKey(rep);
 
-        // Xóa toàn bộ nhóm cũ theo key, sau đó tạo nhóm mới theo payload
-        List<Promotion> candidates = promotionRepository.findByCinema_CinemaId(oldKey.cinemaId);
+        // Xóa toàn bộ nhóm cũ theo key
+        List<Promotion> candidates = promotionRepository.findByCinema_CinemaId(oldKey.getCinemaId());
         List<Promotion> oldGroup = candidates.stream()
-                .filter(p -> Objects.equals(p.getPromotionName(), oldKey.promotionName)
-                        && Objects.equals(p.getDiscountPercent(), oldKey.discountPercent)
-                        && Objects.equals(p.getStartDate(), oldKey.startDate)
-                        && Objects.equals(p.getEndDate(), oldKey.endDate))
+                .filter(p -> Objects.equals(p.getPromotionName(), oldKey.getPromotionName())
+                        && Objects.equals(p.getDiscountPercent(), oldKey.getDiscountPercent())
+                        && Objects.equals(p.getStartDate(), oldKey.getStartDate())
+                        && Objects.equals(p.getEndDate(), oldKey.getEndDate()))
                 .collect(Collectors.toList());
 
         promotionRepository.deleteAll(oldGroup);
+        promotionRepository.flush(); // Cưỡng ép xóa ngay lập tức để tránh lỗi Unique
 
         // Tạo mới
-        Integer cinemaId = request.getCinemaId() != null ? request.getCinemaId() : oldKey.cinemaId;
+        Integer cinemaId = request.getCinemaId() != null ? request.getCinemaId() : oldKey.getCinemaId();
         request.setCinemaId(cinemaId);
 
         List<Integer> movieIds = request.getSelectedMovieIds();

@@ -86,7 +86,11 @@ public class ShowtimeController {
                 .filter(s -> s.getStartTime() != null)
                 .filter(s -> !s.getStartTime().toLocalDate().isBefore(now.toLocalDate())) // Từ hôm nay
                 .filter(s -> !s.getStartTime().toLocalDate().isAfter(maxDate)) // Đến 7 ngày sau
-                .map(s -> toDTO(s, now, null))
+                .map(s -> {
+                    // Đếm vé đã bán/đang giữ
+                    List<Integer> held = ticketRepository.findHeldSeatIdsByShowtime(s.getShowtimeId());
+                    return toDTO(s, now, held);
+                })
                 .collect(Collectors.toList());
 
         return ResponseEntity.status(HttpStatus.OK).body(ApiResponse.<List<ShowtimeSlotResponse>>builder()
@@ -231,6 +235,9 @@ public class ShowtimeController {
         dto.setStatus(status);
         if (bookedSeatIds != null) {
             dto.setBookedSeatIds(bookedSeatIds);
+            dto.setSoldTicketsCount(bookedSeatIds.size());
+        } else {
+            dto.setSoldTicketsCount(0);
         }
         return dto;
     }

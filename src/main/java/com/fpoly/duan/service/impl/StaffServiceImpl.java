@@ -331,10 +331,14 @@ public class StaffServiceImpl implements StaffService {
                 List<Staff> existingAdmins = staffRepository.findByCinema_CinemaIdAndRoleAndStatus(cinemaId, "ADMIN", 1);
                 // Loại trừ chính mình nếu đang là admin hoạt động của rạp này
                 boolean alreadyHasOtherAdmin = existingAdmins.stream()
-                        .anyMatch(s -> !s.getStaffId().equals(id));
-                
+                        .anyMatch(s -> s.getStaffId() != null && !s.getStaffId().equals(id));
+
                 if (alreadyHasOtherAdmin) {
-                    throw new RuntimeException("Rạp \"" + cinema.getName() + "\" đã có một Admin khác đang hoạt động. Vui lòng tạm ngưng tài khoản Admin kia trước khi kích hoạt tài khoản này.");
+                    Staff other = existingAdmins.stream()
+                            .filter(s -> !s.getStaffId().equals(id))
+                            .findFirst().orElse(null);
+                    String otherName = (other != null) ? other.getFullname() : "khác";
+                    throw new RuntimeException("Rạp \"" + cinema.getName() + "\" đã có Quản lý \"" + otherName + "\" đang hoạt động. Vui lòng tạm ngưng tài khoản kia trước.");
                 }
             }
             staff.setCinema(cinema);
