@@ -67,7 +67,8 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(readOnly = true)
     public UserDTO getUserByUsername(String username) {
-        return userRepository.findByUsername(username)
+        String key = username != null ? username.trim() : "";
+        return userRepository.findFirstByUsernameOrderByUserIdAsc(key)
                 .map(this::convertToDTO)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng với tên đăng nhập: " + username));
     }

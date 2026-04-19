@@ -51,8 +51,8 @@ public class AuthServiceImpl implements AuthService {
 
         if (userDetails.getStaff() != null) {
             responseBuilder.staff(convertToStaffDTO(userDetails.getStaff()));
-        } else {
-            responseBuilder.user(userService.getUserByUsername(loginRequest.getUsername()));
+        } else if (userDetails.getUser() != null) {
+            responseBuilder.user(userService.getUserById(userDetails.getUser().getUserId()));
         }
         
         return responseBuilder.build();
@@ -128,8 +128,8 @@ public class AuthServiceImpl implements AuthService {
 
         if (userDetails.getStaff() != null) {
             responseBuilder.staff(convertToStaffDTO(userDetails.getStaff()));
-        } else {
-            responseBuilder.user(userService.getUserByUsername(username));
+        } else if (userDetails.getUser() != null) {
+            responseBuilder.user(userService.getUserById(userDetails.getUser().getUserId()));
         }
 
         return responseBuilder.build();
