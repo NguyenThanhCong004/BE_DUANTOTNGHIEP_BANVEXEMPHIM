@@ -58,13 +58,8 @@ public class AuthServiceImpl implements AuthService {
 
         if (userDetails.getStaff() != null) {
             responseBuilder.staff(convertToStaffDTO(userDetails.getStaff()));
-<<<<<<< HEAD
-        } else if (userDetails.getUser() != null) {
-            responseBuilder.user(userService.getUserById(userDetails.getUser().getUserId()));
-=======
         } else {
             responseBuilder.user(userService.getUserByUsernameOrEmail(loginKey));
->>>>>>> 861315ab6ef1f999ba3aa2770b86b944e504adf3
         }
         
         return responseBuilder.build();
