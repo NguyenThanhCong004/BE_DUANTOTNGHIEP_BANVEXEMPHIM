@@ -1,8 +1,11 @@
 package com.fpoly.duan.controller;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
@@ -31,6 +34,8 @@ import com.fpoly.duan.entity.SeatType;
 import com.fpoly.duan.repository.RoomRepository;
 import com.fpoly.duan.repository.SeatRepository;
 import com.fpoly.duan.repository.SeatTypeRepository;
+import com.fpoly.duan.repository.TicketRepository;
+import com.fpoly.duan.util.SeatTypeNaming;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -48,6 +53,7 @@ public class SeatController {
     private final SeatRepository seatRepository;
     private final SeatTypeRepository seatTypeRepository;
     private final RoomRepository roomRepository;
+    private final TicketRepository ticketRepository;
 
     @GetMapping("/seat-types/{id}")
     @Operation(summary = "Chi tiết loại ghế", tags = { "Table: seat_types" })
@@ -58,6 +64,8 @@ public class SeatController {
                 .seatTypeId(t.getSeatTypeId())
                 .name(t.getName())
                 .surcharge(t.getSurcharge())
+                .coupleSeat(Boolean.TRUE.equals(t.getCoupleSeat()))
+                .color(t.getColor())
                 .build();
         return ResponseEntity.ok(ApiResponse.<SeatTypeDTO>builder()
                 .status(HttpStatus.OK.value())
@@ -78,6 +86,8 @@ public class SeatController {
         SeatType t = new SeatType();
         t.setName(dto.getName().trim());
         t.setSurcharge(dto.getSurcharge() != null ? dto.getSurcharge() : 0.0);
+        t.setCoupleSeat(dto.getCoupleSeat() != null ? dto.getCoupleSeat() : SeatTypeNaming.isCoupleSeatType(t.getName()));
+        t.setColor(SeatTypeNaming.normalizeColorHex(dto.getColor()));
         SeatType saved = seatTypeRepository.save(t);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<SeatTypeDTO>builder()
                 .status(HttpStatus.CREATED.value())
@@ -86,6 +96,8 @@ public class SeatController {
                         .seatTypeId(saved.getSeatTypeId())
                         .name(saved.getName())
                         .surcharge(saved.getSurcharge())
+                        .coupleSeat(Boolean.TRUE.equals(saved.getCoupleSeat()))
+                        .color(saved.getColor())
                         .build())
                 .build());
     }
@@ -96,17 +108,49 @@ public class SeatController {
             @RequestBody SeatTypeDTO dto) {
         SeatType t = seatTypeRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy loại ghế với id: " + id));
+        
+        boolean hasChanges = false;
         if (dto.getName() != null && !dto.getName().trim().isEmpty()) {
             String name = dto.getName().trim();
-            Optional<SeatType> dup = seatTypeRepository.findByName(name);
-            if (dup.isPresent() && !dup.get().getSeatTypeId().equals(id)) {
-                throw new RuntimeException("Tên loại ghế đã tồn tại");
+            if (!name.equals(t.getName())) {
+                Optional<SeatType> dup = seatTypeRepository.findByName(name);
+                if (dup.isPresent() && !dup.get().getSeatTypeId().equals(id)) {
+                    throw new RuntimeException("Tên loại ghế đã tồn tại");
+                }
+                t.setName(name);
+                hasChanges = true;
             }
-            t.setName(name);
         }
-        if (dto.getSurcharge() != null) {
+        if (dto.getSurcharge() != null && !dto.getSurcharge().equals(t.getSurcharge())) {
             t.setSurcharge(dto.getSurcharge());
+            hasChanges = true;
         }
+        if (dto.getCoupleSeat() != null && !dto.getCoupleSeat().equals(t.getCoupleSeat())) {
+            t.setCoupleSeat(dto.getCoupleSeat());
+            hasChanges = true;
+        }
+        if (dto.getColor() != null) {
+            String newColor = SeatTypeNaming.normalizeColorHex(dto.getColor());
+            if (!newColor.equalsIgnoreCase(t.getColor())) {
+                t.setColor(newColor);
+                hasChanges = true;
+            }
+        }
+
+        if (!hasChanges) {
+            return ResponseEntity.ok(ApiResponse.<SeatTypeDTO>builder()
+                    .status(HttpStatus.OK.value())
+                    .message("Không có thay đổi để cập nhật")
+                    .data(SeatTypeDTO.builder()
+                            .seatTypeId(t.getSeatTypeId())
+                            .name(t.getName())
+                            .surcharge(t.getSurcharge())
+                            .coupleSeat(Boolean.TRUE.equals(t.getCoupleSeat()))
+                            .color(t.getColor())
+                            .build())
+                    .build());
+        }
+
         SeatType saved = seatTypeRepository.save(t);
         return ResponseEntity.ok(ApiResponse.<SeatTypeDTO>builder()
                 .status(HttpStatus.OK.value())
@@ -115,6 +159,8 @@ public class SeatController {
                         .seatTypeId(saved.getSeatTypeId())
                         .name(saved.getName())
                         .surcharge(saved.getSurcharge())
+                        .coupleSeat(Boolean.TRUE.equals(saved.getCoupleSeat()))
+                        .color(saved.getColor())
                         .build())
                 .build());
     }
@@ -144,6 +190,8 @@ public class SeatController {
                         .seatTypeId(t.getSeatTypeId())
                         .name(t.getName())
                         .surcharge(t.getSurcharge())
+                        .coupleSeat(Boolean.TRUE.equals(t.getCoupleSeat()))
+                        .color(t.getColor())
                         .build())
                 .collect(Collectors.toList());
 
@@ -194,7 +242,7 @@ public class SeatController {
 
     @PutMapping("/seats")
     @Transactional
-    @Operation(summary = "Lưu / đồng bộ sơ đồ ghế phòng", description = "Xóa ghế cũ của phòng rồi tạo lại theo payload.", tags = {
+    @Operation(summary = "Lưu / đồng bộ sơ đồ ghế phòng", description = "Cập nhật theo tọa độ (x,y): giữ seat_id khi trùng ô — tránh lỗi FK khi đã có vé. Chỉ xóa ghế bị bỏ khỏi sơ đồ nếu không còn vé.", tags = {
             "Table: seats" })
     public ResponseEntity<ApiResponse<Void>> saveSeatLayout(@RequestBody SeatLayoutRequest request) {
         if (request == null || request.getRoomId() == null) {
@@ -203,22 +251,72 @@ public class SeatController {
         Room room = roomRepository.findById(request.getRoomId())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng với id: " + request.getRoomId()));
 
-        // Sync đơn giản: xóa toàn bộ ghế rồi tạo lại theo payload
-        seatRepository.deleteByRoom_RoomId(request.getRoomId());
+        List<Seat> existing = seatRepository.findByRoom_RoomId(request.getRoomId());
+        Map<String, Seat> byXY = existing.stream()
+                .collect(Collectors.toMap(s -> s.getX() + "," + s.getY(), s -> s, (a, b) -> a));
 
         if (request.getSeats() == null || request.getSeats().isEmpty()) {
+            for (Seat old : new ArrayList<>(existing)) {
+                if (ticketRepository.countBySeat_SeatId(old.getSeatId()) > 0) {
+                    throw new RuntimeException(
+                            "Không thể xóa hết sơ đồ: phòng vẫn có ghế đã gắn vé. Giữ ít nhất một ghế hoặc xử lý vé trước.");
+                }
+                seatRepository.delete(old);
+            }
             return ResponseEntity.ok(ApiResponse.<Void>builder()
                     .status(HttpStatus.OK.value())
                     .message("Cập nhật sơ đồ ghế thành công")
                     .build());
         }
 
-        List<Seat> created = request.getSeats().stream()
-                .map(this::toSeatEntity)
-                .peek(s -> s.setRoom(room))
-                .collect(Collectors.toList());
+        Map<String, SeatLayoutItem> wanted = new LinkedHashMap<>();
+        for (SeatLayoutItem item : request.getSeats()) {
+            if (item == null || item.getX() == null || item.getY() == null) {
+                throw new RuntimeException("Thiếu x/y cho ghế");
+            }
+            if (item.getSeatTypeName() == null || item.getSeatTypeName().trim().isEmpty()) {
+                throw new RuntimeException("Thiếu loại ghế");
+            }
+            String key = item.getX() + "," + item.getY();
+            wanted.put(key, item);
+        }
 
-        seatRepository.saveAll(created);
+        List<Seat> toPersist = new ArrayList<>();
+        for (SeatLayoutItem item : wanted.values()) {
+            String key = item.getX() + "," + item.getY();
+            Seat seat = byXY.get(key);
+            if (seat == null) {
+                seat = new Seat();
+                seat.setRoom(room);
+                if (seat.getStatus() == null) {
+                    seat.setStatus("1");
+                }
+            }
+            SeatType seatType = resolveOrCreateSeatType(item.getSeatTypeName());
+            seat.setX(item.getX());
+            seat.setY(item.getY());
+            seat.setRow(item.getRow());
+            seat.setNumber(item.getNumber());
+            seat.setSeatType(seatType);
+            toPersist.add(seat);
+        }
+
+        Set<String> payloadKeys = wanted.keySet();
+        for (Seat old : new ArrayList<>(existing)) {
+            String key = old.getX() + "," + old.getY();
+            if (payloadKeys.contains(key)) {
+                continue;
+            }
+            long refs = ticketRepository.countBySeat_SeatId(old.getSeatId());
+            if (refs > 0) {
+                throw new RuntimeException(
+                        "Không thể bỏ ghế tại ô (" + old.getX() + "," + old.getY()
+                                + "): đã có " + refs + " vé. Giữ ghế trên sơ đồ hoặc hủy/xử lý vé trước.");
+            }
+            seatRepository.delete(old);
+        }
+
+        seatRepository.saveAll(toPersist);
 
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
@@ -235,38 +333,26 @@ public class SeatController {
                 .row(s.getRow())
                 .number(s.getNumber())
                 .seatTypeName(st != null ? st.getName() : null)
+                .coupleSeat(st != null && Boolean.TRUE.equals(st.getCoupleSeat()))
+                .seatTypeColor(st != null ? st.getColor() : null)
                 .seatTypeSurcharge(st != null && st.getSurcharge() != null ? st.getSurcharge() : 0.0)
                 .status(s.getStatus() != null ? s.getStatus() : "available")
                 .build();
     }
 
-    private Seat toSeatEntity(SeatLayoutItem item) {
-        if (item == null) {
-            throw new RuntimeException("Seat item không hợp lệ");
-        }
-        if (item.getX() == null || item.getY() == null) {
-            throw new RuntimeException("Thiếu x/y cho ghế");
-        }
-        if (item.getSeatTypeName() == null || item.getSeatTypeName().trim().isEmpty()) {
+    private SeatType resolveOrCreateSeatType(String rawName) {
+        if (rawName == null || rawName.isBlank()) {
             throw new RuntimeException("Thiếu loại ghế");
         }
-
-        SeatType seatType = seatTypeRepository.findByName(item.getSeatTypeName())
-                .orElseGet(() -> {
-                    // Allow FE to create seat layout even if seed data for seat types is missing.
-                    SeatType created = new SeatType();
-                    created.setName(item.getSeatTypeName());
-                    created.setSurcharge(0.0);
-                    return seatTypeRepository.save(created);
-                });
-
-        Seat s = new Seat();
-        s.setX(item.getX());
-        s.setY(item.getY());
-        s.setRow(item.getRow());
-        s.setNumber(item.getNumber());
-        s.setSeatType(seatType);
-        return s;
+        String name = rawName.trim();
+        return seatTypeRepository.findByName(name).orElseGet(() -> {
+            SeatType created = new SeatType();
+            created.setName(name);
+            created.setSurcharge(0.0);
+            created.setCoupleSeat(SeatTypeNaming.isCoupleSeatType(name));
+            return seatTypeRepository.save(created);
+        });
     }
+
 }
 

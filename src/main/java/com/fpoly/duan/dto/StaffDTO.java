@@ -1,6 +1,10 @@
 package com.fpoly.duan.dto;
 
 import java.time.LocalDate;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonProperty.Access;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,4 +25,8 @@ public class StaffDTO {
     private String role;
     private String avatar;
     private Integer cinemaId;
+
+    /** Chỉ gửi khi tạo mới. Nếu để trống: hệ thống sinh mật khẩu ngẫu nhiên và gửi qua email. */
+    @JsonProperty(access = Access.WRITE_ONLY)
+    private String password;
 }
