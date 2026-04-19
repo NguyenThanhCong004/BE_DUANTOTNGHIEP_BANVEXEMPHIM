@@ -160,7 +160,29 @@ public class CounterCheckoutService {
 
     @Transactional
     public OrderOnline confirmPaid(String orderCode) {
-        // ... giữ nguyên logic cũ ...
+        final String searchCode;
+        if (orderCode != null && !orderCode.startsWith("POS-") && orderCode.matches("\\d+")) {
+            searchCode = "POS-" + orderCode;
+        } else {
+            searchCode = orderCode;
+        }
+
+        OrderOnline order = orderOnlineRepository.findByOrderCode(searchCode)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng: " + searchCode));
+        
+        if (order.getStatus() == 1) return order;
+
+        order.setStatus(1);
+        OrderOnline savedOrder = orderOnlineRepository.save(order);
+
+        // Cập nhật trạng thái các vé liên quan thành hợp lệ (1)
+        List<Ticket> tickets = ticketRepository.findByOrderOnline_OrderOnlineId(order.getOrderOnlineId());
+        for (Ticket t : tickets) {
+            t.setStatus(1);
+            ticketRepository.save(t);
+        }
+
+        return savedOrder;
     }
 
     @Transactional
