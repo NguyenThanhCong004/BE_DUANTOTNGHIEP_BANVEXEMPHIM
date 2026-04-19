@@ -26,7 +26,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final com.fpoly.duan.repository.RevokedTokenRepository revokedTokenRepository;
 
     private boolean isProtectedPath(String path) {
-        return path.startsWith("/api/v1/shifts/me")
+        return path.startsWith("/api/v1/shifts")
+                || path.startsWith("/api/v1/staff/dashboard-stats")
+                || path.startsWith("/api/v1/counter-orders")
                 || path.startsWith("/api/v1/ticket-orders")
                 || path.startsWith("/api/v1/food-orders")
                 || path.startsWith("/api/v1/me");

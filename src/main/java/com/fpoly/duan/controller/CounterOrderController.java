@@ -65,4 +65,14 @@ public class CounterOrderController {
                 .data(order)
                 .build());
     }
+
+    @PostMapping("/{orderCode}/cancel")
+    @Operation(summary = "Hủy đơn hàng đang chờ thanh toán (Giải phóng ghế)")
+    public ResponseEntity<ApiResponse<Void>> cancelOrder(@PathVariable String orderCode) {
+        counterCheckoutService.cancelOrder(orderCode);
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .status(200)
+                .message("Đã hủy đơn hàng và giải phóng ghế")
+                .build());
+    }
 }

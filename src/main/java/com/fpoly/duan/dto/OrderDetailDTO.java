@@ -12,6 +12,7 @@ public class OrderDetailDTO {
     private Double finalAmount;
     private String paymentMethod;
     private String customerName;
+    private Integer status;
     private List<TicketInfo> tickets;
     private List<FoodInfo> foods;
 

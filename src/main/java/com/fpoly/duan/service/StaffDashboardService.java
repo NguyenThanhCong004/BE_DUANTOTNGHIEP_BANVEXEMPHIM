@@ -4,8 +4,16 @@ import com.fpoly.duan.dto.OrderDetailDTO;
 import com.fpoly.duan.dto.ProductSoldBreakdown;
 import com.fpoly.duan.dto.RevenueBreakdownDTO;
 import com.fpoly.duan.dto.StaffDashboardStats;
-import com.fpoly.duan.entity.*;
-import com.fpoly.duan.repository.*;
+import com.fpoly.duan.entity.OrderOnline;
+import com.fpoly.duan.entity.OrderDetailFood;
+import com.fpoly.duan.entity.Ticket;
+import com.fpoly.duan.entity.Staff;
+import com.fpoly.duan.entity.StaffShift;
+import com.fpoly.duan.repository.OrderOnlineRepository;
+import com.fpoly.duan.repository.TicketRepository;
+import com.fpoly.duan.repository.OrderDetailFoodRepository;
+import com.fpoly.duan.repository.StaffShiftRepository;
+import com.fpoly.duan.repository.StaffRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -32,9 +40,16 @@ public class StaffDashboardService {
             List<Object[]> rows = orderOnlineRepository.getRevenueBreakdownByStaffBetween(staffId, range[0], range[1]);
             List<RevenueBreakdownDTO> list = new ArrayList<>();
             for (Object[] row : rows) {
+                String method = (row[0] != null) ? row[0].toString() : "N/A";
+                Double total = 0.0;
+                if (row[1] != null) {
+                    if (row[1] instanceof Number) {
+                        total = ((Number) row[1]).doubleValue();
+                    }
+                }
                 list.add(RevenueBreakdownDTO.builder()
-                        .method(row[0] != null ? row[0].toString() : "N/A")
-                        .total(row[1] != null ? Double.valueOf(row[1].toString()) : 0.0)
+                        .method(method)
+                        .total(total)
                         .build());
             }
             return list;
@@ -49,9 +64,16 @@ public class StaffDashboardService {
             List<Object[]> rows = orderDetailFoodRepository.getProductsBreakdownByStaffBetween(staffId, range[0], range[1]);
             List<ProductSoldBreakdown> list = new ArrayList<>();
             for (Object[] row : rows) {
+                String name = (row[0] != null) ? row[0].toString() : "N/A";
+                Long qty = 0L;
+                if (row[1] != null) {
+                    if (row[1] instanceof Number) {
+                        qty = ((Number) row[1]).longValue();
+                    }
+                }
                 list.add(ProductSoldBreakdown.builder()
-                        .productName(row[0].toString())
-                        .totalQuantity(Long.valueOf(row[1].toString()))
+                        .productName(name)
+                        .totalQuantity(qty)
                         .build());
             }
             return list;
@@ -61,7 +83,7 @@ public class StaffDashboardService {
     }
 
     public List<OrderOnline> getRecentOrders(Integer staffId) {
-        return orderOnlineRepository.findTop10ByStaff_StaffIdOrderByCreatedAtDesc(staffId);
+        return orderOnlineRepository.findTop10ByStaffStaffIdOrderByCreatedAtDesc(staffId);
     }
 
     public OrderDetailDTO getOrderDetail(String orderCode) {
@@ -96,6 +118,7 @@ public class StaffDashboardService {
                 .createdAt(order.getCreatedAt().format(fmt))
                 .finalAmount(order.getFinalAmount())
                 .paymentMethod(order.getPaymentMethod())
+                .status(order.getStatus())
                 .customerName(order.getUser() != null ? order.getUser().getFullname() : "Khách vãng lai")
                 .tickets(ticketInfos)
                 .foods(foodInfos)
@@ -103,35 +126,34 @@ public class StaffDashboardService {
     }
 
     public StaffDashboardStats getDashboardStats(Integer staffId) {
-        LocalDateTime now = LocalDateTime.now();
-        
-        // Lấy tên rạp
-        String cinemaName = "N/A";
-        Optional<Staff> staffOpt = staffRepository.findById(staffId);
-        if (staffOpt.isPresent() && staffOpt.get().getCinema() != null) {
-            cinemaName = staffOpt.get().getCinema().getName();
-        }
-
-        Optional<StaffShift> currentShift = staffShiftRepository.findFirstByStaff_StaffIdAndStartTimeBeforeAndEndTimeAfter(
-                staffId, now, now);
-
-        LocalDateTime start;
-        LocalDateTime end;
-        String shiftName;
-
-        if (currentShift.isPresent()) {
-            StaffShift shift = currentShift.get();
-            start = shift.getStartTime();
-            end = shift.getEndTime();
-            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("HH:mm");
-            shiftName = "Ca: " + start.format(fmt) + " - " + end.format(fmt);
-        } else {
-            start = now.toLocalDate().atStartOfDay();
-            end = now.toLocalDate().atTime(23, 59, 59);
-            shiftName = "Cả ngày hôm nay";
-        }
-
         try {
+            LocalDateTime now = LocalDateTime.now();
+            
+            // Lấy tên rạp
+            String cinemaName = "N/A";
+            Optional<Staff> staffOpt = staffRepository.findById(staffId);
+            if (staffOpt.isPresent() && staffOpt.get().getCinema() != null) {
+                cinemaName = staffOpt.get().getCinema().getName();
+            }
+
+            Optional<StaffShift> currentShift = staffShiftRepository.findActiveShift(staffId, now);
+
+            LocalDateTime start;
+            LocalDateTime end;
+            String shiftName;
+
+            if (currentShift.isPresent()) {
+                StaffShift shift = currentShift.get();
+                start = shift.getStartTime();
+                end = shift.getEndTime();
+                DateTimeFormatter fmt = DateTimeFormatter.ofPattern("HH:mm");
+                shiftName = "Ca: " + start.format(fmt) + " - " + end.format(fmt);
+            } else {
+                start = now.toLocalDate().atStartOfDay();
+                end = now.toLocalDate().atTime(23, 59, 59);
+                shiftName = "Cả ngày hôm nay";
+            }
+
             Double revenue = orderOnlineRepository.sumRevenueByStaffBetween(staffId, start, end);
             Long tickets = ticketRepository.countTicketsByStaffBetweenJPQL(staffId, start, end);
             Long products = orderDetailFoodRepository.countProductsByStaffBetween(staffId, start, end);
@@ -148,16 +170,15 @@ public class StaffDashboardService {
                     .totalRevenue(0.0)
                     .totalTicketsSold(0L)
                     .totalProductsSold(0L)
-                    .shiftName(shiftName + " (Lỗi)")
-                    .cinemaName(cinemaName)
+                    .shiftName("Lỗi hệ thống")
+                    .cinemaName("N/A")
                     .build();
         }
     }
 
     private LocalDateTime[] getCurrentRange(Integer staffId) {
         LocalDateTime now = LocalDateTime.now();
-        Optional<StaffShift> currentShift = staffShiftRepository.findFirstByStaff_StaffIdAndStartTimeBeforeAndEndTimeAfter(
-                staffId, now, now);
+        Optional<StaffShift> currentShift = staffShiftRepository.findActiveShift(staffId, now);
         if (currentShift.isPresent()) {
             return new LocalDateTime[]{currentShift.get().getStartTime(), currentShift.get().getEndTime()};
         } else {
