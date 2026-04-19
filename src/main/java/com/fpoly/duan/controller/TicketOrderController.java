@@ -64,7 +64,7 @@ public class TicketOrderController {
     }
 
     @org.springframework.web.bind.annotation.PostMapping("/cancel-pending")
-    @Operation(summary = "Hủy đơn chờ PayOS", description = "Xóa đơn vé + ghế chờ; dùng khi user hủy thanh toán.")
+    @Operation(summary = "Hủy đơn chờ PayOS", description = "Giữ đơn ở trạng thái hủy và trả ghế về kho bán.")
     public ResponseEntity<ApiResponse<Void>> cancelPending(
             Authentication authentication,
             @Valid @RequestBody CancelPendingOrderRequest request) {
@@ -82,7 +82,7 @@ public class TicketOrderController {
         ticketCheckoutService.cancelPendingOrderByPayosCode(details.getUser().getUserId(), request.getPayosOrderCode());
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
-                .message("Đã hủy đơn và trả ghế")
+                .message("Đã hủy đơn, lưu lịch sử và trả ghế")
                 .build());
     }
 }

@@ -1,5 +1,6 @@
 package com.fpoly.duan.controller;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -79,9 +80,17 @@ public class ShowtimeController {
         }
 
         LocalDateTime now = LocalDateTime.now();
+        LocalDate maxDate = now.toLocalDate().plusDays(7); // Chỉ lấy đến 7 ngày sau
 
         List<ShowtimeSlotResponse> slotList = showtimes.stream()
-                .map(s -> toDTO(s, now, null))
+                .filter(s -> s.getStartTime() != null)
+                .filter(s -> !s.getStartTime().toLocalDate().isBefore(now.toLocalDate())) // Từ hôm nay
+                .filter(s -> !s.getStartTime().toLocalDate().isAfter(maxDate)) // Đến 7 ngày sau
+                .map(s -> {
+                    // Đếm vé đã bán/đang giữ
+                    List<Integer> held = ticketRepository.findHeldSeatIdsByShowtime(s.getShowtimeId());
+                    return toDTO(s, now, held);
+                })
                 .collect(Collectors.toList());
 
         return ResponseEntity.status(HttpStatus.OK).body(ApiResponse.<List<ShowtimeSlotResponse>>builder()
@@ -226,6 +235,9 @@ public class ShowtimeController {
         dto.setStatus(status);
         if (bookedSeatIds != null) {
             dto.setBookedSeatIds(bookedSeatIds);
+            dto.setSoldTicketsCount(bookedSeatIds.size());
+        } else {
+            dto.setSoldTicketsCount(0);
         }
         return dto;
     }
