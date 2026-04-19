@@ -50,8 +50,8 @@ public class ProductController {
     public ResponseEntity<ApiResponse<List<ProductDTO>>> list(
             @RequestParam(required = false) Integer categoryId) {
         List<Product> list = categoryId != null
-                ? productRepository.findByCategory_CategoryProductId(categoryId)
-                : productRepository.findAll();
+                ? productRepository.findByCategory_CategoryProductIdOrderByProductIdDesc(categoryId)
+                : productRepository.findAllByOrderByProductIdDesc();
         List<ProductDTO> data = list.stream().map(this::toDTO).collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.<List<ProductDTO>>builder()
                 .status(HttpStatus.OK.value())
@@ -91,7 +91,18 @@ public class ProductController {
         Product p = productRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm với id: " + id));
         validate(dto, false);
-        Product saved = productRepository.save(fromDTO(p, dto));
+
+        boolean hasChanges = applyChanges(p, dto);
+
+        if (!hasChanges) {
+            return ResponseEntity.ok(ApiResponse.<ProductDTO>builder()
+                    .status(HttpStatus.OK.value())
+                    .message("Không có thay đổi để cập nhật")
+                    .data(toDTO(p))
+                    .build());
+        }
+
+        Product saved = productRepository.save(p);
         return ResponseEntity.ok(ApiResponse.<ProductDTO>builder()
                 .status(HttpStatus.OK.value())
                 .message("Cập nhật thành công")
@@ -169,5 +180,53 @@ public class ProductController {
             p.setCategory(c);
         }
         return p;
+    }
+
+    private boolean applyChanges(Product p, ProductDTO dto) {
+        boolean hasChanges = false;
+
+        if (dto.getName() != null && !dto.getName().trim().isEmpty()) {
+            String newName = dto.getName().trim();
+            if (!newName.equals(p.getName())) {
+                p.setName(newName);
+                hasChanges = true;
+            }
+        }
+
+        if (dto.getDescription() != null && !dto.getDescription().equals(p.getDescription())) {
+            p.setDescription(dto.getDescription());
+            hasChanges = true;
+        }
+
+        if (dto.getPrice() != null && !dto.getPrice().equals(p.getPrice())) {
+            p.setPrice(dto.getPrice());
+            hasChanges = true;
+        }
+
+        if (dto.getImage() != null && !dto.getImage().trim().isEmpty()) {
+            String newImage = dto.getImage().trim();
+            if (!newImage.equals(p.getImage())) {
+                p.setImage(newImage);
+                hasChanges = true;
+            }
+        }
+
+        if (dto.getStatus() != null && !dto.getStatus().equals(p.getStatus())) {
+            p.setStatus(dto.getStatus());
+            hasChanges = true;
+        }
+
+        if (dto.getCategoryId() != null) {
+            CategoryProduct currentCategory = p.getCategory();
+            Integer currentCategoryId = currentCategory != null ? currentCategory.getCategoryProductId() : null;
+            if (!dto.getCategoryId().equals(currentCategoryId)) {
+                CategoryProduct c = categoryProductRepository.findById(dto.getCategoryId())
+                        .orElseThrow(() -> new RuntimeException("Không tìm thấy loại sản phẩm"));
+                p.setCategory(c);
+                hasChanges = true;
+            }
+        }
+
+        return hasChanges;
     }
 }

@@ -2,6 +2,7 @@ package com.fpoly.duan.config;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -63,13 +64,12 @@ public class SecurityConfig {
                                 "Chưa đăng nhập hoặc token không hợp lệ. Vui lòng đăng nhập tài khoản khách và gửi Bearer token."))
                         .accessDeniedHandler((request, response, accessDeniedException) -> writeJsonApiResponse(response,
                                 HttpServletResponse.SC_FORBIDDEN,
-                                "Không có quyền truy cập API này (ví dụ: JWT nhân viên không dùng cho đặt vé/đồ ăn online — hãy đăng nhập khách).")))
+                                "Không có quyền truy cập API này.")))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/payments/payos/webhook").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        /* Nhân viên sàn: chỉ xem ca của mình — bắt buộc JWT hợp lệ */
                         .requestMatchers("/api/v1/shifts/me").authenticated()
                         .requestMatchers("/api/v1/ticket-orders/**").authenticated()
                         .requestMatchers("/api/v1/food-orders/**").authenticated()
@@ -105,9 +105,10 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "http://localhost:5174"));
+        // SỬA LỖI CORS: Sử dụng setAllowedOriginPatterns("*") để tránh bị block khi FE chạy khác cổng (ví dụ port tự động đổi sang 5175, 3000...)
+        configuration.setAllowedOriginPatterns(Collections.singletonList("*"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With"));
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept"));
         configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

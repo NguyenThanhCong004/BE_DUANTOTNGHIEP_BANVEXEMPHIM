@@ -14,34 +14,59 @@ import java.time.LocalDateTime;
 @Repository
 public interface TicketRepository extends JpaRepository<Ticket, Integer> {
 
-    @Query("SELECT t.showtime.movie.movieId, COALESCE(SUM(t.price), 0) FROM Ticket t "
-            + "WHERE t.showtime IS NOT NULL AND t.orderOnline IS NOT NULL AND t.orderOnline.status = 1 "
-            + "GROUP BY t.showtime.movie.movieId")
+    // SỬA LỖI: Sử dụng Join tường minh (Explicit Join) cho OrderOnline 
+    // Tránh Join ngầm định (Implicit Join) qua t.orderOnline.status có thể gây chậm hoặc lỗi Cross Join
+    @Query("SELECT m.movieId, COALESCE(SUM(t.price), 0.0) " +
+           "FROM Ticket t " +
+           "JOIN t.showtime s " +
+           "JOIN s.movie m " +
+           "JOIN t.orderOnline o " +
+           "WHERE o.status = 1 " +
+           "GROUP BY m.movieId")
     List<Object[]> sumTicketRevenueByMovieId();
 
-    @Query("SELECT t.seat.seatId FROM Ticket t WHERE t.showtime.showtimeId = :sid AND t.seat IS NOT NULL "
-            + "AND t.orderOnline IS NOT NULL AND t.orderOnline.status = 1")
+    @Query("SELECT t.seat.seatId FROM Ticket t " +
+           "JOIN t.orderOnline o " +
+           "WHERE t.showtime.showtimeId = :sid AND t.seat IS NOT NULL " +
+           "AND o.status = 1")
     List<Integer> findBookedSeatIdsByPaidOrder(@Param("sid") Integer showtimeId);
 
-    @Query("SELECT t.seat.seatId FROM Ticket t WHERE t.showtime.showtimeId = :sid AND t.seat IS NOT NULL "
-            + "AND t.orderOnline IS NOT NULL AND t.orderOnline.status IN (0, 1)")
+    /** Ghế đang chờ thanh toán hoặc đã trả — dùng cho sơ đồ đặt vé. */
+    @Query("SELECT t.seat.seatId FROM Ticket t " +
+           "JOIN t.orderOnline o " +
+           "WHERE t.showtime.showtimeId = :sid AND t.seat IS NOT NULL " +
+           "AND o.status IN (0, 1)")
     List<Integer> findHeldSeatIdsByShowtime(@Param("sid") Integer showtimeId);
 
-    @Query("SELECT COUNT(t) FROM Ticket t WHERE t.showtime.showtimeId = :sid AND t.seat.seatId IN :seatIds "
-            + "AND t.orderOnline IS NOT NULL AND t.orderOnline.status = 1")
+    @Query("SELECT COUNT(t) FROM Ticket t " +
+           "JOIN t.orderOnline o " +
+           "WHERE t.showtime.showtimeId = :sid AND t.seat.seatId IN :seatIds " +
+           "AND o.status = 1")
     long countPaidTicketsForSeats(@Param("sid") Integer showtimeId, @Param("seatIds") Collection<Integer> seatIds);
 
-    @Query("SELECT COUNT(t) FROM Ticket t WHERE t.showtime.showtimeId = :sid AND t.seat.seatId IN :seatIds "
-            + "AND t.orderOnline IS NOT NULL AND t.orderOnline.status IN (0, 1)")
+    /** Đơn chờ thanh toán (0) hoặc đã trả (1) — không cho đặt trùng ghế. */
+    @Query("SELECT COUNT(t) FROM Ticket t " +
+           "JOIN t.orderOnline o " +
+           "WHERE t.showtime.showtimeId = :sid AND t.seat.seatId IN :seatIds " +
+           "AND o.status IN (0, 1)")
     long countHeldOrPaidTicketsForSeats(@Param("sid") Integer showtimeId, @Param("seatIds") Collection<Integer> seatIds);
 
-    @Query(value = "SELECT CAST(COUNT(*) AS BIGINT) FROM tickets t JOIN orders_online o ON t.order_online_id = o.order_online_id WHERE o.status = 1", nativeQuery = true)
-    Object countAllPaidTickets();
+    // SỬA LỖI: Join tường minh (Explicit Join)
+    @Query("SELECT COUNT(t) FROM Ticket t JOIN t.orderOnline o WHERE o.status = 1")
+    Long countAllPaidTickets();
 
     @Query("SELECT COUNT(t) FROM Ticket t WHERE t.orderOnline.status = 1 AND t.orderOnline.staff.staffId = :staffId AND t.orderOnline.createdAt BETWEEN :start AND :end")
     Long countTicketsByStaffBetweenJPQL(@Param("staffId") Integer staffId, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
     List<Ticket> findByOrderOnline_OrderOnlineId(Integer orderOnlineId);
 
-    boolean existsByShowtime_ShowtimeIdAndSeat_SeatIdAndStatus(Integer showtimeId, Integer seatId, Integer status);
+    long countBySeat_SeatId(Integer seatId);
+
+    /** Trùng ghế theo vé (trạng thái vé trên Ticket), không dùng derived name ...AndStatus vì Seat cũng có `status`. */
+    @Query("SELECT CASE WHEN COUNT(t) > 0 THEN true ELSE false END FROM Ticket t " +
+           "WHERE t.showtime.showtimeId = :showtimeId AND t.seat.seatId = :seatId AND t.status = :status")
+    boolean existsByShowtime_ShowtimeIdAndSeat_SeatIdAndStatus(
+            @Param("showtimeId") Integer showtimeId,
+            @Param("seatId") Integer seatId,
+            @Param("status") int status);
 }

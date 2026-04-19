@@ -26,4 +26,6 @@ public class MembershipRank {
 
     @Column(name = "bonus_point")
     private Integer bonusPoint;
+
+    private Integer status;
 }
