@@ -21,13 +21,13 @@ public class DashboardController {
     private final DashboardService dashboardService;
 
     @GetMapping("/summary")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
     public ResponseEntity<DashboardSummaryDTO> getSummary() {
         return ResponseEntity.ok(dashboardService.getSummary());
     }
 
     @GetMapping("/revenue-chart")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
     public ResponseEntity<List<RevenueChartDTO>> getRevenueChart(@RequestParam(required = false) Integer year) {
         if (year == null) {
             year = LocalDate.now().getYear();
@@ -36,7 +36,7 @@ public class DashboardController {
     }
 
     @GetMapping("/cinema-ranking")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
     public ResponseEntity<List<CinemaRankingDTO>> getCinemaRanking() {
         return ResponseEntity.ok(dashboardService.getCinemaRankings());
     }

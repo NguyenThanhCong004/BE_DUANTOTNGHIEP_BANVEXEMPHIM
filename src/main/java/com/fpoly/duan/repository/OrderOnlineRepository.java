@@ -33,7 +33,7 @@ public interface OrderOnlineRepository extends JpaRepository<OrderOnline, Intege
            "ORDER BY MONTH(created_at)", nativeQuery = true)
     List<Object[]> getMonthlyRevenueByYear(@Param("year") int year);
 
-    @Query(value = "SELECT CAST(c.name AS NVARCHAR(MAX)), CAST(SUM(t.price) AS FLOAT) as revenue, CAST(COUNT(t.ticket_id) AS BIGINT) as count " +
+    @Query(value = "SELECT TOP 5 CAST(c.name AS NVARCHAR(MAX)), CAST(SUM(t.price) AS FLOAT) as revenue, CAST(COUNT(t.ticket_id) AS BIGINT) as count " +
            "FROM tickets t " +
            "JOIN showtimes s ON t.showtime_id = s.showtime_id " +
            "JOIN rooms r ON s.room_id = r.room_id " +
