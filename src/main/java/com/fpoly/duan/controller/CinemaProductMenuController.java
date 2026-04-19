@@ -52,7 +52,7 @@ public class CinemaProductMenuController {
         cinemaRepository.findById(cinemaId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với id: " + cinemaId));
 
-        List<Product> allProducts = productRepository.findAll();
+        List<Product> allProducts = productRepository.findAllByOrderByProductIdDesc();
         List<CinemaProduct> links = cinemaProductRepository.findByCinema_CinemaId(cinemaId);
         Map<Integer, CinemaProduct> byProductId = links.stream()
                 .filter(cp -> cp.getProduct() != null && cp.getProduct().getProductId() != null)
@@ -90,7 +90,7 @@ public class CinemaProductMenuController {
     }
 
     @PutMapping("/products/{productId}/selling")
-    @Operation(summary = "Bật/tắt bán sản phẩm tại rạp")
+    @Operation(summary = "Bật/tắt trạng thái Còn hàng/Hết hàng của sản phẩm tại rạp")
     public ResponseEntity<ApiResponse<Void>> setSelling(
             @PathVariable Integer cinemaId,
             @PathVariable Integer productId,
@@ -105,26 +105,36 @@ public class CinemaProductMenuController {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm với id: " + productId));
 
-        Optional<CinemaProduct> existing = cinemaProductRepository
-                .findByCinema_CinemaIdAndProduct_ProductId(cinemaId, productId);
+        CinemaProduct cp = cinemaProductRepository
+                .findByCinema_CinemaIdAndProduct_ProductId(cinemaId, productId)
+                .orElseGet(() -> {
+                    CinemaProduct n = new CinemaProduct();
+                    n.setCinema(cinema);
+                    n.setProduct(product);
+                    return n;
+                });
 
-        if (selling) {
-            CinemaProduct cp = existing.orElseGet(() -> {
-                CinemaProduct n = new CinemaProduct();
-                n.setCinema(cinema);
-                n.setProduct(product);
-                return n;
-            });
-            cp.setIsActive(true);
-            cinemaProductRepository.save(cp);
-        } else {
-            /* Tắt bán = xóa hẳn khỏi bảng cinema_products (không còn dòng inactive). */
-            existing.ifPresent(cinemaProductRepository::delete);
-        }
+        cp.setIsActive(selling);
+        cinemaProductRepository.save(cp);
 
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
-                .message(selling ? "Đã thêm sản phẩm vào menu rạp" : "Đã xóa sản phẩm khỏi menu rạp")
+                .message(selling ? "Đã cập nhật: Còn hàng" : "Đã cập nhật: Hết hàng")
+                .data(null)
+                .build());
+    }
+
+    @DeleteMapping("/products/{productId}")
+    @Operation(summary = "Xóa hẳn sản phẩm khỏi menu rạp")
+    public ResponseEntity<ApiResponse<Void>> removeFromMenu(
+            @PathVariable Integer cinemaId,
+            @PathVariable Integer productId) {
+        cinemaProductRepository.findByCinema_CinemaIdAndProduct_ProductId(cinemaId, productId)
+                .ifPresent(cinemaProductRepository::delete);
+
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .status(HttpStatus.OK.value())
+                .message("Đã gỡ sản phẩm khỏi menu rạp")
                 .data(null)
                 .build());
     }

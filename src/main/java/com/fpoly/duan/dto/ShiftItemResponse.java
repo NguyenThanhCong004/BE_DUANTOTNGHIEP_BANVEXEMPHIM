@@ -19,5 +19,6 @@ public class ShiftItemResponse {
     private String startTime; // HH:mm
     private String endTime; // HH:mm
     private String status; // Đang làm / Sắp tới / Đã xong
+    private String cinemaName;
 }
 

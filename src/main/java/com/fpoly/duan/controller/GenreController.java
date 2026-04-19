@@ -87,9 +87,19 @@ public class GenreController {
     public ResponseEntity<ApiResponse<GenreDTO>> update(@PathVariable @NonNull Integer id, @RequestBody GenreDTO dto) {
         Genre g = genreRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy thể loại với id: " + id));
+        
         if (dto != null && dto.getName() != null && !dto.getName().trim().isEmpty()) {
-            g.setName(dto.getName().trim());
+            String newName = dto.getName().trim();
+            if (newName.equals(g.getName())) {
+                return ResponseEntity.ok(ApiResponse.<GenreDTO>builder()
+                        .status(HttpStatus.OK.value())
+                        .message("Không có thay đổi để cập nhật")
+                        .data(toDTO(g))
+                        .build());
+            }
+            g.setName(newName);
         }
+        
         Genre saved = genreRepository.save(g);
         return ResponseEntity.ok(ApiResponse.<GenreDTO>builder()
                 .status(HttpStatus.OK.value())
