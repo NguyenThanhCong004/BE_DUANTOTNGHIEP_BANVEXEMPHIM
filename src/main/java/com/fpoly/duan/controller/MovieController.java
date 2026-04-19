@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +42,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @Tag(name = "7. Phim (Movies)", description = "CRUD phim — FE quản trị.")
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
 public class MovieController {
+
+    private static final Logger log = LoggerFactory.getLogger(MovieController.class);
 
     private final MovieRepository movieRepository;
     private final GenreRepository genreRepository;
@@ -138,11 +142,32 @@ public class MovieController {
                 .build());
     }
 
+    @GetMapping("/promotion-eligible")
+    @Operation(summary = "Lọc phim phù hợp cho khuyến mãi", description = "Lọc phim đang hoạt động để áp dụng khuyến mãi.")
+    public ResponseEntity<ApiResponse<List<MovieDTO>>> getPromotionEligible(
+            @org.springframework.web.bind.annotation.RequestParam Integer cinemaId,
+            @org.springframework.web.bind.annotation.RequestParam String startDate,
+            @org.springframework.web.bind.annotation.RequestParam String endDate) {
+        
+        // Trả về tất cả phim đang hoạt động (status != 2)
+        // Admin rạp nào thì rạp đó tự biết phim nào mình sẽ chiếu
+        List<MovieDTO> movies = movieRepository.findAll().stream()
+                .filter(m -> m.getStatus() != null && m.getStatus() != 2) // status 2 thường là ngừng chiếu
+                .map(this::toDTO)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(ApiResponse.<List<MovieDTO>>builder()
+                .status(HttpStatus.OK.value())
+                .message("OK")
+                .data(movies)
+                .build());
+    }
+
     @PostMapping
     @Operation(summary = "Tạo phim")
     @Transactional
     public ResponseEntity<ApiResponse<MovieDTO>> create(@RequestBody MovieWriteDTO req) {
-        validateWrite(req);
+        validateWriteCreate(req);
         Movie m = applyWrite(new Movie(), req);
         Movie saved = movieRepository.save(m);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<MovieDTO>builder()
@@ -156,8 +181,41 @@ public class MovieController {
     @Operation(summary = "Cập nhật phim")
     @Transactional
     public ResponseEntity<ApiResponse<MovieDTO>> update(@PathVariable Integer id, @RequestBody MovieWriteDTO req) {
+        log.debug("Update movie with id: {} and payload: {}", id, req);
+        log.debug("Title: {}, GenreId: {}, Status: {}", req.getTitle(), req.getGenreId(), req.getStatus());
         Movie m = movieRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy phim với id: " + id));
+
+        // Kiểm tra xem có dữ liệu cập nhật không
+        boolean hasChanges = false;
+
+        // Kiểm tra từng field - chỉ coi là thay đổi nếu không null và không rỗng (đối với string)
+        if (req.getGenreId() != null) hasChanges = true;
+        if (req.getTitle() != null && !req.getTitle().trim().isEmpty()) hasChanges = true;
+        if (req.getDescription() != null) hasChanges = true;
+        if (req.getDuration() != null) hasChanges = true;
+        if (req.getAgeLimit() != null) hasChanges = true;
+        if (req.getReleaseDate() != null) hasChanges = true;
+        if (req.getPoster() != null) hasChanges = true;
+        if (req.getStatus() != null) hasChanges = true;
+        if (req.getBasePrice() != null) hasChanges = true;
+        if (req.getAuthor() != null) hasChanges = true;
+        if (req.getNation() != null) hasChanges = true;
+        if (req.getContent() != null) hasChanges = true;
+        if (req.getBanner() != null) hasChanges = true;
+
+        log.debug("Has changes: {}", hasChanges);
+
+        // Nếu không có thay đổi nào, trả về thông báo phù hợp
+        if (!hasChanges) {
+            log.debug("No changes detected for movie with id: {}", id);
+            return ResponseEntity.ok(ApiResponse.<MovieDTO>builder()
+                    .status(HttpStatus.OK.value())
+                    .message("Không có thay đổi để cập nhật")
+                    .data(toDTO(m))
+                    .build());
+        }
+
         validateWrite(req);
         applyWrite(m, req);
         Movie saved = movieRepository.save(m);
@@ -185,6 +243,10 @@ public class MovieController {
 
     private void validateWrite(MovieWriteDTO req) {
         if (req == null) throw new RuntimeException("Dữ liệu phim không hợp lệ");
+    }
+
+    private void validateWriteCreate(MovieWriteDTO req) {
+        validateWrite(req);
         if (req.getTitle() == null || req.getTitle().trim().isEmpty()) {
             throw new RuntimeException("Tên phim không được để trống");
         }
@@ -194,21 +256,48 @@ public class MovieController {
     }
 
     private Movie applyWrite(Movie m, MovieWriteDTO req) {
-        Genre g = genreRepository.findById(req.getGenreId())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy thể loại với id: " + req.getGenreId()));
-        m.setTitle(req.getTitle().trim());
-        m.setDescription(req.getDescription());
-        m.setDuration(req.getDuration());
-        m.setAgeLimit(req.getAgeLimit());
-        m.setReleaseDate(req.getReleaseDate());
-        m.setPoster(req.getPoster());
-        m.setStatus(req.getStatus() != null ? req.getStatus() : 1);
-        m.setBasePrice(req.getBasePrice() != null ? req.getBasePrice() : 0.0);
-        m.setAuthor(req.getAuthor());
-        m.setNation(req.getNation());
-        m.setContent(req.getContent());
-        m.setBanner(req.getBanner());
-        m.setGenre(g);
+        // Chỉ cập nhật field khi giá trị được cung cấp (hỗ trợ partial update)
+        if (req.getGenreId() != null) {
+            Genre g = genreRepository.findById(req.getGenreId())
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy thể loại với id: " + req.getGenreId()));
+            m.setGenre(g);
+        }
+        if (req.getTitle() != null) {
+            m.setTitle(req.getTitle().trim());
+        }
+        if (req.getDescription() != null) {
+            m.setDescription(req.getDescription());
+        }
+        if (req.getDuration() != null) {
+            m.setDuration(req.getDuration());
+        }
+        if (req.getAgeLimit() != null) {
+            m.setAgeLimit(req.getAgeLimit());
+        }
+        if (req.getReleaseDate() != null) {
+            m.setReleaseDate(req.getReleaseDate());
+        }
+        if (req.getPoster() != null) {
+            m.setPoster(req.getPoster());
+        }
+        if (req.getStatus() != null) {
+            m.setStatus(req.getStatus());
+        }
+        if (req.getBasePrice() != null) {
+            m.setBasePrice(req.getBasePrice());
+        }
+        if (req.getAuthor() != null) {
+            m.setAuthor(req.getAuthor());
+        }
+        if (req.getNation() != null) {
+            m.setNation(req.getNation());
+        }
+        if (req.getContent() != null) {
+            m.setContent(req.getContent());
+        }
+        if (req.getBanner() != null) {
+            m.setBanner(req.getBanner());
+        }
         return m;
     }
 

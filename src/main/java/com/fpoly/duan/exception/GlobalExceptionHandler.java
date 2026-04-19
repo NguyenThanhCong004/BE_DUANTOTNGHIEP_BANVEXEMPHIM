@@ -17,12 +17,38 @@ import com.fpoly.duan.dto.ApiResponse;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    private String localizeMessage(String rawMessage, String fallback) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return fallback;
+        }
+        String message = rawMessage.trim();
+        String lower = message.toLowerCase();
+
+        if (lower.contains("query did not return a unique result")) {
+            return "Dữ liệu bị trùng, vui lòng kiểm tra lại thông tin.";
+        }
+        if (lower.contains("nonuniqueresultexception")) {
+            return "Dữ liệu bị trùng, vui lòng kiểm tra lại thông tin.";
+        }
+        if (lower.contains("constraintviolationexception") || lower.contains("duplicate key")) {
+            return "Dữ liệu đã tồn tại trong hệ thống.";
+        }
+        if (lower.contains("could not execute statement")) {
+            return "Không thể xử lý yêu cầu với dữ liệu hiện tại.";
+        }
+        if (lower.contains("internal server error")) {
+            return "Đã xảy ra lỗi hệ thống.";
+        }
+
+        return message;
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<ApiResponse<Object>> handleResponseStatusException(ResponseStatusException ex) {
         HttpStatus status = HttpStatus.valueOf(ex.getStatusCode().value());
         return ResponseEntity.status(status).body(ApiResponse.builder()
                 .status(status.value())
-                .message(ex.getReason() != null ? ex.getReason() : status.getReasonPhrase())
+                .message(localizeMessage(ex.getReason(), "Yêu cầu không hợp lệ"))
                 .build());
     }
 
@@ -30,7 +56,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Object>> handleRuntimeException(RuntimeException ex) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ApiResponse.builder()
                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
-                .message(ex.getMessage())
+                .message(localizeMessage(ex.getMessage(), "Đã xảy ra lỗi hệ thống"))
                 .build());
     }
 
@@ -61,7 +87,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Object>> handleGeneralException(Exception ex) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ApiResponse.builder()
                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
-                .message("Đã xảy ra lỗi hệ thống: " + ex.getMessage())
+                .message(localizeMessage(ex.getMessage(), "Đã xảy ra lỗi hệ thống"))
                 .build());
     }
 }

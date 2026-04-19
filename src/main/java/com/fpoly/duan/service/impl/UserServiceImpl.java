@@ -1,6 +1,8 @@
 package com.fpoly.duan.service.impl;
 
 import java.util.List;
+import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.stream.Collectors;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -11,7 +13,7 @@ import com.fpoly.duan.dto.UserDTO;
 import com.fpoly.duan.entity.MembershipRank;
 import com.fpoly.duan.entity.User;
 import com.fpoly.duan.repository.MembershipRankRepository;
-import com.fpoly.duan.repository.StaffRepository;
+import com.fpoly.duan.repository.OrderOnlineRepository;
 import com.fpoly.duan.repository.UserRepository;
 import com.fpoly.duan.service.UserService;
 
@@ -23,37 +25,16 @@ import lombok.RequiredArgsConstructor;
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
-    private final StaffRepository staffRepository;
     private final MembershipRankRepository membershipRankRepository;
+    private final OrderOnlineRepository orderOnlineRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
     @Transactional
     public List<UserDTO> getAllUsers() {
-        List<User> users = userRepository.findAll();
-        // Mỗi khi tải trang danh sách, tự động quét và cập nhật hạng cho tất cả User
-        users.forEach(this::syncRank);
-        return users.stream()
+        return userRepository.findAll().stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
-    }
-
-    private void syncRank(User user) {
-        double totalSpending = user.getTotalSpending() != null ? user.getTotalSpending() : 0.0;
-        MembershipRank bestRank = membershipRankRepository.findAll().stream()
-                .filter(r -> totalSpending >= (r.getMinSpending() != null ? r.getMinSpending() : 0.0))
-                .sorted((r1, r2) -> {
-                    double v1 = r1.getMinSpending() != null ? r1.getMinSpending() : 0.0;
-                    double v2 = r2.getMinSpending() != null ? r2.getMinSpending() : 0.0;
-                    return Double.compare(v2, v1);
-                })
-                .findFirst()
-                .orElse(null);
-
-        if (bestRank != null && (user.getRank() == null || !bestRank.getRankId().equals(user.getRank().getRankId()))) {
-            user.setRank(bestRank);
-            userRepository.save(user);
-        }
     }
 
     @Override
@@ -74,8 +55,19 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public UserDTO getUserByUsernameOrEmail(String usernameOrEmail) {
+        String key = usernameOrEmail != null ? usernameOrEmail.trim() : "";
+        return userRepository.findByUsernameIgnoreCase(key)
+                .or(() -> userRepository.findByEmailIgnoreCase(key))
+                .map(this::convertToDTO)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng với tên đăng nhập/email: " + key));
+    }
+
+    @Override
     public UserDTO createUser(UserDTO userDTO, String password) {
         User user = convertToEntity(userDTO);
+        user.setRankId(resolveRankIdForWrite(userDTO.getRankId()));
         user.setPassword(passwordEncoder.encode(password));
         return convertToDTO(userRepository.save(user));
     }
@@ -107,9 +99,9 @@ public class UserServiceImpl implements UserService {
         if (userDTO.getPoints() != null) {
             user.setPoints(userDTO.getPoints());
         }
-
-        // Tự động đồng bộ hạng sau khi cập nhật
-        syncRank(user);
+        if (userDTO.getRankId() != null) {
+            user.setRankId(resolveRankIdForWrite(userDTO.getRankId()));
+        }
 
         return convertToDTO(userRepository.save(user));
     }
@@ -134,7 +126,12 @@ public class UserServiceImpl implements UserService {
     }
 
     private UserDTO convertToDTO(User user) {
-        var rank = user.getRank();
+        int currentYear = LocalDate.now().getYear();
+        double currentYearSpending = orderOnlineRepository
+                .sumCompletedRevenueByUserAndYear(user.getUserId(), currentYear);
+
+        MembershipRank assignedRank = resolveRankEntityForRead(user.getRankId());
+
         return UserDTO.builder()
                 .userId(user.getUserId())
                 .username(user.getUsername())
@@ -145,9 +142,9 @@ public class UserServiceImpl implements UserService {
                 .birthday(user.getBirthday())
                 .avatar(user.getAvatar())
                 .points(user.getPoints())
-                .totalSpending(user.getTotalSpending())
-                .rankId(rank != null ? rank.getRankId() : null)
-                .rankName(rank != null ? rank.getRankName() : null)
+                .totalSpending(currentYearSpending)
+                .rankId(assignedRank != null ? assignedRank.getRankId() : null)
+                .rankName(assignedRank != null ? assignedRank.getRankName() : "Hạng Đồng")
                 .build();
     }
 
@@ -162,7 +159,32 @@ public class UserServiceImpl implements UserService {
         user.setBirthday(userDTO.getBirthday());
         user.setAvatar(userDTO.getAvatar());
         user.setPoints(userDTO.getPoints() != null ? userDTO.getPoints() : 0);
+        user.setRankId(resolveRankIdForWrite(userDTO.getRankId()));
         user.setTotalSpending(userDTO.getTotalSpending() != null ? userDTO.getTotalSpending() : 0.0);
         return user;
+    }
+
+    private Integer resolveRankIdForWrite(Integer rankId) {
+        if (rankId != null) {
+            membershipRankRepository.findById(rankId)
+                    .orElseThrow(() -> new RuntimeException("rankId không tồn tại: " + rankId));
+            return rankId;
+        }
+        MembershipRank defaultRank = membershipRankRepository.findAll().stream()
+                .min(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .orElseThrow(() -> new RuntimeException("Chưa có dữ liệu hạng thành viên"));
+        return defaultRank.getRankId();
+    }
+
+    private MembershipRank resolveRankEntityForRead(Integer rankId) {
+        if (rankId != null) {
+            MembershipRank fromUserRankId = membershipRankRepository.findById(rankId).orElse(null);
+            if (fromUserRankId != null) {
+                return fromUserRankId;
+            }
+        }
+        return membershipRankRepository.findAll().stream()
+                .min(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .orElse(null);
     }
 }

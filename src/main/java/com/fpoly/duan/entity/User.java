@@ -3,11 +3,15 @@ package com.fpoly.duan.entity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.NoArgsConstructor;
 import java.time.LocalDate;
 
-@Data
+// SỬA LỖI: Thay thế @Data bằng @Getter và @Setter. 
+// Dùng @Data trong Entity của JPA rất dễ gây lỗi StackOverflowError (tràn bộ nhớ) do hàm toString() tạo ra vòng lặp.
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -28,11 +32,10 @@ public class User {
     private String email;
     private String phone;
     private Integer points;
+    
+    @Column(name = "rank_id")
+    private Integer rankId;
 
     @Column(name = "total_spending")
     private Double totalSpending;
-    
-    @ManyToOne
-    @JoinColumn(name = "rank_id")
-    private MembershipRank rank;
 }

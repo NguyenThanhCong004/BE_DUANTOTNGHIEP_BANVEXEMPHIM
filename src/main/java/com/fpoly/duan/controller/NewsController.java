@@ -81,6 +81,21 @@ public class NewsController {
         News n = newsRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy tin với id: " + id));
         validate(dto, false);
+
+        boolean hasChanges = false;
+        if (dto.getTitle() != null && !dto.getTitle().trim().equals(n.getTitle())) hasChanges = true;
+        if (dto.getContent() != null && !dto.getContent().equals(n.getContent())) hasChanges = true;
+        if (dto.getImage() != null && !dto.getImage().trim().isEmpty() && !dto.getImage().trim().equals(n.getImage())) hasChanges = true;
+        if (dto.getStatus() != null && !dto.getStatus().equals(n.getStatus())) hasChanges = true;
+
+        if (!hasChanges) {
+            return ResponseEntity.ok(ApiResponse.<NewsDTO>builder()
+                    .status(HttpStatus.OK.value())
+                    .message("Không có thay đổi để cập nhật")
+                    .data(toDTO(n))
+                    .build());
+        }
+
         News saved = newsRepository.save(fromDTO(n, dto));
         return ResponseEntity.ok(ApiResponse.<NewsDTO>builder()
                 .status(HttpStatus.OK.value())

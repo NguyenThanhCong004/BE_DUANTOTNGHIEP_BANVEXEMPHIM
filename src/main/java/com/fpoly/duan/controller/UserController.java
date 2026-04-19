@@ -23,6 +23,7 @@ import com.fpoly.duan.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -62,7 +63,7 @@ public class UserController {
 
     @PostMapping
     @Operation(summary = "Tạo user (Super Admin / nội bộ)")
-    public ResponseEntity<ApiResponse<UserDTO>> createUser(@RequestBody UserRequest userRequest) {
+    public ResponseEntity<ApiResponse<UserDTO>> createUser(@Valid @RequestBody UserRequest userRequest) {
         UserDTO userDTO = UserDTO.builder()
                 .username(userRequest.getUsername())
                 .fullname(userRequest.getFullname())
@@ -70,6 +71,7 @@ public class UserController {
                 .phone(userRequest.getPhone())
                 .birthday(userRequest.getBirthday())
                 .avatar(userRequest.getAvatar())
+                .rankId(userRequest.getRankId())
                 .build();
         UserDTO createdUser = userService.createUser(userDTO, userRequest.getPassword());
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<UserDTO>builder()
@@ -82,6 +84,29 @@ public class UserController {
     @PutMapping("/{id}")
     @Operation(summary = "Cập nhật user")
     public ResponseEntity<ApiResponse<UserDTO>> updateUser(@PathVariable Integer id, @RequestBody UserDTO userDTO) {
+        // Kiểm tra xem có dữ liệu cập nhật không
+        boolean hasChanges = false;
+        
+        if (userDTO.getFullname() != null) hasChanges = true;
+        if (userDTO.getEmail() != null) hasChanges = true;
+        if (userDTO.getPhone() != null) hasChanges = true;
+        if (userDTO.getBirthday() != null) hasChanges = true;
+        if (userDTO.getStatus() != null) hasChanges = true;
+        if (userDTO.getAvatar() != null) hasChanges = true;
+        if (userDTO.getRankId() != null) hasChanges = true;
+        if (userDTO.getPoints() != null) hasChanges = true;
+        if (userDTO.getTotalSpending() != null) hasChanges = true;
+        
+        // Nếu không có thay đổi nào, trả về thông báo phù hợp
+        if (!hasChanges) {
+            UserDTO current = userService.getUserById(id);
+            return ResponseEntity.ok(ApiResponse.<UserDTO>builder()
+                    .status(200)
+                    .message("Không có thay đổi để cập nhật")
+                    .data(current)
+                    .build());
+        }
+        
         UserDTO updatedUser = userService.updateUser(id, userDTO);
         return ResponseEntity.ok(ApiResponse.<UserDTO>builder()
                 .status(200)

@@ -85,9 +85,24 @@ public class CategoryProductController {
             @RequestBody CategoryProductDTO dto) {
         CategoryProduct c = categoryProductRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy loại với id: " + id));
+
+        boolean hasChanges = false;
         if (dto != null && dto.getName() != null && !dto.getName().trim().isEmpty()) {
-            c.setName(dto.getName().trim());
+            String newName = dto.getName().trim();
+            if (!newName.equals(c.getName())) {
+                c.setName(newName);
+                hasChanges = true;
+            }
         }
+
+        if (!hasChanges) {
+            return ResponseEntity.ok(ApiResponse.<CategoryProductDTO>builder()
+                    .status(HttpStatus.OK.value())
+                    .message("Không có thay đổi để cập nhật")
+                    .data(toDTO(c))
+                    .build());
+        }
+
         CategoryProduct saved = categoryProductRepository.save(c);
         return ResponseEntity.ok(ApiResponse.<CategoryProductDTO>builder()
                 .status(HttpStatus.OK.value())

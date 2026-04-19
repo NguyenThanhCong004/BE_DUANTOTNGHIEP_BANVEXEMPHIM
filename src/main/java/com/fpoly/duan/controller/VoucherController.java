@@ -108,7 +108,30 @@ public class VoucherController {
             Voucher v = voucherRepository.findById(id)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy voucher với id: " + id));
             validate(dto, false);
+
+            boolean hasChanges = false;
             String newCode = dto.getCode() != null ? dto.getCode().trim() : v.getCode();
+            
+            if (newCode != null && !newCode.equalsIgnoreCase(v.getCode())) hasChanges = true;
+            if (dto.getValue() != null && !dto.getValue().equals(v.getValue())) hasChanges = true;
+            if (dto.getMinOrderValue() != null && !dto.getMinOrderValue().equals(v.getMinOrderValue())) hasChanges = true;
+            if (dto.getMaxDiscountAmount() != null && !dto.getMaxDiscountAmount().equals(v.getMaxDiscountAmount())) hasChanges = true;
+            if (dto.getStartDate() != null && !dto.getStartDate().equals(v.getStartDate())) hasChanges = true;
+            if (dto.getEndDate() != null && !dto.getEndDate().equals(v.getEndDate())) hasChanges = true;
+            if (dto.getPointVoucher() != null && !dto.getPointVoucher().equals(v.getPointVoucher())) hasChanges = true;
+            
+            // So sánh trạng thái (0: Dừng phát hành, 1: Đang phát hành, 2: Chờ phát hành, 3: Đã kết thúc)
+            // Cần so sánh với giá trị trong DB (v.getStatus())
+            if (dto.getStatus() != null && !dto.getStatus().equals(v.getStatus())) hasChanges = true;
+
+            if (!hasChanges) {
+                return ResponseEntity.ok(ApiResponse.<VoucherDTO>builder()
+                        .status(HttpStatus.OK.value())
+                        .message("Không có thay đổi để cập nhật")
+                        .data(toDTO(v))
+                        .build());
+            }
+
             if (newCode != null && voucherRepository.findAll().stream()
                     .anyMatch(x -> !x.getVouchersId().equals(id) && x.getCode() != null
                             && x.getCode().equalsIgnoreCase(newCode))) {
