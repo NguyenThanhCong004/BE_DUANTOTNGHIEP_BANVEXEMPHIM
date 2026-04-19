@@ -15,6 +15,12 @@ public class Ticket {
     private Integer status;
     private Double price;
 
+    @Column(name = "original_price")
+    private Double originalPrice;
+
+    @Column(name = "promotion_discount")
+    private Double promotionDiscount;
+
     @ManyToOne
     @JoinColumn(name = "showtime_id")
     private Showtime showtime;

@@ -32,4 +32,6 @@ public interface UserRepository extends JpaRepository<User, Integer> {
     boolean existsByUsernameAndUserIdNot(String username, Integer userId);
 
     boolean existsByPhoneAndUserIdNot(String phone, Integer userId);
+
+    boolean existsByRankId(Integer rankId);
 }

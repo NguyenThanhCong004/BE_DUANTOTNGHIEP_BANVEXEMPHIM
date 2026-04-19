@@ -37,4 +37,11 @@ public class OrderOnline {
     @ManyToOne
     @JoinColumn(name = "user_vouchers_id")
     private UserVoucher userVoucher;
+
+    @ManyToOne
+    @JoinColumn(name = "staff_id")
+    private Staff staff;
+
+    @Column(name = "payment_method")
+    private String paymentMethod; // CASH, TRANSFER, PAYOS
 }

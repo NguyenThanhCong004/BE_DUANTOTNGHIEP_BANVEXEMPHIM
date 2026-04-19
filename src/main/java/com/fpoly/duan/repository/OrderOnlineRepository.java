@@ -1,5 +1,6 @@
 package com.fpoly.duan.repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -9,7 +10,6 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.fpoly.duan.entity.OrderOnline;
-import java.time.LocalDateTime;
 
 @Repository
 public interface OrderOnlineRepository extends JpaRepository<OrderOnline, Integer> {
@@ -20,26 +20,43 @@ public interface OrderOnlineRepository extends JpaRepository<OrderOnline, Intege
 
     boolean existsByOrderCode(String orderCode);
 
-    @Query(value = "SELECT CAST(COALESCE(SUM(final_amount), 0) AS FLOAT) FROM orders_online WHERE status = 1", nativeQuery = true)
-    Object sumTotalRevenue();
+    @Query("SELECT COALESCE(SUM(o.finalAmount), 0.0) FROM OrderOnline o WHERE o.status = 1")
+    Double sumTotalRevenue();
 
-    @Query(value = "SELECT CAST(COALESCE(SUM(final_amount), 0) AS FLOAT) FROM orders_online WHERE status = 1 AND created_at BETWEEN :start AND :end", nativeQuery = true)
-    Object sumRevenueBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+    @Query("SELECT COALESCE(SUM(o.finalAmount), 0.0) FROM OrderOnline o WHERE o.status = 1 AND o.createdAt BETWEEN :start AND :end")
+    Double sumRevenueBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
-    @Query(value = "SELECT CAST(MONTH(created_at) AS INT) as month, CAST(SUM(final_amount) AS FLOAT) as total " +
-           "FROM orders_online " +
-           "WHERE status = 1 AND YEAR(created_at) = :year " +
-           "GROUP BY MONTH(created_at) " +
-           "ORDER BY MONTH(created_at)", nativeQuery = true)
+    @Query("SELECT COALESCE(SUM(o.finalAmount), 0.0) FROM OrderOnline o WHERE o.status = 1 AND o.staff.staffId = :staffId AND o.createdAt BETWEEN :start AND :end")
+    Double sumRevenueByStaffBetween(@Param("staffId") Integer staffId, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    @Query("SELECT o.paymentMethod, SUM(o.finalAmount) FROM OrderOnline o " +
+           "WHERE o.status = 1 AND o.staff.staffId = :staffId AND o.createdAt BETWEEN :start AND :end " +
+           "GROUP BY o.paymentMethod")
+    List<Object[]> getRevenueBreakdownByStaffBetween(@Param("staffId") Integer staffId, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    List<OrderOnline> findTop10ByStaff_StaffIdOrderByCreatedAtDesc(Integer staffId);
+
+    @Query("SELECT MONTH(o.createdAt), SUM(o.finalAmount) " +
+           "FROM OrderOnline o " +
+           "WHERE o.status = 1 AND YEAR(o.createdAt) = :year " +
+           "GROUP BY MONTH(o.createdAt) " +
+           "ORDER BY MONTH(o.createdAt)")
     List<Object[]> getMonthlyRevenueByYear(@Param("year") int year);
 
-    @Query(value = "SELECT CAST(c.name AS NVARCHAR(MAX)), CAST(SUM(t.price) AS FLOAT) as revenue, CAST(COUNT(t.ticket_id) AS BIGINT) as count " +
-           "FROM tickets t " +
-           "JOIN showtimes s ON t.showtime_id = s.showtime_id " +
-           "JOIN rooms r ON s.room_id = r.room_id " +
-           "JOIN cinemas c ON r.cinema_id = c.cinema_id " +
-           "WHERE t.order_online_id IN (SELECT order_online_id FROM orders_online WHERE status = 1) " +
+    @Query("SELECT COALESCE(SUM(o.finalAmount), 0.0) " +
+           "FROM OrderOnline o " +
+           "WHERE o.status = 1 " +
+           "AND o.user.userId = :userId " +
+           "AND YEAR(o.createdAt) = :year")
+    Double sumCompletedRevenueByUserAndYear(@Param("userId") Integer userId, @Param("year") int year);
+
+    @Query("SELECT c.name, SUM(t.price), COUNT(t.ticketId) " +
+           "FROM Ticket t " +
+           "JOIN t.showtime s " +
+           "JOIN s.room r " +
+           "JOIN r.cinema c " +
+           "WHERE t.orderOnline.status = 1 " +
            "GROUP BY c.name " +
-           "ORDER BY revenue DESC", nativeQuery = true)
+           "ORDER BY SUM(t.price) DESC")
     List<Object[]> getCinemaRankings();
 }
