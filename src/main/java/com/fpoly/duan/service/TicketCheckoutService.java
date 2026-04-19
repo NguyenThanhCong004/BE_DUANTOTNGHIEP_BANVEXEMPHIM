@@ -23,6 +23,8 @@ import com.fpoly.duan.dto.FoodOnlyCheckoutRequest;
 import com.fpoly.duan.dto.SnackLineRequest;
 import com.fpoly.duan.dto.TicketCheckoutRequest;
 import com.fpoly.duan.dto.TicketCheckoutResponse;
+import com.fpoly.duan.dto.TicketQuoteLineDTO;
+import com.fpoly.duan.dto.TicketQuoteResponse;
 import com.fpoly.duan.dto.payos.PayOSCheckoutData;
 import com.fpoly.duan.dto.payos.PayOSCreatePaymentLinkRequest;
 import com.fpoly.duan.entity.CinemaProduct;
@@ -133,58 +135,12 @@ public class TicketCheckoutService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Một hoặc nhiều ghế đã được giữ hoặc đã bán");
         }
 
-        double unitBase = computeUnitBasePrice(showtime);
+        PricingContext pricing = buildPricingContext(user, showtime, cinemaId);
+        List<PricedSeatLine> pricedLines = priceSeats(seats, pricing);
 
-        // Tìm khuyến mãi phim đang active
-        Integer movieId = showtime.getMovie() != null ? showtime.getMovie().getMovieId() : null;
-        LocalDate today = LocalDate.now();
-        List<Promotion> promotions = promotionRepository.findActivePromotions(movieId, cinemaId, today);
-        double promotionDiscountPercent = 0.0;
-        if (!promotions.isEmpty()) {
-            Promotion promo = promotions.get(0); // Ưu tiên cao nhất theo ORDER BY
-            promotionDiscountPercent = promo.getDiscountPercent() != null ? promo.getDiscountPercent() : 0.0;
-        }
-
-        // Tính giá vé: basePrice áp dụng promotion, sau đó cộng surcharges
-        List<Double> linePrices = new ArrayList<>();
-        List<Double> originalPrices = new ArrayList<>();
-        List<Double> promotionDiscounts = new ArrayList<>();
-        int ticketVnd = 0;
-
-        for (Seat seat : seats) {
-            double seatSurcharge = 0.0;
-            boolean isCouple = false;
-            SeatType st = seat.getSeatType();
-            if (st != null) {
-                if (st.getSurcharge() != null) {
-                    seatSurcharge = st.getSurcharge();
-                }
-                isCouple = Boolean.TRUE.equals(st.getCoupleSeat());
-            }
-
-            // 1. Giá gốc của 1 ghế (chưa giảm KM) = (Giá phim + Phụ thu suất chiếu + Phụ thu loại ghế)
-            double originalLinePrice = (unitBase + seatSurcharge);
-            // 2. Số tiền giảm giá cho 1 ghế = (Giá phim + Phụ thu suất chiếu) * % KM
-            // (Thường KM áp dụng trên giá cơ sở của phim + suất chiếu)
-            double discountLineAmount = (unitBase) * (promotionDiscountPercent / 100.0);
-
-            if (isCouple) {
-                originalLinePrice *= 2;
-                discountLineAmount *= 2;
-            }
-
-            double finalLinePrice = originalLinePrice - discountLineAmount;
-
-            long originalRounded = Math.round(originalLinePrice);
-            long discountRounded = Math.round(discountLineAmount);
-            long finalRounded = Math.round(finalLinePrice);
-
-            originalPrices.add((double) originalRounded);
-            promotionDiscounts.add((double) discountRounded);
-            linePrices.add((double) finalRounded);
-            
-            ticketVnd += (int) finalRounded;
-        }
+        int ticketVnd = pricedLines.stream()
+                .mapToInt(l -> (int) Math.round(l.finalPrice()))
+                .sum();
         double ticketDouble = (double) ticketVnd;
 
         if (req.getSnacks() != null && !req.getSnacks().isEmpty() && cinemaId == null) {
@@ -207,9 +163,12 @@ public class TicketCheckoutService {
             t.setShowtime(showtime);
             t.setSeat(seats.get(i));
             t.setOrderOnline(order);
-            t.setOriginalPrice(originalPrices.get(i));
-            t.setPromotionDiscount(promotionDiscounts.get(i));
-            t.setPrice(linePrices.get(i));
+            PricedSeatLine pl = pricedLines.get(i);
+            t.setOriginalPrice(pl.originalPrice());
+            // promotion_discount chỉ lưu phần KM phim
+            t.setPromotionDiscount(pl.promotionDiscount());
+            // price là giá cuối (đã trừ KM phim + giảm hạng)
+            t.setPrice(pl.finalPrice());
             t.setStatus(TICKET_STATUS_PENDING);
             tickets.add(t);
         }
@@ -293,6 +252,73 @@ public class TicketCheckoutService {
         // Use final amount after discount for PayOS
         int finalAmountVnd = (int) Math.round(finalAmount);
         return finalizePayos(user, payosOrderCode, finalAmountVnd, description, req.getReturnUrl(), req.getCancelUrl(), order);
+    }
+
+    /**
+     * Báo giá theo đúng công thức BE (không tạo order/ticket).
+     */
+    @Transactional(readOnly = true)
+    public TicketQuoteResponse quote(Integer userId, TicketCheckoutRequest req) {
+        User user = loadUser(userId);
+
+        LinkedHashSet<Integer> seatIdSet = new LinkedHashSet<>(req.getSeatIds());
+        if (seatIdSet.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng chọn ít nhất một ghế");
+        }
+
+        Showtime showtime = showtimeRepository.findById(req.getShowtimeId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy suất chiếu"));
+
+        Integer cinemaId = showtime.getRoom() != null && showtime.getRoom().getCinema() != null
+                ? showtime.getRoom().getCinema().getCinemaId()
+                : null;
+
+        List<Seat> seats = seatRepository.findAllByIdWithType(seatIdSet);
+        if (seats.size() != seatIdSet.size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Một hoặc nhiều ghế không tồn tại");
+        }
+
+        PricingContext pricing = buildPricingContext(user, showtime, cinemaId);
+        List<PricedSeatLine> pricedLines = priceSeats(seats, pricing);
+
+        double ticketTotal = pricedLines.stream().mapToDouble(PricedSeatLine::finalPrice).sum();
+
+        double snackTotal = 0.0;
+        if (req.getSnacks() != null && !req.getSnacks().isEmpty()) {
+            if (cinemaId == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Suất chiếu chưa gắn rạp — không thể thêm bắp nước");
+            }
+            SnackTotals st = buildValidatedSnackLines(cinemaId, req.getSnacks(), null);
+            snackTotal = st.doubleTotal();
+        }
+
+        double subtotal = ticketTotal + snackTotal;
+        VoucherDiscount vd = computeVoucherDiscountForQuote(userId, req.getUserVoucherId(), subtotal);
+
+        double finalAmount = subtotal - vd.discountAmount();
+        if (finalAmount < 0) finalAmount = 0;
+
+        List<TicketQuoteLineDTO> dtoLines = pricedLines.stream()
+                .map(l -> TicketQuoteLineDTO.builder()
+                        .seatId(l.seatId())
+                        .seatLabel(l.seatLabel())
+                        .seatTypeName(l.seatTypeName())
+                        .originalPrice(l.originalPrice())
+                        .promotionDiscount(l.promotionDiscount())
+                        .membershipDiscount(l.membershipDiscount())
+                        .finalPrice(l.finalPrice())
+                        .build())
+                .toList();
+
+        return TicketQuoteResponse.builder()
+                .ticketLines(dtoLines)
+                .ticketTotal(ticketTotal)
+                .snackTotal(snackTotal)
+                .voucherDiscount(vd.discountAmount())
+                .finalAmount(finalAmount)
+                .rankName(pricing.rankName())
+                .membershipDiscountPercent(pricing.membershipDiscountPercent())
+                .build();
     }
 
     /**
@@ -476,6 +502,147 @@ public class TicketCheckoutService {
     }
 
     private record SnackTotals(int vndTotal, double doubleTotal, List<OrderDetailFood> rows) {
+    }
+
+    private record VoucherDiscount(double discountAmount) {
+    }
+
+    private VoucherDiscount computeVoucherDiscountForQuote(Integer userId, Integer userVoucherId, double subtotal) {
+        if (userVoucherId == null) {
+            return new VoucherDiscount(0.0);
+        }
+        UserVoucher uv = userVoucherRepository.findById(userVoucherId).orElse(null);
+        if (uv == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher không tồn tại");
+        }
+        if (uv.getUser() == null || !uv.getUser().getUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Voucher không thuộc tài khoản của bạn");
+        }
+        if (uv.getStatus() == null || uv.getStatus() != 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher đã được sử dụng");
+        }
+        Voucher v = uv.getVoucher();
+        if (v == null || v.getStatus() == null || v.getStatus() != 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher không khả dụng");
+        }
+        LocalDate today = LocalDate.now();
+        if (v.getStartDate() != null && today.isBefore(v.getStartDate())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher chưa có hiệu lực");
+        }
+        if (v.getEndDate() != null && today.isAfter(v.getEndDate())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher đã hết hạn");
+        }
+        double minOrderValue = v.getMinOrderValue() != null ? v.getMinOrderValue() : 0.0;
+        if (subtotal < minOrderValue) {
+            return new VoucherDiscount(0.0);
+        }
+        double discount = Math.round(calculateDiscount(subtotal, v));
+        if (discount > subtotal) discount = subtotal;
+        return new VoucherDiscount(discount);
+    }
+
+    private record PricingContext(
+            double unitBase,
+            double promotionDiscountPercent,
+            double membershipDiscountPercent,
+            String rankName) {
+    }
+
+    private PricingContext buildPricingContext(User user, Showtime showtime, Integer cinemaId) {
+        double unitBase = computeUnitBasePrice(showtime);
+
+        Integer movieId = showtime.getMovie() != null ? showtime.getMovie().getMovieId() : null;
+        LocalDate today = LocalDate.now();
+        List<Promotion> promotions = promotionRepository.findActivePromotions(movieId, cinemaId, today);
+        double promotionDiscountPercent = 0.0;
+        if (!promotions.isEmpty()) {
+            Promotion promo = promotions.get(0);
+            promotionDiscountPercent = promo.getDiscountPercent() != null ? promo.getDiscountPercent() : 0.0;
+        }
+
+        double membershipDiscountPercent = 0.0;
+        String rankName = null;
+        MembershipRank effectiveRank = resolveEffectiveRank(user);
+        if (effectiveRank != null) {
+            membershipDiscountPercent = effectiveRank.getDiscountPercent() != null ? effectiveRank.getDiscountPercent() : 0.0;
+            rankName = effectiveRank.getRankName();
+        }
+
+        return new PricingContext(unitBase, promotionDiscountPercent, membershipDiscountPercent, rankName);
+    }
+
+    /**
+     * Dùng tổng chi năm hiện tại để xác định hạng hiệu lực khi checkout/quote.
+     * Tránh lệch trường hợp rank_id trong users chưa được cập nhật kịp.
+     */
+    private MembershipRank resolveEffectiveRank(User user) {
+        if (user == null || user.getUserId() == null) return null;
+        int currentYear = LocalDate.now().getYear();
+        double spending = orderOnlineRepository.sumCompletedRevenueByUserAndYear(user.getUserId(), currentYear);
+
+        List<MembershipRank> activeRanks = membershipRankRepository.findAll().stream()
+                .filter(r -> r.getStatus() == null || r.getStatus() == 1)
+                .toList();
+        if (activeRanks.isEmpty()) return null;
+
+        MembershipRank matched = activeRanks.stream()
+                .filter(r -> spending >= (r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .max(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .orElse(null);
+        if (matched != null) return matched;
+        return activeRanks.stream()
+                .min(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .orElse(null);
+    }
+
+    private record PricedSeatLine(
+            Integer seatId,
+            String seatLabel,
+            String seatTypeName,
+            double originalPrice,
+            double promotionDiscount,
+            double membershipDiscount,
+            double finalPrice) {
+    }
+
+    private List<PricedSeatLine> priceSeats(List<Seat> seats, PricingContext ctx) {
+        List<PricedSeatLine> out = new ArrayList<>();
+        for (Seat seat : seats) {
+            double seatSurcharge = 0.0;
+            boolean isCouple = false;
+            SeatType st = seat.getSeatType();
+            if (st != null) {
+                if (st.getSurcharge() != null) {
+                    seatSurcharge = st.getSurcharge();
+                }
+                isCouple = Boolean.TRUE.equals(st.getCoupleSeat());
+            }
+            int mult = isCouple ? 2 : 1;
+
+            double original = (ctx.unitBase() + seatSurcharge) * mult;
+            double promoDiscount = (ctx.unitBase() * (ctx.promotionDiscountPercent() / 100.0)) * mult;
+            double afterPromo = original - promoDiscount;
+            double memberDiscount = afterPromo * (ctx.membershipDiscountPercent() / 100.0);
+            double finalPrice = afterPromo - memberDiscount;
+
+            long originalRounded = Math.round(original);
+            long promoRounded = Math.round(promoDiscount);
+            long memberRounded = Math.round(memberDiscount);
+            long finalRounded = Math.round(finalPrice);
+
+            String seatTypeName = st != null ? st.getName() : null;
+            String seatLabel = (seat.getRow() != null ? seat.getRow() : "") + (seat.getNumber() != null ? seat.getNumber() : "");
+
+            out.add(new PricedSeatLine(
+                    seat.getSeatId(),
+                    seatLabel != null && !seatLabel.isBlank() ? seatLabel : null,
+                    seatTypeName,
+                    (double) originalRounded,
+                    (double) promoRounded,
+                    (double) memberRounded,
+                    (double) finalRounded));
+        }
+        return out;
     }
 
     /**

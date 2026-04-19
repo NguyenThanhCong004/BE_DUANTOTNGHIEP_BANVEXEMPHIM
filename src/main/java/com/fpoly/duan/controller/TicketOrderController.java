@@ -13,6 +13,7 @@ import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.CancelPendingOrderRequest;
 import com.fpoly.duan.dto.TicketCheckoutRequest;
 import com.fpoly.duan.dto.TicketCheckoutResponse;
+import com.fpoly.duan.dto.TicketQuoteResponse;
 import com.fpoly.duan.security.CustomUserDetails;
 import com.fpoly.duan.service.TicketCheckoutService;
 
@@ -30,6 +31,36 @@ import lombok.RequiredArgsConstructor;
 public class TicketOrderController {
 
     private final TicketCheckoutService ticketCheckoutService;
+
+    @PostMapping("/quote")
+    @Operation(summary = "Báo giá vé (không tạo đơn)", description = """
+            Bắt buộc JWT **khách hàng**. Trả báo giá theo đúng công thức BE:
+            khuyến mãi phim + giảm theo hạng + voucher (nếu có). Không tạo order/ticket.
+            """)
+    public ResponseEntity<ApiResponse<TicketQuoteResponse>> quote(
+            Authentication authentication,
+            @RequestBody TicketCheckoutRequest request) {
+
+        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (details.getStaff() != null || details.getUser() == null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                    ApiResponse.<TicketQuoteResponse>builder()
+                            .status(HttpStatus.FORBIDDEN.value())
+                            .message("Chỉ tài khoản khách hàng được thao tác")
+                            .build());
+        }
+
+        Integer userId = details.getUser().getUserId();
+        TicketQuoteResponse data = ticketCheckoutService.quote(userId, request);
+
+        return ResponseEntity.ok(ApiResponse.<TicketQuoteResponse>builder()
+                .status(HttpStatus.OK.value())
+                .message("Báo giá thành công")
+                .data(data)
+                .build());
+    }
 
     @PostMapping("/checkout")
     @Operation(summary = "Checkout vé + tạo link PayOS", description = """
