@@ -21,17 +21,23 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        // Tìm staff theo email (gmail) trước, nếu không có thì tìm theo username
-        Staff staff = staffRepository.findByEmail(username).orElse(null);
+        String key = username != null ? username.trim() : "";
+        // Staff: tránh NonUniqueResult khi trùng email/username trong DB
+        Staff staff = staffRepository.findFirstByEmailOrderByStaffIdAsc(key).orElse(null);
         if (staff == null) {
-            staff = staffRepository.findByUsername(username).orElse(null);
+            staff = staffRepository.findFirstByUsernameOrderByStaffIdAsc(key).orElse(null);
         }
-        if (staff != null) return CustomUserDetails.builder().staff(staff).build();
+        if (staff != null) {
+            return CustomUserDetails.builder().staff(staff).build();
+        }
 
-        // Then try in users table
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found with username/email: " + username));
-        
+        User user = userRepository.findFirstByUsernameOrderByUserIdAsc(key).orElse(null);
+        if (user == null && key.contains("@")) {
+            user = userRepository.findFirstByEmailIgnoreCaseOrderByUserIdAsc(key).orElse(null);
+        }
+        if (user == null) {
+            throw new UsernameNotFoundException("User not found with username/email: " + username);
+        }
         return CustomUserDetails.builder().user(user).build();
     }
 }
