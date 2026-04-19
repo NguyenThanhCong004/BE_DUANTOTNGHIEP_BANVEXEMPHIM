@@ -21,7 +21,8 @@ public interface StaffShiftRepository extends JpaRepository<StaffShift, Integer>
     /** Ca làm của một nhân viên — dùng cho GET /shifts/me */
     List<StaffShift> findByStaffStaffIdOrderByDateDescStartTimeAsc(Integer staffId);
 
-    java.util.Optional<StaffShift> findFirstByStaff_StaffIdAndStartTimeBeforeAndEndTimeAfter(Integer staffId, LocalDateTime before, LocalDateTime after);
+    @Query("SELECT s FROM StaffShift s WHERE s.staff.staffId = :staffId AND :now BETWEEN s.startTime AND s.endTime")
+    java.util.Optional<StaffShift> findActiveShift(@Param("staffId") Integer staffId, @Param("now") LocalDateTime now);
 
     @Modifying
     @Query("DELETE FROM StaffShift s WHERE s.staff.staffId = :staffId AND s.date >= :date")

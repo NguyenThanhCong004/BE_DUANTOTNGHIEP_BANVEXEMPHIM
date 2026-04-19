@@ -15,13 +15,16 @@ public interface OrderDetailFoodRepository extends JpaRepository<OrderDetailFood
 
     List<OrderDetailFood> findByOrderOnline_OrderOnlineId(Integer orderOnlineId);
 
-    @Query("SELECT CAST(COALESCE(SUM(od.quantity), 0) AS Long) FROM OrderDetailFood od " +
-           "WHERE od.orderOnline.status = 1 AND od.orderOnline.staff.staffId = :staffId AND od.orderOnline.createdAt BETWEEN :start AND :end")
+    @Query("SELECT COALESCE(SUM(od.quantity), 0) FROM OrderDetailFood od " +
+           "JOIN od.orderOnline o " +
+           "WHERE o.status = 1 AND o.staff.staffId = :staffId AND o.createdAt BETWEEN :start AND :end")
     Long countProductsByStaffBetween(@Param("staffId") Integer staffId, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
-    @Query("SELECT od.product.name, SUM(od.quantity) FROM OrderDetailFood od " +
-           "WHERE od.orderOnline.status = 1 AND od.orderOnline.staff.staffId = :staffId AND od.orderOnline.createdAt BETWEEN :start AND :end " +
-           "GROUP BY od.product.name")
+    @Query("SELECT p.name, SUM(od.quantity) FROM OrderDetailFood od " +
+           "JOIN od.orderOnline o " +
+           "JOIN od.product p " +
+           "WHERE o.status = 1 AND o.staff.staffId = :staffId AND o.createdAt BETWEEN :start AND :end " +
+           "GROUP BY p.name")
     List<Object[]> getProductsBreakdownByStaffBetween(@Param("staffId") Integer staffId, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
     boolean existsByProduct_ProductId(Integer productId);

@@ -173,6 +173,7 @@ public class AuthServiceImpl implements AuthService {
                 .role(staff.getRole())
                 .avatar(staff.getAvatar())
                 .cinemaId(staff.getCinema() != null ? staff.getCinema().getCinemaId() : null)
+                .cinemaName(staff.getCinema() != null ? staff.getCinema().getName() : null)
                 .build();
     }
 
