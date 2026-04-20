@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class EphemeralSeatHoldService {
 
-    private static final long TTL_MS = 45_000;
+    private static final long TTL_MS = 300_000;
 
     private record Hold(String holderId, long expiresAtEpochMs) {
     }

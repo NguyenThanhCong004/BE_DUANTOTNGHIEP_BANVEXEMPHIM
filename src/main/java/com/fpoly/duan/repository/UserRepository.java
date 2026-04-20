@@ -11,6 +11,13 @@ import com.fpoly.duan.entity.User;
 public interface UserRepository extends JpaRepository<User, Integer> {
     Optional<User> findByUsername(String username);
 
+    /** Tránh lỗi NonUniqueResult khi DB có nhiều user cùng username. */
+    Optional<User> findFirstByUsernameOrderByUserIdAsc(String username);
+
+    Optional<User> findFirstByEmailIgnoreCaseOrderByUserIdAsc(String email);
+
+    Optional<User> findFirstByUsernameIgnoreCaseOrderByUserIdAsc(String username);
+
     Optional<User> findByUsernameIgnoreCase(String username);
     Optional<User> findByEmail(String email);
 
