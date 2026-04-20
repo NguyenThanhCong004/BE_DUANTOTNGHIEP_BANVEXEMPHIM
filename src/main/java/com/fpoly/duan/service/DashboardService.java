@@ -103,10 +103,10 @@ public class DashboardService {
         return chartData;
     }
 
-    public List<CinemaRankingDTO> getCinemaRankings() {
+    public List<CinemaRankingDTO> getCinemaRankings(int year, int month) {
         List<CinemaRankingDTO> ranking = new ArrayList<>();
         try {
-            List<Object[]> results = orderOnlineRepository.getCinemaRankings();
+            List<Object[]> results = orderOnlineRepository.getCinemaRankings(year, month);
             if (results != null) {
                 for (Object[] result : results) {
                     if (result.length >= 3) {
@@ -118,7 +118,7 @@ public class DashboardService {
                 }
             }
         } catch (Exception e) {
-            log.error("Error generating Cinema Rankings: ", e);
+            log.error("Error generating Cinema Rankings for year {} month {}: ", year, month, e);
         }
         return ranking;
     }
