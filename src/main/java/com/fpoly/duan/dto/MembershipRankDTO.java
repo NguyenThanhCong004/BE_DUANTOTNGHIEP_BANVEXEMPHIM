@@ -17,4 +17,5 @@ public class MembershipRankDTO {
     private Double discountPercent;
     private Integer bonusPoint;
     private Integer status;
+    private Boolean isDefault;
 }

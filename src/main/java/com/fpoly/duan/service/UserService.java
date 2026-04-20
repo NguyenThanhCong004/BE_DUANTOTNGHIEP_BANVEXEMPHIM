@@ -17,4 +17,7 @@ public interface UserService {
 
     /** Đặt lại mật khẩu sau khi xác thực token quên mật khẩu (không cần mật khẩu cũ). */
     void resetPasswordByUserId(Integer userId, String newPassword);
+
+    /** Tính toán lại hạng cho toàn bộ người dùng trong hệ thống (chạy khi Super Admin thay đổi mốc hạng). */
+    void recalculateAllUserRanks();
 }
