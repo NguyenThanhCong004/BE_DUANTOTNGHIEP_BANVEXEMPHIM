@@ -43,20 +43,16 @@ public interface OrderOnlineRepository extends JpaRepository<OrderOnline, Intege
            "ORDER BY MONTH(o.createdAt)")
     List<Object[]> getMonthlyRevenueByYear(@Param("year") int year);
 
-    @Query("SELECT COALESCE(SUM(o.finalAmount), 0.0) " +
-           "FROM OrderOnline o " +
-           "WHERE o.status = 1 " +
-           "AND o.user.userId = :userId " +
-           "AND YEAR(o.createdAt) = :year")
+    @Query("SELECT COALESCE(SUM(o.finalAmount), 0.0) FROM OrderOnline o WHERE o.user.userId = :userId AND o.status = 1 AND YEAR(o.createdAt) = :year")
     Double sumCompletedRevenueByUserAndYear(@Param("userId") Integer userId, @Param("year") int year);
 
-    @Query("SELECT c.name, SUM(t.price), COUNT(t.ticketId) " +
-           "FROM Ticket t " +
-           "JOIN t.showtime s " +
-           "JOIN s.room r " +
-           "JOIN r.cinema c " +
-           "WHERE t.orderOnline.status = 1 " +
+    @Query(value = "SELECT TOP 5 CAST(c.name AS NVARCHAR(MAX)), CAST(SUM(t.price) AS FLOAT) as revenue, CAST(COUNT(t.ticket_id) AS BIGINT) as count " +
+           "FROM tickets t " +
+           "JOIN showtimes s ON t.showtime_id = s.showtime_id " +
+           "JOIN rooms r ON s.room_id = r.room_id " +
+           "JOIN cinemas c ON r.cinema_id = c.cinema_id " +
+           "WHERE t.order_online_id IN (SELECT order_online_id FROM orders_online WHERE status = 1) " +
            "GROUP BY c.name " +
-           "ORDER BY SUM(t.price) DESC")
+           "ORDER BY SUM(t.price) DESC", nativeQuery = true)
     List<Object[]> getCinemaRankings();
 }
