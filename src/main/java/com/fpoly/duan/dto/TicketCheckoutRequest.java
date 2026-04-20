@@ -46,4 +46,8 @@ public class TicketCheckoutRequest {
     @Valid
     @Schema(description = "Bắp nước kèm vé — sản phẩm phải đang bán tại rạp của suất chiếu")
     private List<SnackLineRequest> snacks;
+
+    @Positive
+    @Schema(description = "ID voucher trong ví của user (user_voucher_id) — tùy chọn")
+    private Integer userVoucherId;
 }
