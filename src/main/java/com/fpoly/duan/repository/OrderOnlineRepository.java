@@ -43,6 +43,9 @@ public interface OrderOnlineRepository extends JpaRepository<OrderOnline, Intege
            "ORDER BY MONTH(o.createdAt)")
     List<Object[]> getMonthlyRevenueByYear(@Param("year") int year);
 
+    @Query("SELECT COALESCE(SUM(o.finalAmount), 0.0) FROM OrderOnline o WHERE o.user.userId = :userId AND o.status = 1 AND YEAR(o.createdAt) = :year")
+    Double sumCompletedRevenueByUserAndYear(@Param("userId") Integer userId, @Param("year") int year);
+
     @Query(value = "SELECT TOP 5 CAST(c.name AS NVARCHAR(MAX)), CAST(SUM(t.price) AS FLOAT) as revenue, CAST(COUNT(t.ticket_id) AS BIGINT) as count " +
            "FROM tickets t " +
            "JOIN showtimes s ON t.showtime_id = s.showtime_id " +
@@ -50,6 +53,6 @@ public interface OrderOnlineRepository extends JpaRepository<OrderOnline, Intege
            "JOIN cinemas c ON r.cinema_id = c.cinema_id " +
            "WHERE t.order_online_id IN (SELECT order_online_id FROM orders_online WHERE status = 1) " +
            "GROUP BY c.name " +
-           "ORDER BY SUM(t.price) DESC")
+           "ORDER BY SUM(t.price) DESC", nativeQuery = true)
     List<Object[]> getCinemaRankings();
 }

@@ -124,6 +124,35 @@ public class UserServiceImpl implements UserService {
         userRepository.save(user);
     }
 
+    @Override
+    public void recalculateAllUserRanks() {
+        List<User> allUsers = userRepository.findAll();
+        List<MembershipRank> activeRanks = membershipRankRepository.findAll().stream()
+                .filter(r -> r.getStatus() != null && r.getStatus() == 1)
+                .sorted(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0, Comparator.reverseOrder()))
+                .collect(Collectors.toList());
+
+        if (activeRanks.isEmpty()) {
+            return;
+        }
+
+        int currentYear = LocalDate.now().getYear();
+        for (User user : allUsers) {
+            double completedRevenue = orderOnlineRepository
+                    .sumCompletedRevenueByUserAndYear(user.getUserId(), currentYear);
+            
+            // Tìm hạng cao nhất mà người dùng đủ điều kiện
+            MembershipRank matched = activeRanks.stream()
+                    .filter(r -> completedRevenue >= (r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                    .findFirst()
+                    .orElse(activeRanks.get(activeRanks.size() - 1)); // Nếu không đạt hạng nào, lấy hạng thấp nhất trong số các hạng đang hoạt động
+
+            user.setTotalSpending(completedRevenue);
+            user.setRankId(matched.getRankId());
+        }
+        userRepository.saveAll(allUsers);
+    }
+
     private UserDTO convertToDTO(User user) {
         int currentYear = LocalDate.now().getYear();
         double currentYearSpending = orderOnlineRepository
