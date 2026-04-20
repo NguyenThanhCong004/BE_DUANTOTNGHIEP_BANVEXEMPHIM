@@ -21,16 +21,18 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        String key = username != null ? username.trim() : "";
         // Tìm staff theo email (gmail) trước, nếu không có thì tìm theo username
-        Staff staff = staffRepository.findByEmail(username).orElse(null);
+        Staff staff = staffRepository.findByEmail(key).orElse(null);
         if (staff == null) {
-            staff = staffRepository.findByUsername(username).orElse(null);
+            staff = staffRepository.findByUsername(key).orElse(null);
         }
         if (staff != null) return CustomUserDetails.builder().staff(staff).build();
 
-        // Then try in users table
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found with username/email: " + username));
+        // Then try in users table (username or email)
+        User user = userRepository.findByUsernameIgnoreCase(key)
+                .or(() -> userRepository.findByEmailIgnoreCase(key))
+                .orElseThrow(() -> new UsernameNotFoundException("User not found with username/email: " + key));
         
         return CustomUserDetails.builder().user(user).build();
     }

@@ -20,6 +20,7 @@ import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.MembershipRankDTO;
 import com.fpoly.duan.entity.MembershipRank;
 import com.fpoly.duan.repository.MembershipRankRepository;
+import com.fpoly.duan.repository.UserRepository;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -36,6 +37,7 @@ import lombok.RequiredArgsConstructor;
 public class MembershipRankController {
 
     private final MembershipRankRepository membershipRankRepository;
+    private final UserRepository userRepository;
 
     @GetMapping
     @Operation(summary = "Danh sách hạng")
@@ -81,7 +83,18 @@ public class MembershipRankController {
         MembershipRank r = membershipRankRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy hạng với id: " + id));
         validate(dto);
-        MembershipRank saved = membershipRankRepository.save(fromDTO(r, dto));
+
+        boolean hasChanges = applyChanges(r, dto);
+
+        if (!hasChanges) {
+            return ResponseEntity.ok(ApiResponse.<MembershipRankDTO>builder()
+                    .status(HttpStatus.OK.value())
+                    .message("Không có thay đổi để cập nhật")
+                    .data(toDTO(r))
+                    .build());
+        }
+
+        MembershipRank saved = membershipRankRepository.save(r);
         return ResponseEntity.ok(ApiResponse.<MembershipRankDTO>builder()
                 .status(HttpStatus.OK.value())
                 .message("Cập nhật hạng thành công")
@@ -94,6 +107,9 @@ public class MembershipRankController {
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
         if (!membershipRankRepository.existsById(id)) {
             throw new RuntimeException("Không tìm thấy hạng với id: " + id);
+        }
+        if (userRepository.existsByRankId(id)) {
+            throw new RuntimeException("Không thể xóa hạng vì đang có người dùng thuộc hạng này");
         }
         membershipRankRepository.deleteById(id);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
@@ -118,6 +134,9 @@ public class MembershipRankController {
         if (dto.getBonusPoint() == null || dto.getBonusPoint() < 1) {
             throw new RuntimeException("Điểm thưởng phải >= 1");
         }
+        if (dto.getStatus() == null || (dto.getStatus() != 0 && dto.getStatus() != 1)) {
+            throw new RuntimeException("Trạng thái không hợp lệ (0: ngừng hoạt động, 1: hoạt động)");
+        }
     }
 
     private MembershipRankDTO toDTO(MembershipRank r) {
@@ -128,6 +147,7 @@ public class MembershipRankController {
                 .description(r.getDescription())
                 .discountPercent(r.getDiscountPercent())
                 .bonusPoint(r.getBonusPoint())
+                .status(r.getStatus())
                 .build();
     }
 
@@ -137,6 +157,46 @@ public class MembershipRankController {
         r.setDescription(dto.getDescription());
         r.setDiscountPercent(dto.getDiscountPercent());
         r.setBonusPoint(dto.getBonusPoint());
+        r.setStatus(dto.getStatus());
         return r;
+    }
+
+    private boolean applyChanges(MembershipRank r, MembershipRankDTO dto) {
+        boolean hasChanges = false;
+
+        if (dto.getRankName() != null && !dto.getRankName().trim().isEmpty()) {
+            String newName = dto.getRankName().trim();
+            if (!newName.equals(r.getRankName())) {
+                r.setRankName(newName);
+                hasChanges = true;
+            }
+        }
+
+        if (dto.getMinSpending() != null && !dto.getMinSpending().equals(r.getMinSpending())) {
+            r.setMinSpending(dto.getMinSpending());
+            hasChanges = true;
+        }
+
+        if (dto.getDescription() != null && !dto.getDescription().equals(r.getDescription())) {
+            r.setDescription(dto.getDescription());
+            hasChanges = true;
+        }
+
+        if (dto.getDiscountPercent() != null && !dto.getDiscountPercent().equals(r.getDiscountPercent())) {
+            r.setDiscountPercent(dto.getDiscountPercent());
+            hasChanges = true;
+        }
+
+        if (dto.getBonusPoint() != null && !dto.getBonusPoint().equals(r.getBonusPoint())) {
+            r.setBonusPoint(dto.getBonusPoint());
+            hasChanges = true;
+        }
+
+        if (dto.getStatus() != null && !dto.getStatus().equals(r.getStatus())) {
+            r.setStatus(dto.getStatus());
+            hasChanges = true;
+        }
+
+        return hasChanges;
     }
 }

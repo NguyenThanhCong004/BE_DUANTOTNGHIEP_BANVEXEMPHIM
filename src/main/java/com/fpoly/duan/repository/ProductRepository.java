@@ -10,4 +10,8 @@ import com.fpoly.duan.entity.Product;
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Integer> {
     List<Product> findByCategory_CategoryProductId(Integer categoryId);
+
+    List<Product> findAllByOrderByProductIdDesc();
+
+    List<Product> findByCategory_CategoryProductIdOrderByProductIdDesc(Integer categoryId);
 }

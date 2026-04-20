@@ -2,6 +2,7 @@ package com.fpoly.duan.config;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -65,7 +66,7 @@ public class SecurityConfig {
                         .accessDeniedHandler((request, response, accessDeniedException) -> writeJsonApiResponse(
                                 response,
                                 HttpServletResponse.SC_FORBIDDEN,
-                                "Không có quyền truy cập API này (ví dụ: JWT nhân viên không dùng cho đặt vé/đồ ăn online — hãy đăng nhập khách).")))
+                                "Không có quyền truy cập API này.")))
                 .authorizeHttpRequests(auth -> auth
                         // Cho phép các yêu cầu tiền kiểm (Preflight) của trình duyệt
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
@@ -134,6 +135,10 @@ public class SecurityConfig {
         ));
         
         // 4. Cho phép gửi Cookie/Token
+        // SỬA LỖI CORS: Sử dụng setAllowedOriginPatterns("*") để tránh bị block khi FE chạy khác cổng (ví dụ port tự động đổi sang 5175, 3000...)
+        configuration.setAllowedOriginPatterns(Collections.singletonList("*"));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept"));
         configuration.setAllowCredentials(true);
         
         // 5. Thời gian cache cấu hình CORS (1 tiếng)

@@ -99,6 +99,9 @@ public class CinemaController {
         Cinema c = cinemaRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với id: " + id));
         
+        // Kiểm tra xem có dữ liệu cập nhật không
+        boolean hasChanges = false;
+        
         if (dto.getName() != null) {
             String name = dto.getName().trim();
             if (name.isEmpty()) throw new RuntimeException("Tên rạp không được để trống");
@@ -106,6 +109,7 @@ public class CinemaController {
                 throw new RuntimeException("Tên rạp '" + name + "' đã tồn tại ở chi nhánh khác");
             }
             c.setName(name);
+            hasChanges = true;
         }
         
         if (dto.getAddress() != null) {
@@ -114,9 +118,23 @@ public class CinemaController {
                 throw new RuntimeException("Địa chỉ '" + address + "' đã được sử dụng bởi rạp khác");
             }
             c.setAddress(address);
+            hasChanges = true;
         }
 
-        if (dto.getStatus() != null) c.setStatus(dto.getStatus());
+        if (dto.getStatus() != null) {
+            c.setStatus(dto.getStatus());
+            hasChanges = true;
+        }
+        
+        // Nếu không có thay đổi nào, trả về thông báo phù hợp
+        if (!hasChanges) {
+            return ResponseEntity.ok(ApiResponse.<CinemaDTO>builder()
+                    .status(HttpStatus.OK.value())
+                    .message("Không có thay đổi để cập nhật")
+                    .data(toDTO(c))
+                    .build());
+        }
+        
         Cinema saved = cinemaRepository.save(c);
         return ResponseEntity.ok(ApiResponse.<CinemaDTO>builder()
                 .status(HttpStatus.OK.value())
