@@ -48,7 +48,8 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(readOnly = true)
     public UserDTO getUserByUsername(String username) {
-        return userRepository.findByUsername(username)
+        String key = username != null ? username.trim() : "";
+        return userRepository.findFirstByUsernameOrderByUserIdAsc(key)
                 .map(this::convertToDTO)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng với tên đăng nhập: " + username));
     }
@@ -128,8 +129,10 @@ public class UserServiceImpl implements UserService {
         int currentYear = LocalDate.now().getYear();
         double currentYearSpending = orderOnlineRepository
                 .sumCompletedRevenueByUserAndYear(user.getUserId(), currentYear);
-
-        MembershipRank assignedRank = resolveRankEntityForRead(user.getRankId());
+        MembershipRank assignedRank = resolveRankBySpending(currentYearSpending);
+        if (assignedRank == null) {
+            assignedRank = resolveRankEntityForRead(user.getRankId());
+        }
 
         return UserDTO.builder()
                 .userId(user.getUserId())
@@ -145,6 +148,21 @@ public class UserServiceImpl implements UserService {
                 .rankId(assignedRank != null ? assignedRank.getRankId() : null)
                 .rankName(assignedRank != null ? assignedRank.getRankName() : "Hạng Đồng")
                 .build();
+    }
+
+    private MembershipRank resolveRankBySpending(double spending) {
+        List<MembershipRank> activeRanks = membershipRankRepository.findAll().stream()
+                .filter(r -> r.getStatus() == null || r.getStatus() == 1)
+                .toList();
+        if (activeRanks.isEmpty()) return null;
+        MembershipRank matched = activeRanks.stream()
+                .filter(r -> spending >= (r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .max(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .orElse(null);
+        if (matched != null) return matched;
+        return activeRanks.stream()
+                .min(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .orElse(null);
     }
 
     private User convertToEntity(UserDTO userDTO) {
