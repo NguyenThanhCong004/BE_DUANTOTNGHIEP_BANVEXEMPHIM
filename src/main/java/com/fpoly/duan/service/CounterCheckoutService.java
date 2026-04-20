@@ -1,12 +1,10 @@
 package com.fpoly.duan.service;
 
-import com.fpoly.duan.config.PayOSProperties;
 import com.fpoly.duan.dto.CounterCheckoutRequest;
 import com.fpoly.duan.dto.payos.PayOSCheckoutData;
 import com.fpoly.duan.dto.payos.PayOSCreatePaymentLinkRequest;
 import com.fpoly.duan.entity.*;
 import com.fpoly.duan.repository.*;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,7 +14,6 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class CounterCheckoutService {
 
     private final OrderOnlineRepository orderOnlineRepository;
@@ -27,8 +24,28 @@ public class CounterCheckoutService {
     private final ShowtimeRepository showtimeRepository;
     private final SeatRepository seatRepository;
     private final ProductRepository productRepository;
-    
     private final PayOSService payOSService;
+
+    public CounterCheckoutService(
+            OrderOnlineRepository orderOnlineRepository,
+            TicketRepository ticketRepository,
+            OrderDetailFoodRepository orderDetailFoodRepository,
+            StaffRepository staffRepository,
+            UserRepository userRepository,
+            ShowtimeRepository showtimeRepository,
+            SeatRepository seatRepository,
+            ProductRepository productRepository,
+            PayOSService payOSService) {
+        this.orderOnlineRepository = orderOnlineRepository;
+        this.ticketRepository = ticketRepository;
+        this.orderDetailFoodRepository = orderDetailFoodRepository;
+        this.staffRepository = staffRepository;
+        this.userRepository = userRepository;
+        this.showtimeRepository = showtimeRepository;
+        this.seatRepository = seatRepository;
+        this.productRepository = productRepository;
+        this.payOSService = payOSService;
+    }
 
     @Transactional
     public Object checkout(Integer staffId, CounterCheckoutRequest request) {
@@ -40,11 +57,9 @@ public class CounterCheckoutService {
 
         User customer = null;
         if (request.getUserId() != null) {
-            customer = userRepository.findById(request.getUserId())
-                    .orElse(null);
+            customer = userRepository.findById(request.getUserId()).orElse(null);
         }
 
-        // 1. Tính toán giá vé và ghế
         double totalTicketsPrice = 0;
         List<Seat> selectedSeats = new ArrayList<>();
         if (request.getSeatIds() != null) {
@@ -52,7 +67,6 @@ public class CounterCheckoutService {
                 Seat seat = seatRepository.findById(seatId)
                         .orElseThrow(() -> new RuntimeException("Không tìm thấy ghế ID: " + seatId));
                 
-                // Kiểm tra xem ghế đã có vé cho suất chiếu này chưa
                 if (ticketRepository.existsByShowtime_ShowtimeIdAndSeat_SeatIdAndStatus(showtime.getShowtimeId(), seatId, 1)) {
                     throw new RuntimeException("Ghế " + seat.getRow() + seat.getNumber() + " đã được bán");
                 }
@@ -63,13 +77,11 @@ public class CounterCheckoutService {
                 double seatTypeSurcharge = (seat.getSeatType() != null && seat.getSeatType().getSurcharge() != null) 
                                  ? seat.getSeatType().getSurcharge() : 0.0;
 
-                double finalSeatPrice = ticketBasePrice + showtimeSurcharge + seatTypeSurcharge;
-                totalTicketsPrice += finalSeatPrice;
+                totalTicketsPrice += (ticketBasePrice + showtimeSurcharge + seatTypeSurcharge);
                 selectedSeats.add(seat);
             }
         }
 
-        // 2. Tính toán giá bắp nước
         double totalFoodPrice = 0;
         List<OrderDetailFood> foodDetails = new ArrayList<>();
         if (request.getProducts() != null) {
@@ -77,14 +89,13 @@ public class CounterCheckoutService {
                 Product product = productRepository.findById(item.getProductId())
                         .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm ID: " + item.getProductId()));
                 
-                double itemPrice = (product.getPrice() != null ? product.getPrice() : 0.0) * item.getQuantity();
-                totalFoodPrice += itemPrice;
+                totalFoodPrice += (product.getPrice() != null ? product.getPrice() : 0.0) * item.getQuantity();
 
                 OrderDetailFood detail = new OrderDetailFood();
                 detail.setProduct(product);
                 detail.setQuantity(item.getQuantity());
                 detail.setPrice(product.getPrice());
-                detail.setStatus(1); // Đã nhận/Đã bán
+                detail.setStatus(1);
                 foodDetails.add(detail);
             }
         }
@@ -92,7 +103,6 @@ public class CounterCheckoutService {
         double totalAmount = totalTicketsPrice + totalFoodPrice;
         boolean isTransfer = "TRANSFER".equalsIgnoreCase(request.getPaymentMethod());
 
-        // 3. Tạo hóa đơn (OrderOnline)
         OrderOnline order = new OrderOnline();
         long payOsCode = System.currentTimeMillis() / 1000; 
         order.setOrderCode("POS-" + (isTransfer ? payOsCode : UUID.randomUUID().toString().substring(0, 8).toUpperCase()));
@@ -100,14 +110,13 @@ public class CounterCheckoutService {
         order.setOriginalAmount(totalAmount);
         order.setFinalAmount(totalAmount);
         order.setDiscountAmount(0.0);
-        order.setStatus(isTransfer ? 0 : 1); // 0: PENDING (cho Transfer), 1: PAID (cho Cash)
+        order.setStatus(isTransfer ? 0 : 1);
         order.setPaymentMethod(request.getPaymentMethod());
         order.setStaff(staff);
         order.setUser(customer);
         
         OrderOnline savedOrder = orderOnlineRepository.save(order);
 
-        // 4. Lưu vé
         for (Seat seat : selectedSeats) {
             Ticket ticket = new Ticket();
             ticket.setShowtime(showtime);
@@ -121,35 +130,28 @@ public class CounterCheckoutService {
                                      ? seat.getSeatType().getSurcharge() : 0.0;
             
             ticket.setPrice(ticketBasePrice + showtimeSurcharge + seatTypeSurcharge);
-            ticket.setStatus(isTransfer ? 0 : 1); // 0: INVALID/PENDING, 1: VALID
+            ticket.setStatus(isTransfer ? 0 : 1);
             ticketRepository.save(ticket);
         }
 
-        // 5. Lưu chi tiết bắp nước
         for (OrderDetailFood detail : foodDetails) {
             detail.setOrderOnline(savedOrder);
             orderDetailFoodRepository.save(detail);
         }
 
-        // 6. Nếu là chuyển khoản, tạo link PayOS
         if (isTransfer) {
             try {
-                // Hardcode URL POS để đảm bảo luôn chạy
-                String cancelUrl = "http://localhost:5173/payment/cancel";
-                String returnUrl = "http://localhost:5173/payment/success";
-
                 PayOSCreatePaymentLinkRequest payReq = PayOSCreatePaymentLinkRequest.builder()
                         .orderCode(payOsCode)
                         .amount((int) totalAmount)
-                        .description("TT ve POS " + order.getOrderCode())
-                        .cancelUrl(cancelUrl)
-                        .returnUrl(returnUrl)
-                        .buyerName(customer != null ? customer.getFullname() : "Khach tai quay")
+                        .description("TT POS " + payOsCode)
+                        .cancelUrl("http://localhost:5173/payment/cancel")
+                        .returnUrl("http://localhost:5173/payment/success")
+                        .buyerName(customer != null ? customer.getFullname() : "Khach POS")
                         .build();
-                
                 return payOSService.createPaymentLink(payReq);
             } catch (Exception e) {
-                throw new RuntimeException("Lỗi kết nối PayOS: " + e.getMessage());
+                throw new RuntimeException("PayOS Error: " + e.getMessage());
             }
         }
 
@@ -158,15 +160,22 @@ public class CounterCheckoutService {
 
     @Transactional
     public OrderOnline confirmPaid(String orderCode) {
-        OrderOnline order = orderOnlineRepository.findByOrderCode(orderCode)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng: " + orderCode));
+        final String searchCode;
+        if (orderCode != null && !orderCode.startsWith("POS-") && orderCode.matches("\\d+")) {
+            searchCode = "POS-" + orderCode;
+        } else {
+            searchCode = orderCode;
+        }
+
+        OrderOnline order = orderOnlineRepository.findByOrderCode(searchCode)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng: " + searchCode));
         
         if (order.getStatus() == 1) return order;
 
         order.setStatus(1);
         OrderOnline savedOrder = orderOnlineRepository.save(order);
 
-        // Cập nhật trạng thái các vé liên quan
+        // Cập nhật trạng thái các vé liên quan thành hợp lệ (1)
         List<Ticket> tickets = ticketRepository.findByOrderOnline_OrderOnlineId(order.getOrderOnlineId());
         for (Ticket t : tickets) {
             t.setStatus(1);
@@ -174,5 +183,33 @@ public class CounterCheckoutService {
         }
 
         return savedOrder;
+    }
+
+    @Transactional
+    public void cancelOrder(String orderCode) {
+        final String searchCode;
+        if (orderCode != null && !orderCode.startsWith("POS-") && orderCode.matches("\\d+")) {
+            searchCode = "POS-" + orderCode;
+        } else {
+            searchCode = orderCode;
+        }
+
+        OrderOnline order = orderOnlineRepository.findByOrderCode(searchCode)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng: " + searchCode));
+        
+        // Chỉ cho phép hủy đơn đang chờ thanh toán (status 0)
+        if (order.getStatus() != 0) {
+            throw new RuntimeException("Chỉ có thể hủy đơn hàng đang chờ thanh toán");
+        }
+
+        order.setStatus(2); // 2: CANCELED
+        orderOnlineRepository.save(order);
+
+        // Giải phóng ghế bằng cách đặt trạng thái vé về 0
+        List<Ticket> tickets = ticketRepository.findByOrderOnline_OrderOnlineId(order.getOrderOnlineId());
+        for (Ticket t : tickets) {
+            t.setStatus(0); // 0: INVALID
+            ticketRepository.save(t);
+        }
     }
 }
