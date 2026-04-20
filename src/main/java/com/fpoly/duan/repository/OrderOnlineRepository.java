@@ -46,13 +46,18 @@ public interface OrderOnlineRepository extends JpaRepository<OrderOnline, Intege
     @Query("SELECT COALESCE(SUM(o.finalAmount), 0.0) FROM OrderOnline o WHERE o.user.userId = :userId AND o.status = 1 AND YEAR(o.createdAt) = :year")
     Double sumCompletedRevenueByUserAndYear(@Param("userId") Integer userId, @Param("year") int year);
 
-    @Query(value = "SELECT TOP 5 CAST(c.name AS NVARCHAR(MAX)), CAST(SUM(t.price) AS FLOAT) as revenue, CAST(COUNT(t.ticket_id) AS BIGINT) as count " +
-           "FROM tickets t " +
-           "JOIN showtimes s ON t.showtime_id = s.showtime_id " +
-           "JOIN rooms r ON s.room_id = r.room_id " +
-           "JOIN cinemas c ON r.cinema_id = c.cinema_id " +
-           "WHERE t.order_online_id IN (SELECT order_online_id FROM orders_online WHERE status = 1) " +
-           "GROUP BY c.name " +
-           "ORDER BY SUM(t.price) DESC", nativeQuery = true)
+    @Query(value = "SELECT cinema_name, SUM(final_amount) as revenue, CAST(SUM(ticket_count) AS BIGINT) as total_tickets " +
+           "FROM ( " +
+           "    SELECT o.order_online_id, o.final_amount, CAST(c.name AS NVARCHAR(MAX)) as cinema_name, COUNT(t.ticket_id) as ticket_count " +
+           "    FROM orders_online o " +
+           "    JOIN tickets t ON o.order_online_id = t.order_online_id " +
+           "    JOIN showtimes s ON t.showtime_id = s.showtime_id " +
+           "    JOIN rooms r ON s.room_id = r.room_id " +
+           "    JOIN cinemas c ON r.cinema_id = c.cinema_id " +
+           "    WHERE o.status = 1 " +
+           "    GROUP BY o.order_online_id, o.final_amount, CAST(c.name AS NVARCHAR(MAX)) " +
+           ") sub " +
+           "GROUP BY cinema_name " +
+           "ORDER BY revenue DESC", nativeQuery = true)
     List<Object[]> getCinemaRankings();
 }
