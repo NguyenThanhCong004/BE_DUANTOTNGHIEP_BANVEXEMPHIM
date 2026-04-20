@@ -21,6 +21,7 @@ import com.fpoly.duan.dto.MembershipRankDTO;
 import com.fpoly.duan.entity.MembershipRank;
 import com.fpoly.duan.repository.MembershipRankRepository;
 import com.fpoly.duan.repository.UserRepository;
+import com.fpoly.duan.service.UserService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -38,11 +39,12 @@ public class MembershipRankController {
 
     private final MembershipRankRepository membershipRankRepository;
     private final UserRepository userRepository;
+    private final UserService userService;
 
     @GetMapping
     @Operation(summary = "Danh sách hạng")
     public ResponseEntity<ApiResponse<List<MembershipRankDTO>>> list() {
-        List<MembershipRankDTO> data = membershipRankRepository.findAll().stream()
+        List<MembershipRankDTO> data = membershipRankRepository.findAllByOrderByMinSpendingAsc().stream()
                 .map(this::toDTO)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.<List<MembershipRankDTO>>builder()
@@ -67,8 +69,12 @@ public class MembershipRankController {
     @PostMapping
     @Operation(summary = "Tạo hạng")
     public ResponseEntity<ApiResponse<MembershipRankDTO>> create(@RequestBody MembershipRankDTO dto) {
-        validate(dto);
+        validate(dto, null);
         MembershipRank saved = membershipRankRepository.save(fromDTO(new MembershipRank(), dto));
+        
+        // Cập nhật lại hạng cho toàn bộ user
+        userService.recalculateAllUserRanks();
+        
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<MembershipRankDTO>builder()
                 .status(HttpStatus.CREATED.value())
                 .message("Tạo hạng thành công")
@@ -82,7 +88,13 @@ public class MembershipRankController {
             @RequestBody MembershipRankDTO dto) {
         MembershipRank r = membershipRankRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy hạng với id: " + id));
-        validate(dto);
+        
+        // Khóa không cho sửa hạng mặc định (0đ)
+        if (r.getMinSpending() != null && r.getMinSpending() == 0) {
+            throw new RuntimeException("Không được phép chỉnh sửa hạng mặc định (0đ)");
+        }
+
+        validate(dto, id);
 
         boolean hasChanges = applyChanges(r, dto);
 
@@ -95,6 +107,10 @@ public class MembershipRankController {
         }
 
         MembershipRank saved = membershipRankRepository.save(r);
+        
+        // Cập nhật lại hạng cho toàn bộ user (bao gồm cả trường hợp tắt trạng thái hoạt động)
+        userService.recalculateAllUserRanks();
+
         return ResponseEntity.ok(ApiResponse.<MembershipRankDTO>builder()
                 .status(HttpStatus.OK.value())
                 .message("Cập nhật hạng thành công")
@@ -105,9 +121,14 @@ public class MembershipRankController {
     @DeleteMapping("/{id}")
     @Operation(summary = "Xóa hạng")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
-        if (!membershipRankRepository.existsById(id)) {
-            throw new RuntimeException("Không tìm thấy hạng với id: " + id);
+        MembershipRank r = membershipRankRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy hạng với id: " + id));
+
+        // Khóa không cho xóa hạng mặc định (0đ)
+        if (r.getMinSpending() != null && r.getMinSpending() == 0) {
+            throw new RuntimeException("Không được phép xóa hạng mặc định (0đ)");
         }
+
         if (userRepository.existsByRankId(id)) {
             throw new RuntimeException("Không thể xóa hạng vì đang có người dùng thuộc hạng này");
         }
@@ -118,7 +139,7 @@ public class MembershipRankController {
                 .build());
     }
 
-    private void validate(MembershipRankDTO dto) {
+    private void validate(MembershipRankDTO dto, Integer currentId) {
         if (dto == null) {
             throw new RuntimeException("Dữ liệu không hợp lệ");
         }
@@ -126,8 +147,56 @@ public class MembershipRankController {
             throw new RuntimeException("Tên hạng không được để trống");
         }
         if (dto.getMinSpending() == null || dto.getMinSpending() < 0) {
-            throw new RuntimeException("Chi tiêu tối thiểu không hợp lệ");
+            throw new RuntimeException("Chi tiêu tối thiểu không hợp lệ (Phải >= 0)");
         }
+        
+        // Logic kiểm tra chi tiêu tối thiểu giữa các hạng
+        List<MembershipRank> allRanks = membershipRankRepository.findAllByOrderByMinSpendingAsc();
+        
+        // 1. Kiểm tra trùng lặp minSpending (trừ hạng hiện tại nếu đang sửa)
+        boolean isDuplicate = allRanks.stream()
+            .anyMatch(r -> !r.getRankId().equals(currentId) && r.getMinSpending().equals(dto.getMinSpending()));
+        if (isDuplicate) {
+            String valStr = dto.getMinSpending() == 0 ? "Mặc định (0đ)" : formatVNCurrency(dto.getMinSpending());
+            throw new RuntimeException("Mức chi tiêu tối thiểu " + valStr + " đã tồn tại ở hạng khác");
+        }
+
+        // 2. Kiểm tra tên hạng trùng lặp
+        boolean nameDuplicate = allRanks.stream()
+            .anyMatch(r -> !r.getRankId().equals(currentId) && r.getRankName().equalsIgnoreCase(dto.getRankName().trim()));
+        if (nameDuplicate) {
+            throw new RuntimeException("Tên hạng '" + dto.getRankName().trim() + "' đã tồn tại");
+        }
+
+        // 3. Kiểm tra ràng buộc thứ tự (chỉ áp dụng khi sửa để tránh phá vỡ cấu trúc hiện tại)
+        if (currentId != null) {
+            int index = -1;
+            for (int i = 0; i < allRanks.size(); i++) {
+                if (allRanks.get(i).getRankId().equals(currentId)) {
+                    index = i;
+                    break;
+                }
+            }
+            
+            if (index != -1) {
+                // Kiểm tra với hạng thấp hơn liền kề
+                if (index > 0) {
+                    MembershipRank lowerRank = allRanks.get(index - 1);
+                    if (dto.getMinSpending() <= lowerRank.getMinSpending()) {
+                        throw new RuntimeException("Chi tiêu tối thiểu phải cao hơn hạng '" + lowerRank.getRankName() + "' (" + formatVNCurrency(lowerRank.getMinSpending()) + ")");
+                    }
+                }
+                
+                // Kiểm tra với hạng cao hơn liền kề
+                if (index < allRanks.size() - 1) {
+                    MembershipRank higherRank = allRanks.get(index + 1);
+                    if (dto.getMinSpending() >= higherRank.getMinSpending()) {
+                        throw new RuntimeException("Chi tiêu tối thiểu phải thấp hơn hạng '" + higherRank.getRankName() + "' (" + formatVNCurrency(higherRank.getMinSpending()) + ")");
+                    }
+                }
+            }
+        }
+
         if (dto.getDiscountPercent() == null || dto.getDiscountPercent() < 0 || dto.getDiscountPercent() > 100) {
             throw new RuntimeException("Phần trăm giảm phải từ 0 đến 100");
         }
@@ -139,6 +208,12 @@ public class MembershipRankController {
         }
     }
 
+    private String formatVNCurrency(Double amount) {
+        if (amount == null || amount == 0) return "0đ";
+        java.text.DecimalFormat formatter = new java.text.DecimalFormat("#,###");
+        return formatter.format(amount).replace(',', '.') + "đ";
+    }
+
     private MembershipRankDTO toDTO(MembershipRank r) {
         return MembershipRankDTO.builder()
                 .id(r.getRankId())
@@ -148,6 +223,7 @@ public class MembershipRankController {
                 .discountPercent(r.getDiscountPercent())
                 .bonusPoint(r.getBonusPoint())
                 .status(r.getStatus())
+                .isDefault(r.getMinSpending() != null && r.getMinSpending() == 0)
                 .build();
     }
 
