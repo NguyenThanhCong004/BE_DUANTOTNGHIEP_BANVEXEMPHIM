@@ -37,7 +37,11 @@ public class DashboardController {
 
     @GetMapping("/cinema-ranking")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
-    public ResponseEntity<List<CinemaRankingDTO>> getCinemaRanking() {
-        return ResponseEntity.ok(dashboardService.getCinemaRankings());
+    public ResponseEntity<List<CinemaRankingDTO>> getCinemaRanking(
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) Integer month) {
+        int targetYear = (year != null) ? year : java.time.LocalDate.now().getYear();
+        int targetMonth = (month != null) ? month : java.time.LocalDate.now().getMonthValue();
+        return ResponseEntity.ok(dashboardService.getCinemaRankings(targetYear, targetMonth));
     }
 }
