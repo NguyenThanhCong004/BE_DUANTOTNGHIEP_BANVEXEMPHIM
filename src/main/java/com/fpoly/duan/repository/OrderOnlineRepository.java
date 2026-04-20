@@ -34,7 +34,7 @@ public interface OrderOnlineRepository extends JpaRepository<OrderOnline, Intege
            "GROUP BY o.paymentMethod")
     List<Object[]> getRevenueBreakdownByStaffBetween(@Param("staffId") Integer staffId, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
-    List<OrderOnline> findTop10ByStaff_StaffIdOrderByCreatedAtDesc(Integer staffId);
+    List<OrderOnline> findTop10ByStaffStaffIdOrderByCreatedAtDesc(Integer staffId);
 
     @Query("SELECT MONTH(o.createdAt), SUM(o.finalAmount) " +
            "FROM OrderOnline o " +

@@ -35,7 +35,7 @@ public interface TicketRepository extends JpaRepository<Ticket, Integer> {
     @Query("SELECT t.seat.seatId FROM Ticket t " +
            "JOIN t.orderOnline o " +
            "WHERE t.showtime.showtimeId = :sid AND t.seat IS NOT NULL " +
-           "AND o.status IN (0, 1)")
+           "AND o.status IN (0, 1) AND t.status = 1")
     List<Integer> findHeldSeatIdsByShowtime(@Param("sid") Integer showtimeId);
 
     @Query("SELECT COUNT(t) FROM Ticket t " +
