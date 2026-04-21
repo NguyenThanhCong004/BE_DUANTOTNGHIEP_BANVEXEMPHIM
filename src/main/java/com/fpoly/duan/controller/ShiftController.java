@@ -492,6 +492,8 @@ public class ShiftController {
                 .shiftType(shiftType)
                 .startTime(ss.getStartTime() != null ? ss.getStartTime().toLocalTime().format(TIME_FMT) : null)
                 .endTime(ss.getEndTime() != null ? ss.getEndTime().toLocalTime().format(TIME_FMT) : null)
+                .rawStartTime(ss.getStartTime() != null ? ss.getStartTime().toString() : null)
+                .rawEndTime(ss.getEndTime() != null ? ss.getEndTime().toString() : null)
                 .status(statusLabel(ss.getStartTime(), ss.getEndTime(), now))
                 .cinemaName(cinemaName)
                 .build();

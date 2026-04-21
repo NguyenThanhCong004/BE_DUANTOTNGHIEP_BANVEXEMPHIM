@@ -55,6 +55,17 @@ public class CounterOrderController {
                         .build());
     }
 
+    @GetMapping("/{orderCode}/status")
+    @Operation(summary = "Kiểm tra trạng thái đơn hàng (Dành cho chuyển khoản tại quầy)")
+    public ResponseEntity<ApiResponse<com.fpoly.duan.entity.OrderOnline>> checkStatus(@PathVariable String orderCode) {
+        com.fpoly.duan.entity.OrderOnline order = counterCheckoutService.checkStatus(orderCode);
+        return ResponseEntity.ok(ApiResponse.<com.fpoly.duan.entity.OrderOnline>builder()
+                .status(200)
+                .message("Lấy trạng thái đơn hàng thành công")
+                .data(order)
+                .build());
+    }
+
     @PostMapping("/{orderCode}/confirm-paid")
     @Operation(summary = "Xác nhận đơn hàng đã thanh toán (Dành cho chuyển khoản tại quầy)")
     public ResponseEntity<ApiResponse<com.fpoly.duan.entity.OrderOnline>> confirmPaid(@PathVariable String orderCode) {

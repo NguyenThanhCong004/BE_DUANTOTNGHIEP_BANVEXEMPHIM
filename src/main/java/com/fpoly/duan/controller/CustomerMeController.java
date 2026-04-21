@@ -38,6 +38,7 @@ import lombok.RequiredArgsConstructor;
 public class CustomerMeController {
 
     private final CustomerMeService customerMeService;
+    private final com.fpoly.duan.service.TicketCheckoutService ticketCheckoutService;
 
     private Integer requireCustomerUserId(Authentication authentication) {
         if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
@@ -48,7 +49,16 @@ public class CustomerMeController {
             throw new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Chỉ tài khoản khách hàng được dùng API này");
         }
-        return details.getUser().getUserId();
+        Integer userId = details.getUser().getUserId();
+        // Reload hạng rank mỗi khi truy cập web
+        try {
+            java.lang.reflect.Method method = ticketCheckoutService.getClass().getDeclaredMethod("recalculateUserRankFromPaidOrders", com.fpoly.duan.entity.User.class);
+            method.setAccessible(true);
+            method.invoke(ticketCheckoutService, details.getUser());
+        } catch (Exception e) {
+            System.err.println("Error reloading rank: " + e.getMessage());
+        }
+        return userId;
     }
 
     @GetMapping("/transactions")

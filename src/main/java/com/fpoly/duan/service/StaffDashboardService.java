@@ -95,15 +95,18 @@ public class StaffDashboardService {
 
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
-        List<OrderDetailDTO.TicketInfo> ticketInfos = tickets.stream().map(t -> 
-            OrderDetailDTO.TicketInfo.builder()
+        List<OrderDetailDTO.TicketInfo> ticketInfos = tickets.stream().map(t -> {
+            String row = (t.getSeat().getRow() != null) ? t.getSeat().getRow() : "";
+            String num = (t.getSeat().getNumber() != null) ? t.getSeat().getNumber() : "";
+            return OrderDetailDTO.TicketInfo.builder()
                 .movieTitle(t.getShowtime().getMovie().getTitle())
                 .showtime(t.getShowtime().getStartTime().format(DateTimeFormatter.ofPattern("HH:mm")))
                 .roomName(t.getShowtime().getRoom().getName())
-                .seatNumber(t.getSeat().getNumber())
+                .seatNumber(row + num)
+                .seatTypeName(t.getSeat().getSeatType() != null ? t.getSeat().getSeatType().getName() : "Ghế thường")
                 .price(t.getPrice())
-                .build()
-        ).collect(Collectors.toList());
+                .build();
+        }).collect(Collectors.toList());
 
         List<OrderDetailDTO.FoodInfo> foodInfos = foods.stream().map(f -> 
             OrderDetailDTO.FoodInfo.builder()
