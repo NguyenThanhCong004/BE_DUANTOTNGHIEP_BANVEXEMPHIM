@@ -23,6 +23,7 @@ public class OrderDetailDTO {
         private String showtime;
         private String roomName;
         private String seatNumber;
+        private String seatTypeName;
         private Double originalPrice;
         private Double promotionDiscount;
         private Double price;

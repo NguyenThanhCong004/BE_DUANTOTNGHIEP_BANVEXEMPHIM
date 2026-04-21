@@ -32,6 +32,7 @@ import com.fpoly.duan.entity.Movie;
 import com.fpoly.duan.entity.MembershipRank;
 import com.fpoly.duan.entity.OrderDetailFood;
 import com.fpoly.duan.entity.OrderOnline;
+import com.fpoly.duan.entity.PointsHistory;
 import com.fpoly.duan.entity.Product;
 import com.fpoly.duan.entity.Seat;
 import com.fpoly.duan.entity.SeatType;
@@ -43,6 +44,7 @@ import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.OrderDetailFoodRepository;
 import com.fpoly.duan.repository.OrderOnlineRepository;
 import com.fpoly.duan.repository.MembershipRankRepository;
+import com.fpoly.duan.repository.PointsHistoryRepository;
 import com.fpoly.duan.repository.PromotionRepository;
 import com.fpoly.duan.repository.ProductRepository;
 import com.fpoly.duan.repository.SeatRepository;
@@ -84,6 +86,7 @@ public class TicketCheckoutService {
     private final CinemaRepository cinemaRepository;
     private final EphemeralSeatHoldService ephemeralSeatHoldService;
     private final PromotionRepository promotionRepository;
+    private final PointsHistoryRepository pointsHistoryRepository;
 
     @Transactional
     public TicketCheckoutResponse checkout(Integer userId, TicketCheckoutRequest req) {
@@ -245,6 +248,15 @@ public class TicketCheckoutService {
             ephemeralSeatHoldService.releaseSeats(showtime.getShowtimeId(), seatIdSet);
         }
 
+        // Cộng điểm ngay khi checkout thành công (không đợi webhook)
+        try {
+            System.out.println("checkout: Adding points for order " + order.getOrderCode());
+            addPointsForOrder(order);
+        } catch (Exception e) {
+            System.err.println("checkout: Error adding points: " + e.getMessage());
+            e.printStackTrace();
+        }
+
         String description = truncate(
                 snackVnd > 0 ? ("Ve + BNN #" + order.getOrderOnlineId()) : ("Ve xem phim #" + order.getOrderOnlineId()),
                 240);
@@ -401,6 +413,15 @@ public class TicketCheckoutService {
         order.setFinalAmount(st.doubleTotal());
         orderOnlineRepository.save(order);
         orderDetailFoodRepository.saveAll(st.rows());
+
+        // Cộng điểm ngay khi checkout thành công (không đợi webhook)
+        try {
+            System.out.println("checkoutFoodOnly: Adding points for order " + order.getOrderCode());
+            addPointsForOrder(order);
+        } catch (Exception e) {
+            System.err.println("checkoutFoodOnly: Error adding points: " + e.getMessage());
+            e.printStackTrace();
+        }
 
         String description = truncate("Bap nuoc #" + order.getOrderOnlineId(), 240);
         return finalizePayos(user, payosOrderCode, st.vndTotal(), description, req.getReturnUrl(), req.getCancelUrl(), order);
@@ -655,6 +676,7 @@ public class TicketCheckoutService {
      */
     @Transactional
     public void confirmPaymentFromPayosWebhook(org.json.JSONObject dataJson) {
+        System.out.println("confirmPaymentFromPayosWebhook called");
         long orderCode = dataJson.optLong("orderCode");
         if (orderCode <= 0) {
             throw new IllegalArgumentException("Webhook thiếu orderCode");
@@ -663,13 +685,16 @@ public class TicketCheckoutService {
         if (paidAmount < 0) {
             paidAmount = (int) dataJson.optLong("amount", -1L);
         }
+        System.out.println("confirmPaymentFromPayosWebhook: orderCode=" + orderCode + ", paidAmount=" + paidAmount);
 
         Optional<OrderOnline> opt = orderOnlineRepository.findByOrderCode(String.valueOf(orderCode));
         if (opt.isEmpty()) {
+            System.out.println("confirmPaymentFromPayosWebhook: Order not found, skipping");
             /* Đơn đã bị xóa khi user hủy thanh toán — PayOS vẫn có thể gọi webhook muộn */
             return;
         }
         OrderOnline order = opt.get();
+        System.out.println("confirmPaymentFromPayosWebhook: Order found, status=" + order.getStatus() + ", userId=" + (order.getUser() != null ? order.getUser().getUserId() : "null"));
 
         if (order.getStatus() != null && order.getStatus() == ORDER_STATUS_PAID) {
             return;
@@ -699,8 +724,78 @@ public class TicketCheckoutService {
         }
         orderDetailFoodRepository.saveAll(foods);
 
+        System.out.println("confirmPaymentFromPayosWebhook: About to add points, user=" + (order.getUser() != null ? order.getUser().getUserId() : "null"));
+        // Luôn cố gắng cộng điểm và reload rank nếu có user
         if (order.getUser() != null) {
-            recalculateUserRankFromPaidOrders(order.getUser());
+            try {
+                recalculateUserRankFromPaidOrders(order.getUser());
+                addPointsForOrder(order);
+            } catch (Exception e) {
+                System.err.println("Error adding points: " + e.getMessage());
+                e.printStackTrace();
+            }
+        } else {
+            System.err.println("confirmPaymentFromPayosWebhook: User is null, cannot add points");
+        }
+    }
+
+    /**
+     * Cộng điểm cho user sau khi thanh toán thành công
+     * Quy tắc: 1k = 1 điểm + điểm bonus theo rank
+     */
+    private void addPointsForOrder(OrderOnline order) {
+        try {
+            // Load user từ repository để đảm bảo có dữ liệu
+            User user = order.getUser();
+            if (user != null && user.getUserId() != null) {
+                user = userRepository.findById(user.getUserId()).orElse(null);
+            }
+            
+            if (user == null) {
+                System.out.println("addPointsForOrder: User is null, skipping");
+                return;
+            }
+
+            double finalAmount = order.getFinalAmount() != null ? order.getFinalAmount() : 0.0;
+            System.out.println("addPointsForOrder: orderCode=" + order.getOrderCode() + ", finalAmount=" + finalAmount + ", userId=" + user.getUserId());
+            
+            // Tính điểm từ số tiền: 1k = 1 điểm (làm tròn)
+            int pointsFromAmount = (int) Math.round(finalAmount / 1000);
+            System.out.println("addPointsForOrder: pointsFromAmount=" + pointsFromAmount);
+            
+            // Lấy điểm bonus từ rank
+            MembershipRank rank = resolveEffectiveRank(user);
+            int bonusPoints = (rank != null && rank.getBonusPoint() != null) ? rank.getBonusPoint() : 0;
+            System.out.println("addPointsForOrder: rank=" + (rank != null ? rank.getRankName() : "null") + ", bonusPoints=" + bonusPoints);
+            
+            // Tổng điểm
+            int totalPoints = pointsFromAmount + bonusPoints;
+            System.out.println("addPointsForOrder: totalPoints=" + totalPoints);
+            
+            if (totalPoints <= 0) {
+                System.out.println("addPointsForOrder: totalPoints <= 0, skipping");
+                return;
+            }
+            
+            // Cộng điểm vào user
+            int currentPoints = user.getPoints() != null ? user.getPoints() : 0;
+            user.setPoints(currentPoints + totalPoints);
+            userRepository.save(user);
+            System.out.println("addPointsForOrder: Updated user points from " + currentPoints + " to " + user.getPoints());
+            
+            // Lưu lịch sử điểm
+            PointsHistory pointsHistory = new PointsHistory();
+            pointsHistory.setUser(user);
+            pointsHistory.setDate(LocalDate.now());
+            pointsHistory.setDescription("Tích điểm từ đơn " + order.getOrderCode() + 
+                                       " (" + pointsFromAmount + " điểm từ số tiền" + 
+                                       (bonusPoints > 0 ? " + " + bonusPoints + " điểm bonus" : "") + ")");
+            pointsHistory.setPoints(totalPoints);
+            pointsHistoryRepository.save(pointsHistory);
+            System.out.println("addPointsForOrder: Saved points history");
+        } catch (Exception e) {
+            System.err.println("addPointsForOrder: Error adding points for order " + order.getOrderCode());
+            e.printStackTrace();
         }
     }
 

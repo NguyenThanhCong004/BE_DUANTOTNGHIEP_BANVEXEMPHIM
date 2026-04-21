@@ -8,8 +8,10 @@ import com.fpoly.duan.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -25,6 +27,8 @@ public class CounterCheckoutService {
     private final SeatRepository seatRepository;
     private final ProductRepository productRepository;
     private final PayOSService payOSService;
+    private final MembershipRankRepository membershipRankRepository;
+    private final PointsHistoryRepository pointsHistoryRepository;
 
     public CounterCheckoutService(
             OrderOnlineRepository orderOnlineRepository,
@@ -35,7 +39,9 @@ public class CounterCheckoutService {
             ShowtimeRepository showtimeRepository,
             SeatRepository seatRepository,
             ProductRepository productRepository,
-            PayOSService payOSService) {
+            PayOSService payOSService,
+            MembershipRankRepository membershipRankRepository,
+            PointsHistoryRepository pointsHistoryRepository) {
         this.orderOnlineRepository = orderOnlineRepository;
         this.ticketRepository = ticketRepository;
         this.orderDetailFoodRepository = orderDetailFoodRepository;
@@ -45,6 +51,8 @@ public class CounterCheckoutService {
         this.seatRepository = seatRepository;
         this.productRepository = productRepository;
         this.payOSService = payOSService;
+        this.membershipRankRepository = membershipRankRepository;
+        this.pointsHistoryRepository = pointsHistoryRepository;
     }
 
     @Transactional
@@ -159,6 +167,41 @@ public class CounterCheckoutService {
     }
 
     @Transactional
+    public OrderOnline checkStatus(String orderCode) {
+        final String searchCode;
+        final String rawCode;
+        if (orderCode != null && !orderCode.startsWith("POS-") && orderCode.matches("\\d+")) {
+            searchCode = "POS-" + orderCode;
+            rawCode = orderCode;
+        } else if (orderCode != null && orderCode.startsWith("POS-")) {
+            searchCode = orderCode;
+            rawCode = orderCode.substring(4);
+        } else {
+            searchCode = orderCode;
+            rawCode = orderCode;
+        }
+
+        OrderOnline order = orderOnlineRepository.findByOrderCode(searchCode)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng: " + searchCode));
+
+        if (order.getStatus() == 1) return order;
+
+        if ("TRANSFER".equalsIgnoreCase(order.getPaymentMethod()) && rawCode.matches("\\d+")) {
+            try {
+                PayOSCheckoutData payosInfo = payOSService.getPaymentInformation(Long.parseLong(rawCode));
+                if ("PAID".equalsIgnoreCase(payosInfo.getStatus())) {
+                    return confirmPaid(orderCode);
+                }
+            } catch (Exception e) {
+                // Có thể PayOS chưa tạo kịp link hoặc lỗi mạng, ta cứ để PENDING
+                System.err.println("Check PayOS status error: " + e.getMessage());
+            }
+        }
+
+        return order;
+    }
+
+    @Transactional
     public OrderOnline confirmPaid(String orderCode) {
         final String searchCode;
         if (orderCode != null && !orderCode.startsWith("POS-") && orderCode.matches("\\d+")) {
@@ -182,7 +225,90 @@ public class CounterCheckoutService {
             ticketRepository.save(t);
         }
 
+        // Cộng điểm cho user
+        if (order.getUser() != null) {
+            addPointsForOrder(order);
+        }
+
         return savedOrder;
+    }
+
+    /**
+     * Cộng điểm cho user sau khi thanh toán thành công tại quầy
+     * Quy tắc: 1k = 1 điểm + điểm bonus theo rank
+     */
+    private void addPointsForOrder(OrderOnline order) {
+        try {
+            User user = order.getUser();
+            if (user == null) {
+                System.out.println("CounterCheckoutService.addPointsForOrder: User is null, skipping");
+                return;
+            }
+
+            double finalAmount = order.getFinalAmount() != null ? order.getFinalAmount() : 0.0;
+            System.out.println("CounterCheckoutService.addPointsForOrder: orderCode=" + order.getOrderCode() + ", finalAmount=" + finalAmount + ", userId=" + user.getUserId());
+            
+            // Tính điểm từ số tiền: 1k = 1 điểm (làm tròn)
+            int pointsFromAmount = (int) Math.round(finalAmount / 1000);
+            System.out.println("CounterCheckoutService.addPointsForOrder: pointsFromAmount=" + pointsFromAmount);
+            
+            // Lấy điểm bonus từ rank
+            MembershipRank rank = resolveEffectiveRank(user);
+            int bonusPoints = (rank != null && rank.getBonusPoint() != null) ? rank.getBonusPoint() : 0;
+            System.out.println("CounterCheckoutService.addPointsForOrder: rank=" + (rank != null ? rank.getRankName() : "null") + ", bonusPoints=" + bonusPoints);
+            
+            // Tổng điểm
+            int totalPoints = pointsFromAmount + bonusPoints;
+            System.out.println("CounterCheckoutService.addPointsForOrder: totalPoints=" + totalPoints);
+            
+            if (totalPoints <= 0) {
+                System.out.println("CounterCheckoutService.addPointsForOrder: totalPoints <= 0, skipping");
+                return;
+            }
+            
+            // Cộng điểm vào user
+            int currentPoints = user.getPoints() != null ? user.getPoints() : 0;
+            user.setPoints(currentPoints + totalPoints);
+            userRepository.save(user);
+            System.out.println("CounterCheckoutService.addPointsForOrder: Updated user points from " + currentPoints + " to " + user.getPoints());
+            
+            // Lưu lịch sử điểm
+            PointsHistory pointsHistory = new PointsHistory();
+            pointsHistory.setUser(user);
+            pointsHistory.setDate(LocalDate.now());
+            pointsHistory.setDescription("Tích điểm từ đơn " + order.getOrderCode() + 
+                                       " (" + pointsFromAmount + " điểm từ số tiền" + 
+                                       (bonusPoints > 0 ? " + " + bonusPoints + " điểm bonus" : "") + ")");
+            pointsHistory.setPoints(totalPoints);
+            pointsHistoryRepository.save(pointsHistory);
+            System.out.println("CounterCheckoutService.addPointsForOrder: Saved points history");
+        } catch (Exception e) {
+            System.err.println("CounterCheckoutService.addPointsForOrder: Error adding points for order " + order.getOrderCode());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Xác định rank hiện tại của user dựa trên tổng chi tiêu trong năm
+     */
+    private MembershipRank resolveEffectiveRank(User user) {
+        if (user == null || user.getUserId() == null) return null;
+        int currentYear = LocalDate.now().getYear();
+        double spending = orderOnlineRepository.sumCompletedRevenueByUserAndYear(user.getUserId(), currentYear);
+
+        List<MembershipRank> activeRanks = membershipRankRepository.findAll().stream()
+                .filter(r -> r.getStatus() == null || r.getStatus() == 1)
+                .toList();
+        if (activeRanks.isEmpty()) return null;
+
+        MembershipRank matched = activeRanks.stream()
+                .filter(r -> spending >= (r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .max(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .orElse(null);
+        if (matched != null) return matched;
+        return activeRanks.stream()
+                .min(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .orElse(null);
     }
 
     @Transactional
