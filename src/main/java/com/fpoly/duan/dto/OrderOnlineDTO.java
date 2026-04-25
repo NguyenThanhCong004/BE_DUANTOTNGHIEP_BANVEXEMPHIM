@@ -25,6 +25,7 @@ public class OrderOnlineDTO {
     private String customerEmail;
     
     private String cinemaName;
+    private Integer cinemaId;
     private String staffName;
     private List<TicketInfoDTO> tickets;
     private List<FoodInfoDTO> foods;

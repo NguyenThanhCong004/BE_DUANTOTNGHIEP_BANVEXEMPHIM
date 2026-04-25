@@ -121,6 +121,7 @@ public class CounterCheckoutService {
         order.setStatus(isTransfer ? 0 : 1);
         order.setPaymentMethod(request.getPaymentMethod());
         order.setStaff(staff);
+        order.setCinema(staff.getCinema());
         order.setUser(customer);
         
         OrderOnline savedOrder = orderOnlineRepository.save(order);

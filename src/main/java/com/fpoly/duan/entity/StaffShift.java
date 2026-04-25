@@ -28,4 +28,8 @@ public class StaffShift {
     @ManyToOne
     @JoinColumn(name = "staff_id")
     private Staff staff;
+
+    @ManyToOne
+    @JoinColumn(name = "cinema_id")
+    private Cinema cinema;
 }

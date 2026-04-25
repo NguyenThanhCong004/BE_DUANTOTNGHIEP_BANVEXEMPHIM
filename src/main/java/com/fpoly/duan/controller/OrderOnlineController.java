@@ -45,19 +45,28 @@ public class OrderOnlineController {
     public ResponseEntity<ApiResponse<List<OrderOnlineDTO>>> list(@RequestParam(required = false) Integer cinemaId) {
         List<OrderOnline> orders;
         if (cinemaId != null) {
-            // Lọc các đơn có chứa ít nhất 1 vé thuộc rạp cinemaId HOẶC do nhân viên rạp đó bán
+            // Lọc các đơn theo cinemaId lưu trực tiếp trong đơn, hoặc dự phòng qua vé/nhân viên
             orders = orderOnlineRepository.findAll().stream()
                     .filter(o -> {
-                        // Check staff
+                        // 1. Kiểm tra trường cinema trực tiếp (Ưu tiên cao nhất cho đơn mới)
+                        if (o.getCinema() != null) {
+                            return o.getCinema().getCinemaId().equals(cinemaId);
+                        }
+                        
+                        // 2. Dự phòng cho dữ liệu cũ (Dự phòng 1): Check tickets (Chính xác hơn vì vé gắn với suất chiếu/phòng/rạp)
+                        boolean hasTicketInCinema = ticketRepository.findByOrderOnline_OrderOnlineId(o.getOrderOnlineId()).stream()
+                                .anyMatch(t -> t.getShowtime() != null && t.getShowtime().getRoom() != null
+                                        && t.getShowtime().getRoom().getCinema() != null
+                                        && t.getShowtime().getRoom().getCinema().getCinemaId().equals(cinemaId));
+                        if (hasTicketInCinema) return true;
+
+                        // 3. Dự phòng cho dữ liệu cũ (Dự phòng 2): Check staff (Chỉ đúng nếu nhân viên chưa chuyển rạp)
                         if (o.getStaff() != null && o.getStaff().getCinema() != null
                                 && o.getStaff().getCinema().getCinemaId().equals(cinemaId)) {
                             return true;
                         }
-                        // Check tickets in this order
-                        return ticketRepository.findByOrderOnline_OrderOnlineId(o.getOrderOnlineId()).stream()
-                                .anyMatch(t -> t.getShowtime() != null && t.getShowtime().getRoom() != null
-                                        && t.getShowtime().getRoom().getCinema() != null
-                                        && t.getShowtime().getRoom().getCinema().getCinemaId().equals(cinemaId));
+                        
+                        return false;
                     })
                     .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
                     .collect(Collectors.toList());
@@ -137,16 +146,27 @@ public class OrderOnlineController {
                         .build())
                 .collect(Collectors.toList());
 
-        // Tên rạp (Lấy từ vé đầu tiên hoặc từ nhân viên)
+        // Tên rạp (Ưu tiên lấy từ trường cinema trực tiếp của đơn hàng)
         String cinemaName = "N/A";
-        if (s != null && s.getCinema() != null) {
+        Integer cinemaId = null;
+        
+        if (o.getCinema() != null) {
+            cinemaName = o.getCinema().getName();
+            cinemaId = o.getCinema().getCinemaId();
+        } else if (s != null && s.getCinema() != null) {
+            // Dự phòng 1: Từ nhân viên (Dữ liệu cũ)
             cinemaName = s.getCinema().getName();
-        } else if (!tickets.isEmpty()) {
-            // Thử lấy rạp từ Ticket đầu tiên (phải query lại entity để có cinema name)
-            var firstTicket = ticketRepository.findByOrderOnline_OrderOnlineId(o.getOrderOnlineId()).get(0);
-            if (firstTicket.getShowtime() != null && firstTicket.getShowtime().getRoom() != null
-                    && firstTicket.getShowtime().getRoom().getCinema() != null) {
-                cinemaName = firstTicket.getShowtime().getRoom().getCinema().getName();
+            cinemaId = s.getCinema().getCinemaId();
+        } else {
+            // Dự phòng 2: Từ vé phim (Dữ liệu cũ/Online)
+            var allTickets = ticketRepository.findByOrderOnline_OrderOnlineId(o.getOrderOnlineId());
+            if (!allTickets.isEmpty()) {
+                var firstTicket = allTickets.get(0);
+                if (firstTicket.getShowtime() != null && firstTicket.getShowtime().getRoom() != null
+                        && firstTicket.getShowtime().getRoom().getCinema() != null) {
+                    cinemaName = firstTicket.getShowtime().getRoom().getCinema().getName();
+                    cinemaId = firstTicket.getShowtime().getRoom().getCinema().getCinemaId();
+                }
             }
         }
 
@@ -162,6 +182,7 @@ public class OrderOnlineController {
                 .customerName(name)
                 .customerEmail(email)
                 .cinemaName(cinemaName)
+                .cinemaId(cinemaId)
                 .staffName(s != null ? s.getFullname() : "Đặt Online")
                 .tickets(tickets)
                 .foods(foods)
