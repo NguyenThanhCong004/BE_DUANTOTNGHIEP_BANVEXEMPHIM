@@ -108,9 +108,14 @@ public class ShiftController {
         if (cinemaId != null) {
             filtered = all.stream()
                     .filter(s -> {
+                        // 1. Ưu tiên lọc theo cinemaId lưu trực tiếp trong ca làm
+                        if (s.getCinema() != null) {
+                            return cinemaId.equals(s.getCinema().getCinemaId());
+                        }
+                        
+                        // 2. Dự phòng cho dữ liệu cũ: Lọc theo cinema hiện tại của nhân viên
                         Staff st = s.getStaff();
                         if (st == null) return false;
-                        // staff.cinema có thể null => vẫn tính vào ca của rạp đang chọn
                         if (st.getCinema() == null) return true;
                         return cinemaId.equals(st.getCinema().getCinemaId());
                     })
@@ -423,6 +428,9 @@ public class ShiftController {
         s.setEndTime(end);
         s.setStaff(staff);
         s.setRole(posRole);
+        if (staff != null) {
+            s.setCinema(staff.getCinema());
+        }
         return s;
     }
 
