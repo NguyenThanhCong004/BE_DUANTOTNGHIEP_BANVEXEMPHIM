@@ -28,6 +28,7 @@ import com.fpoly.duan.dto.TicketQuoteResponse;
 import com.fpoly.duan.dto.payos.PayOSCheckoutData;
 import com.fpoly.duan.dto.payos.PayOSCreatePaymentLinkRequest;
 import com.fpoly.duan.entity.CinemaProduct;
+import com.fpoly.duan.entity.Cinema;
 import com.fpoly.duan.entity.Movie;
 import com.fpoly.duan.entity.MembershipRank;
 import com.fpoly.duan.entity.OrderDetailFood;
@@ -57,9 +58,11 @@ import com.fpoly.duan.entity.UserVoucher;
 import com.fpoly.duan.entity.Voucher;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TicketCheckoutService {
 
     private static final int ORDER_STATUS_PENDING = 0;
@@ -107,6 +110,7 @@ public class TicketCheckoutService {
         }
         Integer roomId = showtime.getRoom().getRoomId();
         Integer cinemaId = showtime.getRoom().getCinema() != null ? showtime.getRoom().getCinema().getCinemaId() : null;
+        Cinema cinema = loadCinema(cinemaId);
 
         List<Seat> seats = seatRepository.findAllByIdWithType(seatIdSet);
         if (seats.size() != seatIdSet.size()) {
@@ -155,9 +159,11 @@ public class TicketCheckoutService {
         OrderOnline order = new OrderOnline();
         order.setUser(user);
         order.setCreatedAt(LocalDateTime.now());
-        order.setStatus(ORDER_STATUS_PAID);
+        order.setStatus(ORDER_STATUS_PENDING);
         order.setUserVoucher(null);
         order.setOrderCode(String.valueOf(payosOrderCode));
+        order.setPaymentMethod("PAYOS");
+        order.setCinema(cinema);
         order = orderOnlineRepository.save(order);
 
         List<Ticket> tickets = new ArrayList<>();
@@ -168,11 +174,9 @@ public class TicketCheckoutService {
             t.setOrderOnline(order);
             PricedSeatLine pl = pricedLines.get(i);
             t.setOriginalPrice(pl.originalPrice());
-            // promotion_discount chỉ lưu phần KM phim
             t.setPromotionDiscount(pl.promotionDiscount());
-            // price là giá cuối (đã trừ KM phim + giảm hạng)
             t.setPrice(pl.finalPrice());
-            t.setStatus(TICKET_STATUS_PAID);
+            t.setStatus(TICKET_STATUS_PENDING);
             tickets.add(t);
         }
         ticketRepository.saveAll(tickets);
@@ -248,15 +252,6 @@ public class TicketCheckoutService {
             ephemeralSeatHoldService.releaseSeats(showtime.getShowtimeId(), seatIdSet);
         }
 
-        // Cộng điểm ngay khi checkout thành công (không đợi webhook)
-        try {
-            System.out.println("checkout: Adding points for order " + order.getOrderCode());
-            addPointsForOrder(order);
-        } catch (Exception e) {
-            System.err.println("checkout: Error adding points: " + e.getMessage());
-            e.printStackTrace();
-        }
-
         String description = truncate(
                 snackVnd > 0 ? ("Ve + BNN #" + order.getOrderOnlineId()) : ("Ve xem phim #" + order.getOrderOnlineId()),
                 240);
@@ -284,6 +279,7 @@ public class TicketCheckoutService {
         Integer cinemaId = showtime.getRoom() != null && showtime.getRoom().getCinema() != null
                 ? showtime.getRoom().getCinema().getCinemaId()
                 : null;
+        loadCinema(cinemaId);
 
         List<Seat> seats = seatRepository.findAllByIdWithType(seatIdSet);
         if (seats.size() != seatIdSet.size()) {
@@ -337,16 +333,30 @@ public class TicketCheckoutService {
      * Khách hủy thanh toán PayOS — giữ lịch sử đơn nhưng chuyển trạng thái hủy để trả ghế.
      */
     @Transactional
-    public void cancelPendingOrderByPayosCode(Integer userId, long payosOrderCode) {
+    public boolean cancelPendingOrderByPayosCode(Integer userId, long payosOrderCode) {
         OrderOnline o = orderOnlineRepository.findByOrderCode(String.valueOf(payosOrderCode))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn với mã PayOS"));
 
         if (o.getUser() == null || !o.getUser().getUserId().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Đơn không thuộc tài khoản của bạn");
         }
-        /* Cho phép hủy cả đơn PAID vì chúng ta đang dùng cơ chế auto-paid trên localhost */
-        if (o.getStatus() == null || (o.getStatus() != ORDER_STATUS_PENDING && o.getStatus() != ORDER_STATUS_PAID)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ hủy được đơn đang chờ thanh toán hoặc vừa tạo");
+
+        if (o.getStatus() != null && o.getStatus() == ORDER_STATUS_PAID) {
+            rewardPaidOrder(o);
+            return true;
+        }
+
+        try {
+            if (syncPaidPayosOrderIfPaid(o)) {
+                return true;
+            }
+        } catch (IllegalStateException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Chưa hủy đơn vì không kiểm tra được trạng thái PayOS: " + e.getMessage(), e);
+        }
+
+        if (o.getStatus() == null || o.getStatus() != ORDER_STATUS_PENDING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ hủy được đơn đang chờ thanh toán");
         }
 
         List<Ticket> tickets = ticketRepository.findByOrderOnline_OrderOnlineId(o.getOrderOnlineId());
@@ -385,22 +395,131 @@ public class TicketCheckoutService {
         if (stId != null && !seatIds.isEmpty()) {
             ephemeralSeatHoldService.releaseSeats(stId, seatIds);
         }
+        return false;
+    }
+
+    /**
+     * Đồng bộ lại đơn PayOS trước khi hủy/dọn quá hạn.
+     * Nếu PayOS đã PAID thì chốt đơn và cộng điểm, tránh trường hợp webhook local/LAN không gọi được.
+     */
+    public boolean syncPaidPayosOrderIfPaid(OrderOnline order) {
+        if (order == null) {
+            return false;
+        }
+
+        Long payosOrderCode = parsePositiveLong(order.getOrderCode());
+        if (payosOrderCode == null) {
+            return false;
+        }
+
+        if (order.getStatus() != null && order.getStatus() == ORDER_STATUS_PAID) {
+            rewardPaidOrder(order);
+            return true;
+        }
+
+        boolean isPending = order.getStatus() != null && order.getStatus() == ORDER_STATUS_PENDING;
+        boolean isCancelled = order.getStatus() != null && order.getStatus() == ORDER_STATUS_CANCELLED;
+        if (!isPending && !isCancelled) {
+            return false;
+        }
+
+        PayOSCheckoutData payos = payOSService.getPaymentInformation(payosOrderCode);
+        if (!"PAID".equalsIgnoreCase(payos.getStatus())) {
+            return false;
+        }
+
+        int expected = (int) Math.round(order.getFinalAmount() != null ? order.getFinalAmount() : 0.0);
+        assertPayosAmountMatches(payos, expected);
+
+        if (isCancelled) {
+            assertCanRestoreCancelledPaidOrder(order);
+        }
+
+        finalizePaidOrder(order);
+        rewardPaidOrder(order);
+        return true;
+    }
+
+    @Transactional
+    public TicketCheckoutResponse confirmPaidOrderByPayosCode(Integer userId, Long payosOrderCode) {
+        if (payosOrderCode == null || payosOrderCode <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mã PayOS không hợp lệ");
+        }
+
+        OrderOnline order = orderOnlineRepository.findByOrderCode(String.valueOf(payosOrderCode))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn với mã PayOS"));
+
+        if (order.getUser() == null || !order.getUser().getUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Đơn không thuộc tài khoản của bạn");
+        }
+
+        int expected = (int) Math.round(order.getFinalAmount() != null ? order.getFinalAmount() : 0.0);
+
+        if (order.getStatus() != null && order.getStatus() == ORDER_STATUS_PAID) {
+            rewardPaidOrder(order);
+            return TicketCheckoutResponse.builder()
+                    .orderOnlineId(order.getOrderOnlineId())
+                    .payosOrderCode(payosOrderCode)
+                    .amountVnd(expected)
+                    .payos(PayOSCheckoutData.builder()
+                            .orderCode(payosOrderCode)
+                            .amount((long) expected)
+                            .currency("VND")
+                            .status("PAID")
+                            .build())
+                    .build();
+        }
+
+        boolean isPending = order.getStatus() != null && order.getStatus() == ORDER_STATUS_PENDING;
+        boolean isCancelled = order.getStatus() != null && order.getStatus() == ORDER_STATUS_CANCELLED;
+        if (!isPending && !isCancelled) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Đơn không còn ở trạng thái có thể xác nhận");
+        }
+
+        PayOSCheckoutData payos;
+        try {
+            payos = payOSService.getPaymentInformation(payosOrderCode);
+        } catch (IllegalStateException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "PayOS: " + e.getMessage(), e);
+        }
+
+        if (!"PAID".equalsIgnoreCase(payos.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "PayOS chưa xác nhận thanh toán cho đơn này (trạng thái: " + payos.getStatus() + ")");
+        }
+
+        assertPayosAmountMatches(payos, expected);
+
+        if (isCancelled) {
+            assertCanRestoreCancelledPaidOrder(order);
+        }
+
+        finalizePaidOrder(order);
+        rewardPaidOrder(order);
+
+        return TicketCheckoutResponse.builder()
+                .orderOnlineId(order.getOrderOnlineId())
+                .payosOrderCode(payosOrderCode)
+                .amountVnd(expected)
+                .payos(payos)
+                .build();
     }
 
     @Transactional
     public TicketCheckoutResponse checkoutFoodOnly(Integer userId, FoodOnlyCheckoutRequest req) {
         User user = loadUser(userId);
-        cinemaRepository.findById(req.getCinemaId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy rạp"));
+        Cinema cinema = requireCustomerCinemaAvailable(req.getCinemaId());
 
         long payosOrderCode = allocateUniquePayosOrderCode();
 
         OrderOnline order = new OrderOnline();
         order.setUser(user);
         order.setCreatedAt(LocalDateTime.now());
-        order.setStatus(ORDER_STATUS_PAID);
+        order.setStatus(ORDER_STATUS_PENDING);
         order.setUserVoucher(null);
         order.setOrderCode(String.valueOf(payosOrderCode));
+        order.setPaymentMethod("PAYOS");
+        order.setCinema(cinema);
         order = orderOnlineRepository.save(order);
 
         SnackTotals st = buildValidatedSnackLines(req.getCinemaId(), req.getItems(), order);
@@ -413,15 +532,6 @@ public class TicketCheckoutService {
         order.setFinalAmount(st.doubleTotal());
         orderOnlineRepository.save(order);
         orderDetailFoodRepository.saveAll(st.rows());
-
-        // Cộng điểm ngay khi checkout thành công (không đợi webhook)
-        try {
-            System.out.println("checkoutFoodOnly: Adding points for order " + order.getOrderCode());
-            addPointsForOrder(order);
-        } catch (Exception e) {
-            System.err.println("checkoutFoodOnly: Error adding points: " + e.getMessage());
-            e.printStackTrace();
-        }
 
         String description = truncate("Bap nuoc #" + order.getOrderOnlineId(), 240);
         return finalizePayos(user, payosOrderCode, st.vndTotal(), description, req.getReturnUrl(), req.getCancelUrl(), order);
@@ -475,6 +585,27 @@ public class TicketCheckoutService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng"));
     }
 
+    private Cinema loadCinema(Integer cinemaId) {
+        if (cinemaId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không xác định được rạp");
+        }
+        return cinemaRepository.findById(cinemaId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy rạp"));
+    }
+
+    private Cinema requireCustomerCinemaAvailable(Integer cinemaId) {
+        Cinema cinema = loadCinema(cinemaId);
+        if (cinema.getStatus() != null && cinema.getStatus() != 1) {
+            boolean hasRemainingShowtimes = showtimeRepository.existsByRoom_Cinema_CinemaIdAndStartTimeGreaterThanEqual(
+                    cinema.getCinemaId(), LocalDateTime.now().toLocalDate().atStartOfDay());
+            if (!hasRemainingShowtimes) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Rạp đã tạm ngừng và không còn suất chiếu đang mở");
+            }
+        }
+        return cinema;
+    }
+
     private SnackTotals buildValidatedSnackLines(Integer cinemaId, List<SnackLineRequest> raw, OrderOnline order) {
         Map<Integer, Integer> qtyByProduct = new LinkedHashMap<>();
         for (SnackLineRequest s : raw) {
@@ -520,7 +651,7 @@ public class TicketCheckoutService {
             od.setProduct(p);
             od.setQuantity(qty);
             od.setPrice(unit);
-            od.setStatus(FOOD_STATUS_PAID);
+            od.setStatus(FOOD_STATUS_PENDING);
             rows.add(od);
         }
 
@@ -676,7 +807,6 @@ public class TicketCheckoutService {
      */
     @Transactional
     public void confirmPaymentFromPayosWebhook(org.json.JSONObject dataJson) {
-        System.out.println("confirmPaymentFromPayosWebhook called");
         long orderCode = dataJson.optLong("orderCode");
         if (orderCode <= 0) {
             throw new IllegalArgumentException("Webhook thiếu orderCode");
@@ -685,21 +815,23 @@ public class TicketCheckoutService {
         if (paidAmount < 0) {
             paidAmount = (int) dataJson.optLong("amount", -1L);
         }
-        System.out.println("confirmPaymentFromPayosWebhook: orderCode=" + orderCode + ", paidAmount=" + paidAmount);
+        log.debug("PayOS webhook received: orderCode={}, paidAmount={}", orderCode, paidAmount);
 
         Optional<OrderOnline> opt = orderOnlineRepository.findByOrderCode(String.valueOf(orderCode));
         if (opt.isEmpty()) {
-            System.out.println("confirmPaymentFromPayosWebhook: Order not found, skipping");
+            log.debug("PayOS webhook ignored because order was not found: orderCode={}", orderCode);
             /* Đơn đã bị xóa khi user hủy thanh toán — PayOS vẫn có thể gọi webhook muộn */
             return;
         }
         OrderOnline order = opt.get();
-        System.out.println("confirmPaymentFromPayosWebhook: Order found, status=" + order.getStatus() + ", userId=" + (order.getUser() != null ? order.getUser().getUserId() : "null"));
 
         if (order.getStatus() != null && order.getStatus() == ORDER_STATUS_PAID) {
+            rewardPaidOrder(order);
             return;
         }
-        if (order.getStatus() == null || order.getStatus() != ORDER_STATUS_PENDING) {
+        boolean isPending = order.getStatus() != null && order.getStatus() == ORDER_STATUS_PENDING;
+        boolean isCancelled = order.getStatus() != null && order.getStatus() == ORDER_STATUS_CANCELLED;
+        if (!isPending && !isCancelled) {
             /* Đã hủy / trạng thái lạ — không kích hoạt thanh toán */
             return;
         }
@@ -709,8 +841,70 @@ public class TicketCheckoutService {
             throw new IllegalArgumentException("Số tiền webhook không khớp đơn (expected " + expected + ", got " + paidAmount + ")");
         }
 
+        if (isCancelled) {
+            assertCanRestoreCancelledPaidOrder(order);
+        }
+
+        finalizePaidOrder(order);
+        rewardPaidOrder(order);
+    }
+
+    private void assertCanRestoreCancelledPaidOrder(OrderOnline order) {
+        List<Ticket> tickets = ticketRepository.findByOrderOnline_OrderOnlineId(order.getOrderOnlineId());
+        Map<Integer, Set<Integer>> seatIdsByShowtime = tickets.stream()
+                .filter(t -> t.getShowtime() != null
+                        && t.getShowtime().getShowtimeId() != null
+                        && t.getSeat() != null
+                        && t.getSeat().getSeatId() != null)
+                .collect(Collectors.groupingBy(
+                        t -> t.getShowtime().getShowtimeId(),
+                        Collectors.mapping(t -> t.getSeat().getSeatId(), Collectors.toSet())));
+
+        for (Map.Entry<Integer, Set<Integer>> entry : seatIdsByShowtime.entrySet()) {
+            if (!entry.getValue().isEmpty()
+                    && ticketRepository.countPaidTicketsForSeats(entry.getKey(), entry.getValue()) > 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Ghế trong đơn đã bị bán cho đơn khác sau khi đơn quá hạn. Vui lòng liên hệ quầy để xử lý.");
+            }
+        }
+    }
+
+    private void assertPayosAmountMatches(PayOSCheckoutData payos, int expected) {
+        Long paidAmount = payos != null ? payos.getAmount() : null;
+        if (paidAmount != null && Math.abs(paidAmount - expected) > 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Số tiền PayOS không khớp đơn (expected " + expected + ", got " + paidAmount + ")");
+        }
+    }
+
+    private static Long parsePositiveLong(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (!trimmed.matches("\\d+")) {
+            return null;
+        }
+        try {
+            long parsed = Long.parseLong(trimmed);
+            return parsed > 0 ? parsed : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private void finalizePaidOrder(OrderOnline order) {
         order.setStatus(ORDER_STATUS_PAID);
+        if (order.getPaymentMethod() == null || order.getPaymentMethod().isBlank()) {
+            order.setPaymentMethod("PAYOS");
+        }
         orderOnlineRepository.save(order);
+
+        UserVoucher userVoucher = order.getUserVoucher();
+        if (userVoucher != null && userVoucher.getStatus() != null && userVoucher.getStatus() == 1) {
+            userVoucher.setStatus(0);
+            userVoucherRepository.save(userVoucher);
+        }
 
         List<Ticket> tickets = ticketRepository.findByOrderOnline_OrderOnlineId(order.getOrderOnlineId());
         for (Ticket t : tickets) {
@@ -723,19 +917,18 @@ public class TicketCheckoutService {
             f.setStatus(FOOD_STATUS_PAID);
         }
         orderDetailFoodRepository.saveAll(foods);
+    }
 
-        System.out.println("confirmPaymentFromPayosWebhook: About to add points, user=" + (order.getUser() != null ? order.getUser().getUserId() : "null"));
-        // Luôn cố gắng cộng điểm và reload rank nếu có user
+    private void rewardPaidOrder(OrderOnline order) {
         if (order.getUser() != null) {
             try {
                 recalculateUserRankFromPaidOrders(order.getUser());
                 addPointsForOrder(order);
             } catch (Exception e) {
-                System.err.println("Error adding points: " + e.getMessage());
-                e.printStackTrace();
+                log.error("Error adding points for PayOS order {}", order.getOrderCode(), e);
             }
         } else {
-            System.err.println("confirmPaymentFromPayosWebhook: User is null, cannot add points");
+            log.warn("Cannot add points for PayOS order {} because user is null", order.getOrderCode());
         }
     }
 
@@ -752,28 +945,38 @@ public class TicketCheckoutService {
             }
             
             if (user == null) {
-                System.out.println("addPointsForOrder: User is null, skipping");
+                log.debug("Skip adding points because order {} has no user", order.getOrderCode());
+                return;
+            }
+
+            String orderCode = order.getOrderCode() != null
+                    ? order.getOrderCode()
+                    : String.valueOf(order.getOrderOnlineId());
+            String descriptionPrefix = "Tích điểm từ đơn " + orderCode;
+            boolean alreadyRewarded = pointsHistoryRepository
+                    .findByUser_UserIdOrderByDateDescPointHistoryIdDesc(user.getUserId())
+                    .stream()
+                    .anyMatch(h -> h.getDescription() != null
+                            && h.getDescription().startsWith(descriptionPrefix));
+            if (alreadyRewarded) {
+                log.debug("Skip adding duplicate points for order {} and user {}", orderCode, user.getUserId());
                 return;
             }
 
             double finalAmount = order.getFinalAmount() != null ? order.getFinalAmount() : 0.0;
-            System.out.println("addPointsForOrder: orderCode=" + order.getOrderCode() + ", finalAmount=" + finalAmount + ", userId=" + user.getUserId());
             
             // Tính điểm từ số tiền: 1k = 1 điểm (làm tròn)
             int pointsFromAmount = (int) Math.round(finalAmount / 1000);
-            System.out.println("addPointsForOrder: pointsFromAmount=" + pointsFromAmount);
             
             // Lấy điểm bonus từ rank
             MembershipRank rank = resolveEffectiveRank(user);
             int bonusPoints = (rank != null && rank.getBonusPoint() != null) ? rank.getBonusPoint() : 0;
-            System.out.println("addPointsForOrder: rank=" + (rank != null ? rank.getRankName() : "null") + ", bonusPoints=" + bonusPoints);
             
             // Tổng điểm
             int totalPoints = pointsFromAmount + bonusPoints;
-            System.out.println("addPointsForOrder: totalPoints=" + totalPoints);
             
             if (totalPoints <= 0) {
-                System.out.println("addPointsForOrder: totalPoints <= 0, skipping");
+                log.debug("Skip adding non-positive points for order {}", order.getOrderCode());
                 return;
             }
             
@@ -781,21 +984,19 @@ public class TicketCheckoutService {
             int currentPoints = user.getPoints() != null ? user.getPoints() : 0;
             user.setPoints(currentPoints + totalPoints);
             userRepository.save(user);
-            System.out.println("addPointsForOrder: Updated user points from " + currentPoints + " to " + user.getPoints());
             
             // Lưu lịch sử điểm
             PointsHistory pointsHistory = new PointsHistory();
             pointsHistory.setUser(user);
             pointsHistory.setDate(LocalDate.now());
-            pointsHistory.setDescription("Tích điểm từ đơn " + order.getOrderCode() + 
+            pointsHistory.setDescription(descriptionPrefix +
                                        " (" + pointsFromAmount + " điểm từ số tiền" + 
                                        (bonusPoints > 0 ? " + " + bonusPoints + " điểm bonus" : "") + ")");
             pointsHistory.setPoints(totalPoints);
             pointsHistoryRepository.save(pointsHistory);
-            System.out.println("addPointsForOrder: Saved points history");
+            log.debug("Added {} points for order {} and user {}", totalPoints, orderCode, user.getUserId());
         } catch (Exception e) {
-            System.err.println("addPointsForOrder: Error adding points for order " + order.getOrderCode());
-            e.printStackTrace();
+            log.error("Error adding points for order {}", order.getOrderCode(), e);
         }
     }
 

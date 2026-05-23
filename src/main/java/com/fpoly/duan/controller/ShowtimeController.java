@@ -19,6 +19,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+import jakarta.validation.Valid;
 
 import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
@@ -31,6 +34,7 @@ import com.fpoly.duan.repository.MovieRepository;
 import com.fpoly.duan.repository.RoomRepository;
 import com.fpoly.duan.repository.ShowtimeRepository;
 import com.fpoly.duan.repository.TicketRepository;
+import com.fpoly.duan.service.CinemaScopeService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -43,22 +47,26 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @Transactional(readOnly = true)
 @Tag(name = "6. Suất chiếu (Showtimes)", description = "Lịch chiếu theo phòng/phim — query `cinemaId` tùy chọn.")
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
+@SuppressWarnings("null")
 public class ShowtimeController {
 
     private final ShowtimeRepository showtimeRepository;
     private final MovieRepository movieRepository;
     private final RoomRepository roomRepository;
     private final TicketRepository ticketRepository;
+    private final CinemaScopeService cinemaScopeService;
 
     public ShowtimeController(
             ShowtimeRepository showtimeRepository,
             MovieRepository movieRepository,
             RoomRepository roomRepository,
-            TicketRepository ticketRepository) {
+            TicketRepository ticketRepository,
+            CinemaScopeService cinemaScopeService) {
         this.showtimeRepository = showtimeRepository;
         this.movieRepository = movieRepository;
         this.roomRepository = roomRepository;
         this.ticketRepository = ticketRepository;
+        this.cinemaScopeService = cinemaScopeService;
     }
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
@@ -80,14 +88,13 @@ public class ShowtimeController {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        LocalDate maxDate = now.toLocalDate().plusDays(7); // Chỉ lấy đến 7 ngày sau
+        LocalDate maxDate = now.toLocalDate().plusDays(7);
 
         List<ShowtimeSlotResponse> slotList = showtimes.stream()
                 .filter(s -> s.getStartTime() != null)
-                .filter(s -> !s.getStartTime().toLocalDate().isBefore(now.toLocalDate())) // Từ hôm nay
-                .filter(s -> !s.getStartTime().toLocalDate().isAfter(maxDate)) // Đến 7 ngày sau
+                .filter(s -> !s.getStartTime().toLocalDate().isBefore(now.toLocalDate()))
+                .filter(s -> !s.getStartTime().toLocalDate().isAfter(maxDate))
                 .map(s -> {
-                    // Đếm vé đã bán/đang giữ
                     List<Integer> held = ticketRepository.findHeldSeatIdsByShowtime(s.getShowtimeId());
                     return toDTO(s, now, held);
                 })
@@ -104,7 +111,7 @@ public class ShowtimeController {
     @Operation(summary = "Chi tiết suất chiếu")
     public ResponseEntity<ApiResponse<ShowtimeSlotResponse>> getShowtimeById(@PathVariable Integer id) {
         Showtime s = showtimeRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy suất chiếu với id: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy suất chiếu với id: " + id));
 
         List<Integer> bookedSeatIds = ticketRepository.findHeldSeatIdsByShowtime(id);
 
@@ -118,14 +125,16 @@ public class ShowtimeController {
     @PostMapping
     @Operation(summary = "Tạo suất chiếu")
     @Transactional
-    public ResponseEntity<ApiResponse<Integer>> createShowtime(@RequestBody ShowtimeRequest request) {
+    public ResponseEntity<ApiResponse<Integer>> createShowtime(@Valid @RequestBody ShowtimeRequest request) {
         validate(request);
 
         Movie movie = movieRepository.findById(request.getMovieId())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phim với mã: " + request.getMovieId()));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phim với mã: " + request.getMovieId()));
 
         Room room = roomRepository.findById(request.getRoomId())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng với mã: " + request.getRoomId()));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phòng với mã: " + request.getRoomId()));
+        cinemaScopeService.requireCinemaAccess(room.getCinema());
+        cinemaScopeService.requireCinemaOperational(room.getCinema());
 
         Showtime s = new Showtime();
         s.setMovie(movie);
@@ -147,17 +156,23 @@ public class ShowtimeController {
     @PutMapping("/{id}")
     @Operation(summary = "Cập nhật suất chiếu")
     @Transactional
-    public ResponseEntity<ApiResponse<Integer>> updateShowtime(@PathVariable Integer id, @RequestBody ShowtimeRequest request) {
+    public ResponseEntity<ApiResponse<Integer>> updateShowtime(@PathVariable Integer id, @Valid @RequestBody ShowtimeRequest request) {
         validate(request);
 
         Showtime s = showtimeRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy suất chiếu với id: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy suất chiếu với id: " + id));
+        if (s.getRoom() != null) {
+            cinemaScopeService.requireCinemaAccess(s.getRoom().getCinema());
+            cinemaScopeService.requireCinemaOperational(s.getRoom().getCinema());
+        }
 
         Movie movie = movieRepository.findById(request.getMovieId())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phim với mã: " + request.getMovieId()));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phim với mã: " + request.getMovieId()));
 
         Room room = roomRepository.findById(request.getRoomId())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng với mã: " + request.getRoomId()));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phòng với mã: " + request.getRoomId()));
+        cinemaScopeService.requireCinemaAccess(room.getCinema());
+        cinemaScopeService.requireCinemaOperational(room.getCinema());
 
         s.setMovie(movie);
         s.setRoom(room);
@@ -179,10 +194,13 @@ public class ShowtimeController {
     @Operation(summary = "Xóa suất chiếu")
     @Transactional
     public ResponseEntity<ApiResponse<Void>> deleteShowtime(@PathVariable Integer id) {
-        if (!showtimeRepository.existsById(id)) {
-            throw new RuntimeException("Không tìm thấy suất chiếu với id: " + id);
+        Showtime s = showtimeRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy suất chiếu với id: " + id));
+        if (s.getRoom() != null) {
+            cinemaScopeService.requireCinemaAccess(s.getRoom().getCinema());
+            cinemaScopeService.requireCinemaOperational(s.getRoom().getCinema());
         }
-        showtimeRepository.deleteById(id);
+        showtimeRepository.delete(s);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
                 .message("Xóa suất chiếu thành công")
@@ -209,7 +227,7 @@ public class ShowtimeController {
 
         String date = s.getStartTime() != null ? s.getStartTime().toLocalDate().toString() : null;
         String time = s.getStartTime() != null ? s.getStartTime().toLocalTime().format(TIME_FMT) : null;
-        
+
         String endTimeStr = null;
         if (s.getStartTime() != null) {
             int durationMin = movie != null && movie.getDuration() != null ? movie.getDuration() : 120;
@@ -244,44 +262,36 @@ public class ShowtimeController {
 
     private void validate(ShowtimeRequest request) {
         if (request == null) {
-            throw new RuntimeException("Dữ liệu suất chiếu không hợp lệ");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Dữ liệu suất chiếu không hợp lệ");
         }
         if (request.getMovieId() == null || request.getRoomId() == null) {
-            throw new RuntimeException("Vui lòng chọn phim và phòng");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng chọn phim và phòng");
         }
         if (request.getStartTime() == null) {
-            throw new RuntimeException("Vui lòng chọn thời gian suất chiếu");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng chọn thời gian suất chiếu");
         }
         if (request.getSurcharge() == null) {
-            throw new RuntimeException("Vui lòng nhập Phụ thu");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng nhập Phụ thu");
         }
         if (request.getSurcharge() < 0) {
-            throw new RuntimeException("Phụ thu không được nhỏ hơn 0");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Phụ thu không được nhỏ hơn 0");
         }
     }
 
-    /** Không cho hai suất trong cùng phòng chồng lên nhau (theo thời lượng phim). */
     private void assertNoRoomOverlap(Integer excludeShowtimeId, Room room, Movie movie, LocalDateTime start) {
-        if (room == null || start == null) {
-            return;
-        }
+        if (room == null || start == null) return;
         int durationMin = movie != null && movie.getDuration() != null ? movie.getDuration() : 120;
         LocalDateTime newEnd = start.plusMinutes(durationMin);
         List<Showtime> inRoom = showtimeRepository.findByRoom_RoomId(room.getRoomId());
         for (Showtime ot : inRoom) {
-            if (excludeShowtimeId != null && excludeShowtimeId.equals(ot.getShowtimeId())) {
-                continue;
-            }
-            if (ot.getStartTime() == null) {
-                continue;
-            }
+            if (excludeShowtimeId != null && excludeShowtimeId.equals(ot.getShowtimeId())) continue;
+            if (ot.getStartTime() == null) continue;
             Movie om = ot.getMovie();
             int od = om != null && om.getDuration() != null ? om.getDuration() : 120;
             LocalDateTime otEnd = ot.getStartTime().plusMinutes(od);
             if (start.isBefore(otEnd) && ot.getStartTime().isBefore(newEnd)) {
-                throw new RuntimeException("Trùng lịch trong phòng này — chọn giờ khác hoặc phòng khác.");
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Trùng lịch trong phòng này — chọn giờ khác hoặc phòng khác.");
             }
         }
     }
 }
-

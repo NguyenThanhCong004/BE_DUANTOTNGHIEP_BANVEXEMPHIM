@@ -28,6 +28,7 @@ import com.fpoly.duan.entity.Product;
 import com.fpoly.duan.repository.CinemaProductRepository;
 import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.ProductRepository;
+import com.fpoly.duan.service.CinemaScopeService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -45,11 +46,12 @@ public class CinemaProductMenuController {
     private final CinemaRepository cinemaRepository;
     private final ProductRepository productRepository;
     private final CinemaProductRepository cinemaProductRepository;
+    private final CinemaScopeService cinemaScopeService;
 
     @GetMapping
     @Operation(summary = "Danh sách sản phẩm chia 2 nhóm: đang bán và chưa bán tại rạp")
     public ResponseEntity<ApiResponse<CinemaProductMenuDTO>> getMenu(@PathVariable Integer cinemaId) {
-        cinemaRepository.findById(cinemaId)
+        Cinema cinema = cinemaRepository.findById(cinemaId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với id: " + cinemaId));
 
         List<Product> allProducts = productRepository.findAllByOrderByProductIdDesc();
@@ -67,7 +69,7 @@ public class CinemaProductMenuController {
                 continue;
             }
             CinemaProduct cp = byProductId.get(p.getProductId());
-            boolean selling = cp != null && Boolean.TRUE.equals(cp.getIsActive());
+            boolean selling = cinemaScopeService.isCinemaPubliclyAvailable(cinema) && cp != null && Boolean.TRUE.equals(cp.getIsActive());
             CinemaProductOfferDTO row = toOffer(p, cp);
             if (selling) {
                 onSale.add(row);
@@ -102,6 +104,8 @@ public class CinemaProductMenuController {
 
         Cinema cinema = cinemaRepository.findById(cinemaId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với id: " + cinemaId));
+        cinemaScopeService.requireCinemaAccess(cinema);
+        cinemaScopeService.requireCinemaOperational(cinema);
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm với id: " + productId));
 
@@ -129,6 +133,10 @@ public class CinemaProductMenuController {
     public ResponseEntity<ApiResponse<Void>> removeFromMenu(
             @PathVariable Integer cinemaId,
             @PathVariable Integer productId) {
+        Cinema cinema = cinemaRepository.findById(cinemaId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với id: " + cinemaId));
+        cinemaScopeService.requireCinemaAccess(cinema);
+        cinemaScopeService.requireCinemaOperational(cinema);
         cinemaProductRepository.findByCinema_CinemaIdAndProduct_ProductId(cinemaId, productId)
                 .ifPresent(cinemaProductRepository::delete);
 
