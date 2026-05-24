@@ -11,10 +11,10 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(name = "LoginRequest", description = "Đăng nhập user hoặc staff — trường username nhận email/username")
+@Schema(name = "LoginRequest", description = "Đăng nhập theo từng luồng riêng: user dùng /login, staff dùng /staff-login")
 public class LoginRequest {
     @NotBlank(message = "Tên đăng nhập không được để trống")
-    @Schema(example = "user01", description = "Username hoặc email (staff đăng nhập bằng email)")
+    @Schema(example = "user01", description = "Username hoặc email")
     private String username;
 
     @NotBlank(message = "Mật khẩu không được để trống")

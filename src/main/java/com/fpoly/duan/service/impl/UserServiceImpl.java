@@ -129,7 +129,7 @@ public class UserServiceImpl implements UserService {
     public void recalculateAllUserRanks() {
         List<User> allUsers = userRepository.findAll();
         List<MembershipRank> activeRanks = membershipRankRepository.findAll().stream()
-                .filter(r -> r.getStatus() != null && r.getStatus() == 1)
+                .filter(r -> r.getStatus() == null || r.getStatus() == 1)
                 .sorted(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0, Comparator.reverseOrder()))
                 .collect(Collectors.toList());
 

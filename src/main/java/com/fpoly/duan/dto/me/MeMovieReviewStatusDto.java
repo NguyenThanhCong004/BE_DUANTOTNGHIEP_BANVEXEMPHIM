@@ -9,13 +9,8 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class MeFavoriteMovieDto {
-    private Integer favoriteId;
+public class MeMovieReviewStatusDto {
     private Integer movieId;
-    private String title;
-    private String poster;
-    private Integer duration;
-    private Integer status;
     private Boolean canReview;
     private MeMovieReviewDto review;
 }

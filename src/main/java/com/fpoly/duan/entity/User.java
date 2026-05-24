@@ -24,7 +24,7 @@ public class User {
     private String fullname;
     private Integer status;
     private LocalDate birthday;
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "NVARCHAR(MAX)")
     private String avatar;
     private String email;
     private String phone;

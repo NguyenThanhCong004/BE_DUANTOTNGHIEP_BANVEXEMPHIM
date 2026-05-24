@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.CancelPendingOrderRequest;
+import com.fpoly.duan.dto.ConfirmPayosOrderRequest;
 import com.fpoly.duan.dto.TicketCheckoutRequest;
 import com.fpoly.duan.dto.TicketCheckoutResponse;
 import com.fpoly.duan.dto.TicketQuoteResponse;
@@ -94,6 +95,37 @@ public class TicketOrderController {
                         .build());
     }
 
+    @PostMapping("/confirm-payos")
+    @Operation(summary = "Xác nhận thanh toán PayOS", description = """
+            Dùng khi PayOS redirect về FE nhưng webhook không gọi được BE local/LAN.
+            BE sẽ truy vấn PayOS, chỉ chốt đơn và cộng điểm khi PayOS trả trạng thái PAID.
+            """)
+    public ResponseEntity<ApiResponse<TicketCheckoutResponse>> confirmPayos(
+            Authentication authentication,
+            @Valid @RequestBody ConfirmPayosOrderRequest request) {
+
+        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (details.getStaff() != null || details.getUser() == null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                    ApiResponse.<TicketCheckoutResponse>builder()
+                            .status(HttpStatus.FORBIDDEN.value())
+                            .message("Chỉ tài khoản khách hàng được thao tác")
+                            .build());
+        }
+
+        TicketCheckoutResponse data = ticketCheckoutService.confirmPaidOrderByPayosCode(
+                details.getUser().getUserId(),
+                request.getPayosOrderCode());
+
+        return ResponseEntity.ok(ApiResponse.<TicketCheckoutResponse>builder()
+                .status(HttpStatus.OK.value())
+                .message("Đã xác nhận thanh toán PayOS")
+                .data(data)
+                .build());
+    }
+
     @org.springframework.web.bind.annotation.PostMapping("/cancel-pending")
     @Operation(summary = "Hủy đơn chờ PayOS", description = "Giữ đơn ở trạng thái hủy và trả ghế về kho bán.")
     public ResponseEntity<ApiResponse<Void>> cancelPending(
@@ -110,10 +142,14 @@ public class TicketOrderController {
                             .message("Chỉ tài khoản khách hàng được thao tác")
                             .build());
         }
-        ticketCheckoutService.cancelPendingOrderByPayosCode(details.getUser().getUserId(), request.getPayosOrderCode());
+        boolean paid = ticketCheckoutService.cancelPendingOrderByPayosCode(
+                details.getUser().getUserId(),
+                request.getPayosOrderCode());
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
-                .message("Đã hủy đơn, lưu lịch sử và trả ghế")
+                .message(paid
+                        ? "Đơn đã thanh toán trên PayOS, hệ thống đã cập nhật trạng thái"
+                        : "Đã hủy đơn, lưu lịch sử và trả ghế")
                 .build());
     }
 }

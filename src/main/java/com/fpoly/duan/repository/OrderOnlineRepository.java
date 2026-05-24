@@ -50,7 +50,7 @@ public interface OrderOnlineRepository extends JpaRepository<OrderOnline, Intege
 
     @Query(value = "SELECT COALESCE(c_ticket.name, c_staff.name) as cinema_name, " +
            "SUM(o.final_amount) as revenue, " +
-           "CAST(SUM(COALESCE(t_count.c, 0)) AS BIGINT) as total_tickets " +
+           "COALESCE(SUM(t_count.c), 0) as total_tickets " +
            "FROM orders_online o " +
            "LEFT JOIN ( " +
            "    SELECT order_online_id, MIN(showtime_id) as mid, COUNT(ticket_id) as c " +

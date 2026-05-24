@@ -7,6 +7,7 @@ import com.fpoly.duan.dto.UserRequest;
 
 public interface AuthService {
     AuthResponse login(LoginRequest loginRequest);
+    AuthResponse staffLogin(LoginRequest loginRequest);
     AuthResponse register(UserRequest userRequest);
     AuthResponse refresh(RefreshRequest refreshRequest);
 }

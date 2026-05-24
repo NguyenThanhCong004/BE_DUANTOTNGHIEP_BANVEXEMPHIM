@@ -6,13 +6,16 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,6 +39,7 @@ import com.fpoly.duan.entity.StaffShift;
 import com.fpoly.duan.security.CustomUserDetails;
 import com.fpoly.duan.repository.StaffRepository;
 import com.fpoly.duan.repository.StaffShiftRepository;
+import com.fpoly.duan.service.CinemaScopeService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -55,10 +59,12 @@ import lombok.RequiredArgsConstructor;
 public class ShiftController {
     private final StaffShiftRepository staffShiftRepository;
     private final StaffRepository staffRepository;
+    private final CinemaScopeService cinemaScopeService;
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
 
     @GetMapping("/debug")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
     @Operation(summary = "Debug - Xem tất cả data trong database")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> debugData() {
         List<StaffShift> all = staffShiftRepository.findAll();
@@ -103,22 +109,12 @@ public class ShiftController {
             @Parameter(description = "Đến ngày (yyyy-MM-dd)")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         List<StaffShift> all = staffShiftRepository.findAll();
+        Integer effectiveCinemaId = cinemaScopeService.effectiveCinemaId(cinemaId);
 
         List<StaffShift> filtered = all;
-        if (cinemaId != null) {
+        if (effectiveCinemaId != null) {
             filtered = all.stream()
-                    .filter(s -> {
-                        // 1. Ưu tiên lọc theo cinemaId lưu trực tiếp trong ca làm
-                        if (s.getCinema() != null) {
-                            return cinemaId.equals(s.getCinema().getCinemaId());
-                        }
-                        
-                        // 2. Dự phòng cho dữ liệu cũ: Lọc theo cinema hiện tại của nhân viên
-                        Staff st = s.getStaff();
-                        if (st == null) return false;
-                        if (st.getCinema() == null) return true;
-                        return cinemaId.equals(st.getCinema().getCinemaId());
-                    })
+                    .filter(s -> effectiveCinemaId.equals(shiftCinemaId(s)))
                     .collect(Collectors.toList());
         }
 
@@ -225,6 +221,8 @@ public class ShiftController {
     public ResponseEntity<ApiResponse<ShiftGroupResponse>> getShiftGroup(@PathVariable Integer id) {
         StaffShift rep = staffShiftRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy ca làm với id: " + id));
+        requireShiftScope(rep);
+        Integer repCinemaId = shiftCinemaId(rep);
 
         LocalDate date = rep.getDate();
         LocalDateTime start = rep.getStartTime();
@@ -232,7 +230,9 @@ public class ShiftController {
 
         String shiftType = deriveShiftType(start, end);
 
-        List<StaffShift> group = staffShiftRepository.findByDateAndStartTimeAndEndTime(date, start, end);
+        List<StaffShift> group = staffShiftRepository.findByDateAndStartTimeAndEndTime(date, start, end).stream()
+                .filter(ss -> Objects.equals(shiftCinemaId(ss), repCinemaId))
+                .collect(Collectors.toList());
 
         Integer banveId = null;
         Integer soatveId = null;
@@ -274,6 +274,7 @@ public class ShiftController {
 
         Staff staff = staffRepository.findById(request.getStaffId())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân viên"));
+        requireStaffCinemaAccess(staff);
 
         // Chuyển startTime và endTime từ string sang LocalDateTime
         LocalDate date = request.getDate();
@@ -285,6 +286,7 @@ public class ShiftController {
         shift.setEndTime(range[1]);
         shift.setStaff(staff);
         shift.setRole(request.getRole()); // Lưu role từ request
+        shift.setCinema(staff.getCinema());
 
         StaffShift saved = staffShiftRepository.save(shift);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<Integer>builder()
@@ -306,9 +308,11 @@ public class ShiftController {
 
         StaffShift shift = staffShiftRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy ca làm với id: " + id));
+        requireShiftScope(shift);
 
         Staff staff = staffRepository.findById(request.getStaffId())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân viên"));
+        requireStaffCinemaAccess(staff);
 
         // Chuyển startTime và endTime từ string sang LocalDateTime
         LocalDate date = request.getDate();
@@ -319,6 +323,7 @@ public class ShiftController {
         shift.setEndTime(range[1]);
         shift.setStaff(staff);
         shift.setRole(request.getRole()); // Cập nhật role từ request
+        shift.setCinema(staff.getCinema());
 
         StaffShift saved = staffShiftRepository.save(shift);
         return ResponseEntity.ok(ApiResponse.<Integer>builder()
@@ -343,6 +348,7 @@ public class ShiftController {
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy staff Soát vé"));
         Staff stPhucVu = staffRepository.findById(request.getStaffPhucVuId())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy staff Phục vụ"));
+        requireSameCinema(List.of(stBanve, stSoatVe, stPhucVu));
 
         StaffShift s1 = buildShift(request.getShiftType(), date, range[0], range[1], stBanve, "Bán vé");
         StaffShift s2 = buildShift(request.getShiftType(), date, range[0], range[1], stSoatVe, "Soát vé");
@@ -367,12 +373,16 @@ public class ShiftController {
 
         StaffShift rep = staffShiftRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy ca làm với id: " + id));
+        requireShiftScope(rep);
+        Integer repCinemaId = shiftCinemaId(rep);
 
         LocalDate date = request.getDate() != null ? request.getDate() : rep.getDate();
         LocalDateTime[] range = resolveTimeRange(request.getShiftType(), date);
 
         // Delete group and recreate (simple & consistent)
-        List<StaffShift> toDelete = staffShiftRepository.findByDateAndStartTimeAndEndTime(rep.getDate(), rep.getStartTime(), rep.getEndTime());
+        List<StaffShift> toDelete = staffShiftRepository.findByDateAndStartTimeAndEndTime(rep.getDate(), rep.getStartTime(), rep.getEndTime()).stream()
+                .filter(ss -> Objects.equals(shiftCinemaId(ss), repCinemaId))
+                .collect(Collectors.toList());
         staffShiftRepository.deleteAll(toDelete);
 
         Staff stBanve = staffRepository.findById(request.getStaffBanveId())
@@ -381,6 +391,7 @@ public class ShiftController {
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy staff Soát vé"));
         Staff stPhucVu = staffRepository.findById(request.getStaffPhucVuId())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy staff Phục vụ"));
+        requireSameCinema(List.of(stBanve, stSoatVe, stPhucVu));
 
         StaffShift s1 = buildShift(request.getShiftType(), date, range[0], range[1], stBanve, "Bán vé");
         StaffShift s2 = buildShift(request.getShiftType(), date, range[0], range[1], stSoatVe, "Soát vé");
@@ -403,8 +414,12 @@ public class ShiftController {
     public ResponseEntity<ApiResponse<Void>> deleteShiftGroup(@PathVariable Integer id) {
         StaffShift rep = staffShiftRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy ca làm với id: " + id));
+        requireShiftScope(rep);
+        Integer repCinemaId = shiftCinemaId(rep);
         List<StaffShift> toDelete = staffShiftRepository.findByDateAndStartTimeAndEndTime(
-                rep.getDate(), rep.getStartTime(), rep.getEndTime());
+                rep.getDate(), rep.getStartTime(), rep.getEndTime()).stream()
+                .filter(ss -> Objects.equals(shiftCinemaId(ss), repCinemaId))
+                .collect(Collectors.toList());
         staffShiftRepository.deleteAll(toDelete);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
@@ -432,6 +447,48 @@ public class ShiftController {
             s.setCinema(staff.getCinema());
         }
         return s;
+    }
+
+    private Integer shiftCinemaId(StaffShift shift) {
+        if (shift == null) return null;
+        if (shift.getCinema() != null) {
+            return shift.getCinema().getCinemaId();
+        }
+        Staff staff = shift.getStaff();
+        return staff != null && staff.getCinema() != null ? staff.getCinema().getCinemaId() : null;
+    }
+
+    private void requireShiftScope(StaffShift shift) {
+        Integer cinemaId = shiftCinemaId(shift);
+        if (cinemaId == null) {
+            if (!cinemaScopeService.isSuperAdmin()) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Không xác định được rạp của ca làm");
+            }
+            return;
+        }
+        cinemaScopeService.requireCinemaAccess(cinemaId);
+    }
+
+    private Integer requireStaffCinemaAccess(Staff staff) {
+        Integer cinemaId = staff != null && staff.getCinema() != null ? staff.getCinema().getCinemaId() : null;
+        if (cinemaId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Nhân viên chưa được gán rạp");
+        }
+        cinemaScopeService.requireCinemaAccess(cinemaId);
+        return cinemaId;
+    }
+
+    private Integer requireSameCinema(List<Staff> staffMembers) {
+        Integer cinemaId = null;
+        for (Staff staff : staffMembers) {
+            Integer staffCinemaId = requireStaffCinemaAccess(staff);
+            if (cinemaId == null) {
+                cinemaId = staffCinemaId;
+            } else if (!cinemaId.equals(staffCinemaId)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Các nhân viên trong cùng nhóm ca phải thuộc cùng rạp");
+            }
+        }
+        return cinemaId;
     }
 
     private LocalDateTime[] resolveTimeRange(String shiftType, LocalDate date) {

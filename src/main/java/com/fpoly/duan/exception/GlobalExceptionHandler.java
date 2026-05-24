@@ -2,10 +2,13 @@ package com.fpoly.duan.exception;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -13,8 +16,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.fpoly.duan.dto.ApiResponse;
+import lombok.extern.slf4j.Slf4j;
 
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     private String localizeMessage(String rawMessage, String fallback) {
@@ -52,8 +57,34 @@ public class GlobalExceptionHandler {
                 .build());
     }
 
+    @ExceptionHandler(NoSuchElementException.class)
+    public ResponseEntity<ApiResponse<Object>> handleNoSuchElement(NoSuchElementException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.builder()
+                .status(HttpStatus.NOT_FOUND.value())
+                .message(localizeMessage(ex.getMessage(), "Không tìm thấy dữ liệu"))
+                .build());
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponse<Object>> handleIllegalArgument(IllegalArgumentException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.builder()
+                .status(HttpStatus.BAD_REQUEST.value())
+                .message(localizeMessage(ex.getMessage(), "Dữ liệu không hợp lệ"))
+                .build());
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Object>> handleUnreadableJson(HttpMessageNotReadableException ex) {
+        log.warn("Unreadable JSON request: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.builder()
+                .status(HttpStatus.BAD_REQUEST.value())
+                .message("Dữ liệu JSON không hợp lệ hoặc có số nhập quá lớn. Vui lòng kiểm tra lại các ô số.")
+                .build());
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ApiResponse<Object>> handleRuntimeException(RuntimeException ex) {
+        log.error("Unhandled RuntimeException: {}", ex.getMessage(), ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ApiResponse.builder()
                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
                 .message(localizeMessage(ex.getMessage(), "Đã xảy ra lỗi hệ thống"))
@@ -65,6 +96,14 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.builder()
                 .status(HttpStatus.UNAUTHORIZED.value())
                 .message("Tên đăng nhập hoặc mật khẩu không chính xác")
+                .build());
+    }
+
+    @ExceptionHandler(DisabledException.class)
+    public ResponseEntity<ApiResponse<Object>> handleDisabledException(DisabledException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.builder()
+                .status(HttpStatus.FORBIDDEN.value())
+                .message("Tài khoản đã bị khóa")
                 .build());
     }
 
@@ -93,9 +132,10 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Object>> handleGeneralException(Exception ex) {
+        log.error("Unhandled Exception [{}]: {}", ex.getClass().getSimpleName(), ex.getMessage(), ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ApiResponse.builder()
                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
-                .message(localizeMessage(ex.getMessage(), "Đã xảy ra lỗi hệ thống"))
+                .message("Đã xảy ra lỗi hệ thống")
                 .build());
     }
 }

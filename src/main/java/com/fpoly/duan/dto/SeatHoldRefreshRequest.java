@@ -17,5 +17,5 @@ public record SeatHoldRefreshRequest(
 
         @NotBlank @Size(max = 80) @Schema(description = "UUID phiên trình duyệt (FE lưu sessionStorage)", example = "a1b2c3d4-e5f6-7890-abcd-ef1234567890") String holderId,
 
-        @NotNull @Size(max = 24) @Schema(description = "Danh sách seat_id đang chọn") List<Integer> seatIds) {
+        @NotNull @Schema(description = "Danh sách seat_id đang chọn; cho phép chọn nhiều ghế/bao rạp") List<Integer> seatIds) {
 }
