@@ -1,9 +1,11 @@
 package com.fpoly.duan.config;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
+import java.util.List;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -42,6 +44,9 @@ public class SecurityConfig {
     private final UserDetailsService userDetailsService;
     private final ObjectMapper objectMapper;
 
+    @Value("${app.frontend-base-url:http://localhost:3000}")
+    private String frontendBaseUrl;
+
     private void writeJsonApiResponse(HttpServletResponse response, int httpStatus, String message) throws IOException {
         response.setStatus(httpStatus);
         response.setContentType("application/json;charset=UTF-8");
@@ -73,15 +78,76 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/payments/payos/webhook").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        
-                        // Các API cần quyền đăng nhập
-                        .requestMatchers("/api/v1/shifts/me").authenticated()
-                        .requestMatchers("/api/v1/ticket-orders/**").authenticated()
-                        .requestMatchers("/api/v1/food-orders/**").authenticated()
-                        .requestMatchers("/api/v1/me/**").authenticated()
-                        
-                        // Tất cả các yêu cầu GET công khai (Phim, Rạp, Banner...)
-                        .anyRequest().permitAll())
+
+                        // API công khai cho khách xem nội dung và chọn ghế.
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/v1/cinemas/**",
+                                "/api/v1/genres/**",
+                                "/api/v1/membership-ranks/**",
+                                "/api/v1/movies/**",
+                                "/api/v1/news/**",
+                                "/api/v1/product-categories/**",
+                                "/api/v1/products/**",
+                                "/api/v1/promotions/**",
+                                "/api/v1/seat-types/**",
+                                "/api/v1/seats/**",
+                                "/api/v1/showtime-seat-holds/**",
+                                "/api/v1/showtimes/**",
+                                "/api/v1/vouchers/**")
+                        .permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/showtime-seat-holds/**").permitAll()
+
+                        // Khách đăng nhập.
+                        .requestMatchers("/api/v1/me/**").hasAuthority("ROLE_USER")
+                        .requestMatchers("/api/v1/ticket-orders/**").hasAuthority("ROLE_USER")
+                        .requestMatchers("/api/v1/food-orders/**").hasAuthority("ROLE_USER")
+                        .requestMatchers("/api/v1/payments/payos/create-link").hasAuthority("ROLE_SUPER_ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/users/{id}")
+                        .hasAnyAuthority("ROLE_USER", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/users/{id}", "/api/v1/users/{id}/password")
+                        .hasAnyAuthority("ROLE_USER", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
+
+                        // Nhân viên quầy và quản trị rạp.
+                        .requestMatchers("/api/v1/counter-orders/**")
+                        .hasAnyAuthority("ROLE_STAFF", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
+                        .requestMatchers("/api/v1/counter-orders/export-pdf/**")
+                        .hasAnyAuthority("ROLE_STAFF", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
+                        .requestMatchers("/api/v1/staff/dashboard-stats/**")
+                        .hasAnyAuthority("ROLE_STAFF", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
+                        .requestMatchers("/api/v1/shifts/me", "/api/v1/shifts/active")
+                        .hasAnyAuthority("ROLE_STAFF", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/staff/super-admin-view")
+                        .hasAuthority("ROLE_SUPER_ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/staff/**")
+                        .hasAuthority("ROLE_SUPER_ADMIN")
+                        .requestMatchers("/api/v1/staff/**")
+                        .hasAnyAuthority("ROLE_ADMIN", "ROLE_SUPER_ADMIN")
+
+                        // Quản lý trong phạm vi rạp.
+                        .requestMatchers("/api/v1/rooms/**",
+                                "/api/v1/seats/**",
+                                "/api/v1/seat-types/**",
+                                "/api/v1/showtimes/**",
+                                "/api/v1/shifts/**",
+                                "/api/v1/promotions/**",
+                                "/api/v1/users/**",
+                                "/api/v1/orders-online/**",
+                                "/api/v1/cinemas/*/product-menu/**")
+                        .hasAnyAuthority("ROLE_ADMIN", "ROLE_SUPER_ADMIN")
+
+                        // Quản lý toàn hệ thống.
+                        .requestMatchers("/api/v1/cinemas/**",
+                                "/api/v1/genres/**",
+                                "/api/v1/membership-ranks/**",
+                                "/api/v1/movies/**",
+                                "/api/v1/news/**",
+                                "/api/v1/product-categories/**",
+                                "/api/v1/products/**",
+                                "/api/v1/vouchers/**",
+                                "/api/v1/super-admin/**")
+                        .hasAuthority("ROLE_SUPER_ADMIN")
+
+                        .anyRequest().authenticated())
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
@@ -110,39 +176,21 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        
-        // 1. Cho phép các nguồn gốc (Origin) gọi API
-        configuration.setAllowedOrigins(Arrays.asList(
-            "http://localhost:5173", 
-            "http://localhost:5174", 
-            "http://localhost:3000",
-            "http://nguyencong.id.vn",      // Tên miền của bạn (nếu có FE trên đó)
-            "https://nguyencong.id.vn"
-        ));
-        
-        // 2. Cho phép các phương thức HTTP
+        List<String> allowedOrigins = new ArrayList<>(Arrays.asList(
+                "http://localhost:5173",
+                "http://localhost:5174",
+                "http://localhost:3000",
+                "http://127.0.0.1:5173",
+                "http://127.0.0.1:5174",
+                "http://127.0.0.1:3000"));
+        if (frontendBaseUrl != null && !frontendBaseUrl.isBlank()) {
+            allowedOrigins.add(frontendBaseUrl.trim());
+        }
+        configuration.setAllowedOriginPatterns(allowedOrigins);
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        
-        // 3. Cho phép tất cả các Header quan trọng (SỬA LỖI 403 Ở ĐÂY)
-        configuration.setAllowedHeaders(Arrays.asList(
-            "Authorization", 
-            "Content-Type", 
-            "X-Requested-With", 
-            "Accept", 
-            "Origin", 
-            "Access-Control-Request-Method", 
-            "Access-Control-Request-Headers"
-        ));
-        
-        // 4. Cho phép gửi Cookie/Token
-        // SỬA LỖI CORS: Sử dụng setAllowedOriginPatterns("*") để tránh bị block khi FE chạy khác cổng (ví dụ port tự động đổi sang 5175, 3000...)
-        configuration.setAllowedOriginPatterns(Collections.singletonList("*"));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("*")); // Cho phép tất cả headers
+        configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setExposedHeaders(Arrays.asList("Authorization"));
         configuration.setAllowCredentials(true);
-        
-        // 5. Thời gian cache cấu hình CORS (1 tiếng)
         configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

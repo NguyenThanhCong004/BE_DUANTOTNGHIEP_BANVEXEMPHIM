@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,16 +55,26 @@ import com.fpoly.duan.util.SeatTypeNaming;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Chỉ tạo tài khoản superadmin mặc định khi {@code app.data.seed=true}.
+ * Seed tối thiểu cho Docker/dev khi {@code app.data.seed=true}.
  */
 @Slf4j
 @Service
 public class DatabaseSeedService {
 
-    private static final String SUPERADMIN_USERNAME = "superadmin";
-    private static final String SUPERADMIN_EMAIL = "superadmin@gmail.com";
-    private static final String SUPERADMIN_PHONE = "0901111111";
-    private static final String SUPERADMIN_PASSWORD = "Staff@123";
+    @Value("${app.seed.admin.username:admin}")
+    private String adminUsername;
+
+    @Value("${app.seed.admin.email:admin@fpoly.local}")
+    private String adminEmail;
+
+    @Value("${app.seed.admin.password:Admin@123}")
+    private String adminPassword;
+
+    @Value("${app.seed.admin.fullname:System Admin}")
+    private String adminFullname;
+
+    @Value("${app.seed.admin.phone:0901111111}")
+    private String adminPhone;
 
     private final PasswordEncoder passwordEncoder;
     private final StaffRepository staffRepository;
@@ -132,17 +143,12 @@ public class DatabaseSeedService {
     @Transactional
     public void seedIfEnabled() {
         ensureDefaultSeatTypes();
+        ensureDefaultGenres();
         seedMembershipRanks();
         backfillMissingMembershipRankStatus();
-        seedCinemas();
-        seedGenresAndMovies();
-        seedVoucherTemplates();
-        seedProductCatalog();
         seedStaffAccounts();
-        // seedUserAccounts();
         backfillMissingUserRanks();
-        seedRoomsSeatsAndShowtimes();
-        // seedUserActivitiesAndOrders();
+        log.info("[DataSeed] Seed tối thiểu đã hoàn tất.");
     }
 
     private void backfillMissingMembershipRankStatus() {
@@ -309,74 +315,60 @@ public class DatabaseSeedService {
             return;
         }
 
-        MembershipRank dong = new MembershipRank();
-        dong.setRankName("Hạng Đồng");
-        dong.setMinSpending(0.0);
-        dong.setDescription("Mặc định cho thành viên mới");
-        dong.setDiscountPercent(0.0);
-        dong.setBonusPoint(1);
-        dong.setStatus(1);
+        MembershipRank defaultRank = new MembershipRank();
+        defaultRank.setRankName("Hạng Đồng");
+        defaultRank.setMinSpending(0.0);
+        defaultRank.setDescription("Hạng mặc định cho thành viên mới.");
+        defaultRank.setDiscountPercent(0.0);
+        defaultRank.setBonusPoint(1);
+        defaultRank.setStatus(1);
 
-        MembershipRank bac = new MembershipRank();
-        bac.setRankName("Hạng Bạc");
-        bac.setMinSpending(2_000_000.0);
-        bac.setDescription("Ưu đãi cho khách hàng chi tiêu từ 2 triệu/năm");
-        bac.setDiscountPercent(3.0);
-        bac.setBonusPoint(2);
-        bac.setStatus(1);
+        membershipRankRepository.save(defaultRank);
+        log.info("[DataSeed] Đã tạo hạng thành viên mặc định.");
+    }
 
-        MembershipRank vang = new MembershipRank();
-        vang.setRankName("Hạng Vàng");
-        vang.setMinSpending(5_000_000.0);
-        vang.setDescription("Ưu đãi cho khách hàng chi tiêu từ 5 triệu/năm");
-        vang.setDiscountPercent(5.0);
-        vang.setBonusPoint(3);
-        vang.setStatus(1);
-
-        MembershipRank kimCuong = new MembershipRank();
-        kimCuong.setRankName("Hạng Kim Cương");
-        kimCuong.setMinSpending(10_000_000.0);
-        kimCuong.setDescription("Ưu đãi cao nhất cho khách hàng thân thiết");
-        kimCuong.setDiscountPercent(8.0);
-        kimCuong.setBonusPoint(5);
-        kimCuong.setStatus(1);
-
-        membershipRankRepository.saveAll(List.of(dong, bac, vang, kimCuong));
-        log.info("[DataSeed] Đã tạo dữ liệu mẫu hạng thành viên.");
+    private void ensureDefaultGenres() {
+        if (genreRepository.count() > 0) {
+            return;
+        }
+        Genre other = new Genre();
+        other.setName("Khác");
+        genreRepository.save(other);
+        log.info("[DataSeed] Đã tạo thể loại phim mặc định: Khác.");
     }
 
     private void seedStaffAccounts() {
-        if (!Boolean.TRUE.equals(staffRepository.existsByUsername(SUPERADMIN_USERNAME))) {
-            Staff superAdmin = new Staff();
-            superAdmin.setEmail(SUPERADMIN_EMAIL);
-            superAdmin.setUsername(SUPERADMIN_USERNAME);
-            superAdmin.setFullname("Super Admin");
-            superAdmin.setRole("SUPER_ADMIN");
-            superAdmin.setPassword(passwordEncoder.encode(SUPERADMIN_PASSWORD));
-            superAdmin.setAvatar("https://i.pravatar.cc/150?u=superadmin");
-            superAdmin.setPhone(SUPERADMIN_PHONE);
-            superAdmin.setBirthday(LocalDate.of(1995, 5, 20));
-            superAdmin.setStatus(1);
-            staffRepository.save(superAdmin);
-            log.info("[DataSeed] Đã tạo tài khoản superadmin: {} / {}", SUPERADMIN_USERNAME, SUPERADMIN_PASSWORD);
+        String username = normalize(adminUsername, "admin");
+        String email = normalize(adminEmail, "admin@fpoly.local");
+        String fullname = normalize(adminFullname, "System Admin");
+        String phone = normalize(adminPhone, "0901111111");
+        String password = normalize(adminPassword, "Admin@123");
+
+        if (Boolean.TRUE.equals(staffRepository.existsByUsername(username))
+                || Boolean.TRUE.equals(staffRepository.existsByEmail(email))) {
+            log.info("[DataSeed] Tài khoản admin đã tồn tại -> bỏ qua.");
+            return;
         }
 
-        if (!Boolean.TRUE.equals(staffRepository.existsByUsername("manager01"))) {
-            Staff manager = new Staff();
-            manager.setEmail("manager01@gmail.com");
-            manager.setUsername("manager01");
-            manager.setFullname("Quản lý Rạp 01");
-            manager.setRole("ADMIN");
-            manager.setPassword(passwordEncoder.encode("Manager@123"));
-            manager.setAvatar("https://i.pravatar.cc/150?u=manager01");
-            manager.setPhone("0901111112");
-            manager.setBirthday(LocalDate.of(1994, 8, 15));
-            manager.setStatus(1);
-            Cinema firstCinema = cinemaRepository.findAll().stream().findFirst().orElse(null);
-            manager.setCinema(firstCinema);
-            staffRepository.save(manager);
-            log.info("[DataSeed] Đã tạo staff test: manager01 / Manager@123");
+        Staff admin = new Staff();
+        admin.setEmail(email);
+        admin.setUsername(username);
+        admin.setFullname(fullname);
+        admin.setRole("SUPER_ADMIN");
+        admin.setPassword(passwordEncoder.encode(password));
+        admin.setAvatar("https://i.pravatar.cc/150?u=" + username);
+        admin.setPhone(phone);
+        admin.setBirthday(LocalDate.of(1995, 5, 20));
+        admin.setStatus(1);
+        staffRepository.save(admin);
+        log.info("[DataSeed] Đã tạo tài khoản admin mặc định: {} / {}", username, password);
+    }
+
+    private String normalize(String value, String fallback) {
+        if (value == null || value.trim().isEmpty()) {
+            return fallback;
         }
+        return value.trim();
     }
 
     private void seedUserAccounts() {

@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -17,9 +18,12 @@ import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.me.FavoriteMovieIdRequest;
 import com.fpoly.duan.dto.me.MeFavoriteMovieDto;
+import com.fpoly.duan.dto.me.MeMovieReviewDto;
+import com.fpoly.duan.dto.me.MeMovieReviewStatusDto;
 import com.fpoly.duan.dto.me.MePointsHistoryDto;
 import com.fpoly.duan.dto.me.MeTransactionDto;
 import com.fpoly.duan.dto.me.MeUserVoucherRowDto;
+import com.fpoly.duan.dto.me.MovieReviewRequest;
 import com.fpoly.duan.dto.me.VoucherRedeemRequest;
 import com.fpoly.duan.security.CustomUserDetails;
 import com.fpoly.duan.service.CustomerMeService;
@@ -105,6 +109,33 @@ public class CustomerMeController {
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
                 .message("Đã xóa yêu thích")
+                .build());
+    }
+
+    @PutMapping("/movie-reviews/{movieId}")
+    @Operation(summary = "Bình luận / đánh giá phim đã mua vé")
+    public ResponseEntity<ApiResponse<MeMovieReviewDto>> saveMovieReview(Authentication authentication,
+            @PathVariable Integer movieId,
+            @Valid @RequestBody MovieReviewRequest body) {
+        Integer uid = requireCustomerUserId(authentication);
+        MeMovieReviewDto data = customerMeService.saveMovieReview(uid, movieId, body);
+        return ResponseEntity.ok(ApiResponse.<MeMovieReviewDto>builder()
+                .status(HttpStatus.OK.value())
+                .message("Đã lưu đánh giá phim")
+                .data(data)
+                .build());
+    }
+
+    @GetMapping("/movie-reviews/{movieId}")
+    @Operation(summary = "Trạng thái đánh giá phim của khách hiện tại")
+    public ResponseEntity<ApiResponse<MeMovieReviewStatusDto>> getMovieReviewStatus(Authentication authentication,
+            @PathVariable Integer movieId) {
+        Integer uid = requireCustomerUserId(authentication);
+        MeMovieReviewStatusDto data = customerMeService.getMovieReviewStatus(uid, movieId);
+        return ResponseEntity.ok(ApiResponse.<MeMovieReviewStatusDto>builder()
+                .status(HttpStatus.OK.value())
+                .message("OK")
+                .data(data)
                 .build());
     }
 

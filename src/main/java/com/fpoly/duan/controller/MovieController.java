@@ -20,17 +20,22 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+import jakarta.validation.Valid;
 
 import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.MovieDTO;
 import com.fpoly.duan.dto.MovieWriteDTO;
+import com.fpoly.duan.dto.me.MeMovieReviewDto;
 import com.fpoly.duan.entity.Genre;
 import com.fpoly.duan.entity.Movie;
 import com.fpoly.duan.repository.GenreRepository;
 import com.fpoly.duan.repository.MovieRepository;
 import com.fpoly.duan.repository.ShowtimeRepository;
 import com.fpoly.duan.repository.TicketRepository;
+import com.fpoly.duan.service.CustomerMeService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -49,16 +54,19 @@ public class MovieController {
     private final GenreRepository genreRepository;
     private final TicketRepository ticketRepository;
     private final ShowtimeRepository showtimeRepository;
+    private final CustomerMeService customerMeService;
 
     public MovieController(
             MovieRepository movieRepository,
             GenreRepository genreRepository,
             TicketRepository ticketRepository,
-            ShowtimeRepository showtimeRepository) {
+            ShowtimeRepository showtimeRepository,
+            CustomerMeService customerMeService) {
         this.movieRepository = movieRepository;
         this.genreRepository = genreRepository;
         this.ticketRepository = ticketRepository;
         this.showtimeRepository = showtimeRepository;
+        this.customerMeService = customerMeService;
     }
 
     @GetMapping
@@ -77,8 +85,7 @@ public class MovieController {
     }
 
     /**
-     * Ảnh banner trang chủ: phim {@code status == 1} (đang chiếu), sắp xếp theo doanh thu vé → số suất chiếu.
-     * Phim ngừng chiếu ({@code status != 1}) không đưa vào banner.
+     * Banner trang chủ: phim status==1 (đang chiếu), sắp xếp theo doanh thu vé → số suất chiếu.
      */
     @GetMapping("/home-banners")
     @Operation(summary = "Banner trang chủ (theo doanh thu vé)")
@@ -89,9 +96,7 @@ public class MovieController {
 
         Map<Integer, Double> revenue = new HashMap<>();
         for (Object[] row : ticketRepository.sumTicketRevenueByMovieId()) {
-            if (row == null || row.length < 2 || row[0] == null) {
-                continue;
-            }
+            if (row == null || row.length < 2 || row[0] == null) continue;
             Integer mid = (Integer) row[0];
             double rev = row[1] instanceof Number ? ((Number) row[1]).doubleValue() : 0.0;
             revenue.put(mid, rev);
@@ -99,9 +104,7 @@ public class MovieController {
 
         Map<Integer, Long> showtimeCount = new HashMap<>();
         for (Object[] row : showtimeRepository.countShowtimesGroupedByMovieId()) {
-            if (row == null || row.length < 2 || row[0] == null) {
-                continue;
-            }
+            if (row == null || row.length < 2 || row[0] == null) continue;
             Integer mid = (Integer) row[0];
             long cnt = row[1] instanceof Number ? ((Number) row[1]).longValue() : 0L;
             showtimeCount.put(mid, cnt);
@@ -114,9 +117,7 @@ public class MovieController {
                         .thenComparing(Movie::getMovieId, Comparator.reverseOrder()))
                 .map(m -> {
                     String b = m.getBanner();
-                    if (b != null && !b.trim().isEmpty()) {
-                        return b.trim();
-                    }
+                    if (b != null && !b.trim().isEmpty()) return b.trim();
                     return m.getPoster() != null && !m.getPoster().trim().isEmpty() ? m.getPoster().trim() : null;
                 })
                 .filter(u -> u != null && !u.isEmpty())
@@ -134,11 +135,21 @@ public class MovieController {
     @Operation(summary = "Chi tiết phim")
     public ResponseEntity<ApiResponse<MovieDTO>> getById(@PathVariable Integer id) {
         Movie m = movieRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phim với id: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phim với id: " + id));
         return ResponseEntity.ok(ApiResponse.<MovieDTO>builder()
                 .status(HttpStatus.OK.value())
                 .message("Lấy thông tin phim thành công")
                 .data(toDTO(m))
+                .build());
+    }
+
+    @GetMapping("/{id}/reviews")
+    @Operation(summary = "Danh sách bình luận / đánh giá của phim")
+    public ResponseEntity<ApiResponse<List<MeMovieReviewDto>>> getMovieReviews(@PathVariable Integer id) {
+        return ResponseEntity.ok(ApiResponse.<List<MeMovieReviewDto>>builder()
+                .status(HttpStatus.OK.value())
+                .message("Lấy đánh giá phim thành công")
+                .data(customerMeService.listMovieReviews(id))
                 .build());
     }
 
@@ -148,11 +159,8 @@ public class MovieController {
             @org.springframework.web.bind.annotation.RequestParam Integer cinemaId,
             @org.springframework.web.bind.annotation.RequestParam String startDate,
             @org.springframework.web.bind.annotation.RequestParam String endDate) {
-        
-        // Trả về tất cả phim đang hoạt động (status != 2)
-        // Admin rạp nào thì rạp đó tự biết phim nào mình sẽ chiếu
         List<MovieDTO> movies = movieRepository.findAll().stream()
-                .filter(m -> m.getStatus() != null && m.getStatus() != 2) // status 2 thường là ngừng chiếu
+                .filter(m -> m.getStatus() != null && m.getStatus() != 2)
                 .map(this::toDTO)
                 .collect(Collectors.toList());
 
@@ -166,7 +174,7 @@ public class MovieController {
     @PostMapping
     @Operation(summary = "Tạo phim")
     @Transactional
-    public ResponseEntity<ApiResponse<MovieDTO>> create(@RequestBody MovieWriteDTO req) {
+    public ResponseEntity<ApiResponse<MovieDTO>> create(@Valid @RequestBody MovieWriteDTO req) {
         validateWriteCreate(req);
         Movie m = applyWrite(new Movie(), req);
         Movie saved = movieRepository.save(m);
@@ -181,15 +189,11 @@ public class MovieController {
     @Operation(summary = "Cập nhật phim")
     @Transactional
     public ResponseEntity<ApiResponse<MovieDTO>> update(@PathVariable Integer id, @RequestBody MovieWriteDTO req) {
-        log.debug("Update movie with id: {} and payload: {}", id, req);
-        log.debug("Title: {}, GenreId: {}, Status: {}", req.getTitle(), req.getGenreId(), req.getStatus());
+        log.debug("Update movie id={} payload={}", id, req);
         Movie m = movieRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phim với id: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phim với id: " + id));
 
-        // Kiểm tra xem có dữ liệu cập nhật không
         boolean hasChanges = false;
-
-        // Kiểm tra từng field - chỉ coi là thay đổi nếu không null và không rỗng (đối với string)
         if (req.getGenreId() != null) hasChanges = true;
         if (req.getTitle() != null && !req.getTitle().trim().isEmpty()) hasChanges = true;
         if (req.getDescription() != null) hasChanges = true;
@@ -204,11 +208,7 @@ public class MovieController {
         if (req.getContent() != null) hasChanges = true;
         if (req.getBanner() != null) hasChanges = true;
 
-        log.debug("Has changes: {}", hasChanges);
-
-        // Nếu không có thay đổi nào, trả về thông báo phù hợp
         if (!hasChanges) {
-            log.debug("No changes detected for movie with id: {}", id);
             return ResponseEntity.ok(ApiResponse.<MovieDTO>builder()
                     .status(HttpStatus.OK.value())
                     .message("Không có thay đổi để cập nhật")
@@ -216,7 +216,6 @@ public class MovieController {
                     .build());
         }
 
-        validateWrite(req);
         applyWrite(m, req);
         Movie saved = movieRepository.save(m);
         return ResponseEntity.ok(ApiResponse.<MovieDTO>builder()
@@ -232,7 +231,7 @@ public class MovieController {
     // [SUPER ADMIN ONLY] - This section belongs to Super Admin. Do not modify without authorization.
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
         if (!movieRepository.existsById(id)) {
-            throw new RuntimeException("Không tìm thấy phim với id: " + id);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phim với id: " + id);
         }
         movieRepository.deleteById(id);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
@@ -241,63 +240,33 @@ public class MovieController {
                 .build());
     }
 
-    private void validateWrite(MovieWriteDTO req) {
-        if (req == null) throw new RuntimeException("Dữ liệu phim không hợp lệ");
-    }
-
     private void validateWriteCreate(MovieWriteDTO req) {
-        validateWrite(req);
         if (req.getTitle() == null || req.getTitle().trim().isEmpty()) {
-            throw new RuntimeException("Tên phim không được để trống");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tên phim không được để trống");
         }
         if (req.getGenreId() == null) {
-            throw new RuntimeException("Vui lòng chọn thể loại (genreId)");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng chọn thể loại phim");
         }
     }
 
     private Movie applyWrite(Movie m, MovieWriteDTO req) {
-        // Chỉ cập nhật field khi giá trị được cung cấp (hỗ trợ partial update)
         if (req.getGenreId() != null) {
             Genre g = genreRepository.findById(req.getGenreId())
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy thể loại với id: " + req.getGenreId()));
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thể loại với id: " + req.getGenreId()));
             m.setGenre(g);
         }
-        if (req.getTitle() != null) {
-            m.setTitle(req.getTitle().trim());
-        }
-        if (req.getDescription() != null) {
-            m.setDescription(req.getDescription());
-        }
-        if (req.getDuration() != null) {
-            m.setDuration(req.getDuration());
-        }
-        if (req.getAgeLimit() != null) {
-            m.setAgeLimit(req.getAgeLimit());
-        }
-        if (req.getReleaseDate() != null) {
-            m.setReleaseDate(req.getReleaseDate());
-        }
-        if (req.getPoster() != null) {
-            m.setPoster(req.getPoster());
-        }
-        if (req.getStatus() != null) {
-            m.setStatus(req.getStatus());
-        }
-        if (req.getBasePrice() != null) {
-            m.setBasePrice(req.getBasePrice());
-        }
-        if (req.getAuthor() != null) {
-            m.setAuthor(req.getAuthor());
-        }
-        if (req.getNation() != null) {
-            m.setNation(req.getNation());
-        }
-        if (req.getContent() != null) {
-            m.setContent(req.getContent());
-        }
-        if (req.getBanner() != null) {
-            m.setBanner(req.getBanner());
-        }
+        if (req.getTitle() != null) m.setTitle(req.getTitle().trim());
+        if (req.getDescription() != null) m.setDescription(req.getDescription());
+        if (req.getDuration() != null) m.setDuration(req.getDuration());
+        if (req.getAgeLimit() != null) m.setAgeLimit(req.getAgeLimit());
+        if (req.getReleaseDate() != null) m.setReleaseDate(req.getReleaseDate());
+        if (req.getPoster() != null) m.setPoster(req.getPoster());
+        if (req.getStatus() != null) m.setStatus(req.getStatus());
+        if (req.getBasePrice() != null) m.setBasePrice(req.getBasePrice());
+        if (req.getAuthor() != null) m.setAuthor(req.getAuthor());
+        if (req.getNation() != null) m.setNation(req.getNation());
+        if (req.getContent() != null) m.setContent(req.getContent());
+        if (req.getBanner() != null) m.setBanner(req.getBanner());
         return m;
     }
 

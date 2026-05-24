@@ -5,6 +5,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,6 +23,7 @@ import com.fpoly.duan.entity.User;
 import com.fpoly.duan.repository.OrderDetailFoodRepository;
 import com.fpoly.duan.repository.OrderOnlineRepository;
 import com.fpoly.duan.repository.TicketRepository;
+import com.fpoly.duan.service.CinemaScopeService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -39,35 +41,16 @@ public class OrderOnlineController {
     private final OrderOnlineRepository orderOnlineRepository;
     private final TicketRepository ticketRepository;
     private final OrderDetailFoodRepository orderDetailFoodRepository;
+    private final CinemaScopeService cinemaScopeService;
 
     @GetMapping
     @Operation(summary = "Danh sách đơn online (có lọc theo rạp)")
     public ResponseEntity<ApiResponse<List<OrderOnlineDTO>>> list(@RequestParam(required = false) Integer cinemaId) {
+        Integer effectiveCinemaId = cinemaScopeService.effectiveCinemaId(cinemaId);
         List<OrderOnline> orders;
-        if (cinemaId != null) {
-            // Lọc các đơn theo cinemaId lưu trực tiếp trong đơn, hoặc dự phòng qua vé/nhân viên
+        if (effectiveCinemaId != null) {
             orders = orderOnlineRepository.findAll().stream()
-                    .filter(o -> {
-                        // 1. Kiểm tra trường cinema trực tiếp (Ưu tiên cao nhất cho đơn mới)
-                        if (o.getCinema() != null) {
-                            return o.getCinema().getCinemaId().equals(cinemaId);
-                        }
-                        
-                        // 2. Dự phòng cho dữ liệu cũ (Dự phòng 1): Check tickets (Chính xác hơn vì vé gắn với suất chiếu/phòng/rạp)
-                        boolean hasTicketInCinema = ticketRepository.findByOrderOnline_OrderOnlineId(o.getOrderOnlineId()).stream()
-                                .anyMatch(t -> t.getShowtime() != null && t.getShowtime().getRoom() != null
-                                        && t.getShowtime().getRoom().getCinema() != null
-                                        && t.getShowtime().getRoom().getCinema().getCinemaId().equals(cinemaId));
-                        if (hasTicketInCinema) return true;
-
-                        // 3. Dự phòng cho dữ liệu cũ (Dự phòng 2): Check staff (Chỉ đúng nếu nhân viên chưa chuyển rạp)
-                        if (o.getStaff() != null && o.getStaff().getCinema() != null
-                                && o.getStaff().getCinema().getCinemaId().equals(cinemaId)) {
-                            return true;
-                        }
-                        
-                        return false;
-                    })
+                    .filter(o -> effectiveCinemaId.equals(resolveCinemaId(o)))
                     .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
                     .collect(Collectors.toList());
         } else {
@@ -91,6 +74,7 @@ public class OrderOnlineController {
     public ResponseEntity<ApiResponse<OrderOnlineDTO>> getById(@PathVariable Integer id) {
         OrderOnline o = orderOnlineRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn với id: " + id));
+        requireOrderScope(o);
         return ResponseEntity.ok(ApiResponse.<OrderOnlineDTO>builder()
                 .status(HttpStatus.OK.value())
                 .message("OK")
@@ -101,10 +85,10 @@ public class OrderOnlineController {
     @DeleteMapping("/{id}")
     @Operation(summary = "Xóa đơn online (admin)")
     public ResponseEntity<ApiResponse<Void>> deleteOrderOnline(@PathVariable Integer id) {
-        if (!orderOnlineRepository.existsById(id)) {
-            throw new RuntimeException("Không tìm thấy đơn với id: " + id);
-        }
-        orderOnlineRepository.deleteById(id);
+        OrderOnline order = orderOnlineRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn với id: " + id));
+        requireOrderScope(order);
+        orderOnlineRepository.delete(order);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
                 .message("Đã xóa đơn")
@@ -187,5 +171,37 @@ public class OrderOnlineController {
                 .tickets(tickets)
                 .foods(foods)
                 .build();
+    }
+
+    private void requireOrderScope(OrderOnline order) {
+        Integer cinemaId = resolveCinemaId(order);
+        if (cinemaId == null) {
+            if (!cinemaScopeService.isSuperAdmin()) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Không xác định được rạp của đơn hàng");
+            }
+            return;
+        }
+        cinemaScopeService.requireCinemaAccess(cinemaId);
+    }
+
+    private Integer resolveCinemaId(OrderOnline o) {
+        if (o == null) {
+            return null;
+        }
+        if (o.getCinema() != null) {
+            return o.getCinema().getCinemaId();
+        }
+        Integer idFromTicket = ticketRepository.findByOrderOnline_OrderOnlineId(o.getOrderOnlineId()).stream()
+                .filter(t -> t.getShowtime() != null && t.getShowtime().getRoom() != null
+                        && t.getShowtime().getRoom().getCinema() != null)
+                .map(t -> t.getShowtime().getRoom().getCinema().getCinemaId())
+                .findFirst()
+                .orElse(null);
+        if (idFromTicket != null) {
+            return idFromTicket;
+        }
+        return o.getStaff() != null && o.getStaff().getCinema() != null
+                ? o.getStaff().getCinema().getCinemaId()
+                : null;
     }
 }

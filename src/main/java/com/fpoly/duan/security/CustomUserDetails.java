@@ -78,4 +78,8 @@ public class CustomUserDetails implements UserDetails {
     public Integer getUserId() {
         return (staff != null) ? staff.getStaffId() : user.getUserId();
     }
+
+    public String getAccountType() {
+        return staff != null ? "STAFF" : "USER";
+    }
 }

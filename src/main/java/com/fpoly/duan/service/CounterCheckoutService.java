@@ -5,8 +5,11 @@ import com.fpoly.duan.dto.payos.PayOSCheckoutData;
 import com.fpoly.duan.dto.payos.PayOSCreatePaymentLinkRequest;
 import com.fpoly.duan.entity.*;
 import com.fpoly.duan.repository.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -14,9 +17,16 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Service
+@Slf4j
 public class CounterCheckoutService {
+
+    @Value("${app.password-reset.frontend-base-url:http://localhost:5173}")
+    private String frontendBaseUrl;
 
     private final OrderOnlineRepository orderOnlineRepository;
     private final TicketRepository ticketRepository;
@@ -26,6 +36,7 @@ public class CounterCheckoutService {
     private final ShowtimeRepository showtimeRepository;
     private final SeatRepository seatRepository;
     private final ProductRepository productRepository;
+    private final CinemaProductRepository cinemaProductRepository;
     private final PayOSService payOSService;
     private final MembershipRankRepository membershipRankRepository;
     private final PointsHistoryRepository pointsHistoryRepository;
@@ -39,6 +50,7 @@ public class CounterCheckoutService {
             ShowtimeRepository showtimeRepository,
             SeatRepository seatRepository,
             ProductRepository productRepository,
+            CinemaProductRepository cinemaProductRepository,
             PayOSService payOSService,
             MembershipRankRepository membershipRankRepository,
             PointsHistoryRepository pointsHistoryRepository) {
@@ -50,6 +62,7 @@ public class CounterCheckoutService {
         this.showtimeRepository = showtimeRepository;
         this.seatRepository = seatRepository;
         this.productRepository = productRepository;
+        this.cinemaProductRepository = cinemaProductRepository;
         this.payOSService = payOSService;
         this.membershipRankRepository = membershipRankRepository;
         this.pointsHistoryRepository = pointsHistoryRepository;
@@ -59,9 +72,12 @@ public class CounterCheckoutService {
     public Object checkout(Integer staffId, CounterCheckoutRequest request) {
         Staff staff = staffRepository.findById(staffId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân viên"));
+        Integer staffCinemaId = requireStaffCinema(staff);
+        requireOperationalCinema(staff.getCinema());
 
-        Showtime showtime = showtimeRepository.findById(request.getShowtimeId())
+        Showtime showtime = showtimeRepository.findByIdForUpdate(request.getShowtimeId())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy suất chiếu"));
+        assertSameCinema(staffCinemaId, showtimeCinemaId(showtime), "Suất chiếu không thuộc rạp của nhân viên");
 
         User customer = null;
         if (request.getUserId() != null) {
@@ -71,12 +87,18 @@ public class CounterCheckoutService {
         double totalTicketsPrice = 0;
         List<Seat> selectedSeats = new ArrayList<>();
         if (request.getSeatIds() != null) {
+            Integer showtimeRoomId = showtime.getRoom() != null ? showtime.getRoom().getRoomId() : null;
             for (Integer seatId : request.getSeatIds()) {
                 Seat seat = seatRepository.findById(seatId)
                         .orElseThrow(() -> new RuntimeException("Không tìm thấy ghế ID: " + seatId));
+
+                if (showtimeRoomId != null
+                        && (seat.getRoom() == null || !showtimeRoomId.equals(seat.getRoom().getRoomId()))) {
+                    throw new RuntimeException("Ghế " + seat.getRow() + seat.getNumber() + " không thuộc phòng của suất chiếu");
+                }
                 
-                if (ticketRepository.existsByShowtime_ShowtimeIdAndSeat_SeatIdAndStatus(showtime.getShowtimeId(), seatId, 1)) {
-                    throw new RuntimeException("Ghế " + seat.getRow() + seat.getNumber() + " đã được bán");
+                if (ticketRepository.countHeldOrPaidTicketsForSeats(showtime.getShowtimeId(), List.of(seatId)) > 0) {
+                    throw new RuntimeException("Ghế " + seat.getRow() + seat.getNumber() + " đã được giữ hoặc đã bán");
                 }
 
                 double ticketBasePrice = (showtime.getMovie() != null && showtime.getMovie().getBasePrice() != null) 
@@ -94,8 +116,23 @@ public class CounterCheckoutService {
         List<OrderDetailFood> foodDetails = new ArrayList<>();
         if (request.getProducts() != null) {
             for (CounterCheckoutRequest.ProductItem item : request.getProducts()) {
-                Product product = productRepository.findById(item.getProductId())
-                        .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm ID: " + item.getProductId()));
+                CinemaProduct cinemaProduct = cinemaProductRepository
+                        .findByCinema_CinemaIdAndProduct_ProductId(staffCinemaId, item.getProductId())
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "Sản phẩm chưa được bán tại rạp này: " + item.getProductId()));
+                if (!Boolean.TRUE.equals(cinemaProduct.getIsActive())) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Sản phẩm đang hết hàng tại rạp này: " + item.getProductId());
+                }
+                Product product = cinemaProduct.getProduct();
+                if (product == null) {
+                    throw new RuntimeException("Không tìm thấy sản phẩm ID: " + item.getProductId());
+                }
+                Integer productStatus = product.getStatus() != null ? product.getStatus() : 1;
+                if (productStatus != 1) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Sản phẩm đã bị khóa: " + item.getProductId());
+                }
                 
                 totalFoodPrice += (product.getPrice() != null ? product.getPrice() : 0.0) * item.getQuantity();
 
@@ -112,7 +149,7 @@ public class CounterCheckoutService {
         boolean isTransfer = "TRANSFER".equalsIgnoreCase(request.getPaymentMethod());
 
         OrderOnline order = new OrderOnline();
-        long payOsCode = System.currentTimeMillis() / 1000; 
+        long payOsCode = isTransfer ? allocateUniquePosPayosCode() : 0L;
         order.setOrderCode("POS-" + (isTransfer ? payOsCode : UUID.randomUUID().toString().substring(0, 8).toUpperCase()));
         order.setCreatedAt(LocalDateTime.now());
         order.setOriginalAmount(totalAmount);
@@ -126,27 +163,29 @@ public class CounterCheckoutService {
         
         OrderOnline savedOrder = orderOnlineRepository.save(order);
 
+        List<Ticket> ticketsToSave = new ArrayList<>();
         for (Seat seat : selectedSeats) {
             Ticket ticket = new Ticket();
             ticket.setShowtime(showtime);
             ticket.setSeat(seat);
             ticket.setOrderOnline(savedOrder);
-            
-            double ticketBasePrice = (showtime.getMovie() != null && showtime.getMovie().getBasePrice() != null) 
+
+            double ticketBasePrice = (showtime.getMovie() != null && showtime.getMovie().getBasePrice() != null)
                                      ? showtime.getMovie().getBasePrice() : 0.0;
             double showtimeSurcharge = (showtime.getSurcharge() != null) ? showtime.getSurcharge() : 0.0;
-            double seatTypeSurcharge = (seat.getSeatType() != null && seat.getSeatType().getSurcharge() != null) 
+            double seatTypeSurcharge = (seat.getSeatType() != null && seat.getSeatType().getSurcharge() != null)
                                      ? seat.getSeatType().getSurcharge() : 0.0;
-            
+
             ticket.setPrice(ticketBasePrice + showtimeSurcharge + seatTypeSurcharge);
             ticket.setStatus(isTransfer ? 0 : 1);
-            ticketRepository.save(ticket);
+            ticketsToSave.add(ticket);
         }
+        ticketRepository.saveAll(ticketsToSave);
 
         for (OrderDetailFood detail : foodDetails) {
             detail.setOrderOnline(savedOrder);
-            orderDetailFoodRepository.save(detail);
         }
+        orderDetailFoodRepository.saveAll(foodDetails);
 
         if (isTransfer) {
             try {
@@ -154,8 +193,8 @@ public class CounterCheckoutService {
                         .orderCode(payOsCode)
                         .amount((int) totalAmount)
                         .description("TT POS " + payOsCode)
-                        .cancelUrl("http://localhost:5173/payment/cancel")
-                        .returnUrl("http://localhost:5173/payment/success")
+                        .cancelUrl(frontendBaseUrl + "/payment/cancel")
+                        .returnUrl(frontendBaseUrl + "/payment/success")
                         .buyerName(customer != null ? customer.getFullname() : "Khach POS")
                         .build();
                 return payOSService.createPaymentLink(payReq);
@@ -168,22 +207,14 @@ public class CounterCheckoutService {
     }
 
     @Transactional
-    public OrderOnline checkStatus(String orderCode) {
-        final String searchCode;
-        final String rawCode;
-        if (orderCode != null && !orderCode.startsWith("POS-") && orderCode.matches("\\d+")) {
-            searchCode = "POS-" + orderCode;
-            rawCode = orderCode;
-        } else if (orderCode != null && orderCode.startsWith("POS-")) {
-            searchCode = orderCode;
-            rawCode = orderCode.substring(4);
-        } else {
-            searchCode = orderCode;
-            rawCode = orderCode;
-        }
-
+    public OrderOnline checkStatus(Integer staffId, String orderCode) {
+        Staff actor = staffRepository.findById(staffId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân viên"));
+        final String searchCode = normalizePosOrderCode(orderCode);
+        final String rawCode = rawPosPayosCode(searchCode);
         OrderOnline order = orderOnlineRepository.findByOrderCode(searchCode)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng: " + searchCode));
+        assertOrderAccessible(actor, order);
 
         if (order.getStatus() == 1) return order;
 
@@ -191,11 +222,11 @@ public class CounterCheckoutService {
             try {
                 PayOSCheckoutData payosInfo = payOSService.getPaymentInformation(Long.parseLong(rawCode));
                 if ("PAID".equalsIgnoreCase(payosInfo.getStatus())) {
-                    return confirmPaid(orderCode);
+                    return markPaid(order);
                 }
             } catch (Exception e) {
                 // Có thể PayOS chưa tạo kịp link hoặc lỗi mạng, ta cứ để PENDING
-                System.err.println("Check PayOS status error: " + e.getMessage());
+                log.warn("Check PayOS status error for POS order {}: {}", searchCode, e.getMessage());
             }
         }
 
@@ -203,28 +234,44 @@ public class CounterCheckoutService {
     }
 
     @Transactional
-    public OrderOnline confirmPaid(String orderCode) {
-        final String searchCode;
-        if (orderCode != null && !orderCode.startsWith("POS-") && orderCode.matches("\\d+")) {
-            searchCode = "POS-" + orderCode;
-        } else {
-            searchCode = orderCode;
-        }
-
+    public OrderOnline confirmPaid(Integer staffId, String orderCode) {
+        Staff actor = staffRepository.findById(staffId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân viên"));
+        final String searchCode = normalizePosOrderCode(orderCode);
+        final String rawCode = rawPosPayosCode(searchCode);
         OrderOnline order = orderOnlineRepository.findByOrderCode(searchCode)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng: " + searchCode));
+        assertOrderAccessible(actor, order);
         
         if (order.getStatus() == 1) return order;
 
+        if (!"TRANSFER".equalsIgnoreCase(order.getPaymentMethod())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ xác nhận PayOS cho đơn chuyển khoản");
+        }
+        if (rawCode == null || !rawCode.matches("\\d+")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mã đơn PayOS không hợp lệ");
+        }
+        try {
+            PayOSCheckoutData payosInfo = payOSService.getPaymentInformation(Long.parseLong(rawCode));
+            if (!"PAID".equalsIgnoreCase(payosInfo.getStatus())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "PayOS chưa xác nhận đơn đã thanh toán");
+            }
+        } catch (ResponseStatusException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Không kiểm tra được trạng thái PayOS: " + e.getMessage());
+        }
+
+        return markPaid(order);
+    }
+
+    private OrderOnline markPaid(OrderOnline order) {
         order.setStatus(1);
         OrderOnline savedOrder = orderOnlineRepository.save(order);
 
-        // Cập nhật trạng thái các vé liên quan thành hợp lệ (1)
         List<Ticket> tickets = ticketRepository.findByOrderOnline_OrderOnlineId(order.getOrderOnlineId());
-        for (Ticket t : tickets) {
-            t.setStatus(1);
-            ticketRepository.save(t);
-        }
+        tickets.forEach(t -> t.setStatus(1));
+        ticketRepository.saveAll(tickets);
 
         // Cộng điểm cho user
         if (order.getUser() != null) {
@@ -242,28 +289,24 @@ public class CounterCheckoutService {
         try {
             User user = order.getUser();
             if (user == null) {
-                System.out.println("CounterCheckoutService.addPointsForOrder: User is null, skipping");
+                log.debug("Skip adding counter-order points because order {} has no user", order.getOrderCode());
                 return;
             }
 
             double finalAmount = order.getFinalAmount() != null ? order.getFinalAmount() : 0.0;
-            System.out.println("CounterCheckoutService.addPointsForOrder: orderCode=" + order.getOrderCode() + ", finalAmount=" + finalAmount + ", userId=" + user.getUserId());
             
             // Tính điểm từ số tiền: 1k = 1 điểm (làm tròn)
             int pointsFromAmount = (int) Math.round(finalAmount / 1000);
-            System.out.println("CounterCheckoutService.addPointsForOrder: pointsFromAmount=" + pointsFromAmount);
             
             // Lấy điểm bonus từ rank
             MembershipRank rank = resolveEffectiveRank(user);
             int bonusPoints = (rank != null && rank.getBonusPoint() != null) ? rank.getBonusPoint() : 0;
-            System.out.println("CounterCheckoutService.addPointsForOrder: rank=" + (rank != null ? rank.getRankName() : "null") + ", bonusPoints=" + bonusPoints);
             
             // Tổng điểm
             int totalPoints = pointsFromAmount + bonusPoints;
-            System.out.println("CounterCheckoutService.addPointsForOrder: totalPoints=" + totalPoints);
             
             if (totalPoints <= 0) {
-                System.out.println("CounterCheckoutService.addPointsForOrder: totalPoints <= 0, skipping");
+                log.debug("Skip adding non-positive counter-order points for order {}", order.getOrderCode());
                 return;
             }
             
@@ -271,7 +314,6 @@ public class CounterCheckoutService {
             int currentPoints = user.getPoints() != null ? user.getPoints() : 0;
             user.setPoints(currentPoints + totalPoints);
             userRepository.save(user);
-            System.out.println("CounterCheckoutService.addPointsForOrder: Updated user points from " + currentPoints + " to " + user.getPoints());
             
             // Lưu lịch sử điểm
             PointsHistory pointsHistory = new PointsHistory();
@@ -282,10 +324,9 @@ public class CounterCheckoutService {
                                        (bonusPoints > 0 ? " + " + bonusPoints + " điểm bonus" : "") + ")");
             pointsHistory.setPoints(totalPoints);
             pointsHistoryRepository.save(pointsHistory);
-            System.out.println("CounterCheckoutService.addPointsForOrder: Saved points history");
+            log.debug("Added {} points for counter order {} and user {}", totalPoints, order.getOrderCode(), user.getUserId());
         } catch (Exception e) {
-            System.err.println("CounterCheckoutService.addPointsForOrder: Error adding points for order " + order.getOrderCode());
-            e.printStackTrace();
+            log.error("Error adding points for counter order {}", order.getOrderCode(), e);
         }
     }
 
@@ -313,16 +354,13 @@ public class CounterCheckoutService {
     }
 
     @Transactional
-    public void cancelOrder(String orderCode) {
-        final String searchCode;
-        if (orderCode != null && !orderCode.startsWith("POS-") && orderCode.matches("\\d+")) {
-            searchCode = "POS-" + orderCode;
-        } else {
-            searchCode = orderCode;
-        }
-
+    public void cancelOrder(Integer staffId, String orderCode) {
+        Staff actor = staffRepository.findById(staffId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân viên"));
+        final String searchCode = normalizePosOrderCode(orderCode);
         OrderOnline order = orderOnlineRepository.findByOrderCode(searchCode)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng: " + searchCode));
+        assertOrderAccessible(actor, order);
         
         // Chỉ cho phép hủy đơn đang chờ thanh toán (status 0)
         if (order.getStatus() != 0) {
@@ -335,8 +373,103 @@ public class CounterCheckoutService {
         // Giải phóng ghế bằng cách đặt trạng thái vé về 0
         List<Ticket> tickets = ticketRepository.findByOrderOnline_OrderOnlineId(order.getOrderOnlineId());
         for (Ticket t : tickets) {
-            t.setStatus(0); // 0: INVALID
+            t.setStatus(2); // 2: CANCELLED
             ticketRepository.save(t);
         }
+    }
+
+    private Integer requireStaffCinema(Staff staff) {
+        Integer cinemaId = staff != null && staff.getCinema() != null ? staff.getCinema().getCinemaId() : null;
+        if (cinemaId == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Nhân viên chưa được gán rạp");
+        }
+        return cinemaId;
+    }
+
+    private void requireOperationalCinema(Cinema cinema) {
+        if (cinema == null || (cinema.getStatus() != null && cinema.getStatus() != 1)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Rạp đang tạm ngừng hoạt động, không thể bán vé hoặc bắp nước tại quầy");
+        }
+    }
+
+    private void assertSameCinema(Integer staffCinemaId, Integer targetCinemaId, String message) {
+        if (targetCinemaId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không xác định được rạp");
+        }
+        if (!staffCinemaId.equals(targetCinemaId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, message);
+        }
+    }
+
+    private Integer showtimeCinemaId(Showtime showtime) {
+        return showtime != null && showtime.getRoom() != null && showtime.getRoom().getCinema() != null
+                ? showtime.getRoom().getCinema().getCinemaId()
+                : null;
+    }
+
+    private void assertOrderAccessible(Staff actor, OrderOnline order) {
+        if (hasStaffRole(actor, "SUPER_ADMIN")) {
+            return;
+        }
+        Integer actorCinemaId = requireStaffCinema(actor);
+        Integer orderCinemaId = resolveOrderCinemaId(order);
+        if (orderCinemaId == null || !actorCinemaId.equals(orderCinemaId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Không có quyền thao tác đơn của rạp khác");
+        }
+    }
+
+    private Integer resolveOrderCinemaId(OrderOnline order) {
+        if (order == null) return null;
+        if (order.getCinema() != null) {
+            return order.getCinema().getCinemaId();
+        }
+        Integer idFromTicket = ticketRepository.findByOrderOnline_OrderOnlineId(order.getOrderOnlineId()).stream()
+                .filter(t -> t.getShowtime() != null && t.getShowtime().getRoom() != null
+                        && t.getShowtime().getRoom().getCinema() != null)
+                .map(t -> t.getShowtime().getRoom().getCinema().getCinemaId())
+                .findFirst()
+                .orElse(null);
+        if (idFromTicket != null) {
+            return idFromTicket;
+        }
+        return order.getStaff() != null && order.getStaff().getCinema() != null
+                ? order.getStaff().getCinema().getCinemaId()
+                : null;
+    }
+
+    private boolean hasStaffRole(Staff staff, String role) {
+        if (staff == null || staff.getRole() == null) {
+            return false;
+        }
+        String normalized = staff.getRole().trim().toUpperCase().replaceFirst("^ROLE_", "");
+        return normalized.equals(role);
+    }
+
+    private String normalizePosOrderCode(String orderCode) {
+        if (orderCode == null || orderCode.trim().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thiếu mã đơn hàng");
+        }
+        String trimmed = orderCode.trim();
+        if (!trimmed.startsWith("POS-") && trimmed.matches("\\d+")) {
+            return "POS-" + trimmed;
+        }
+        return trimmed;
+    }
+
+    private String rawPosPayosCode(String normalizedOrderCode) {
+        return normalizedOrderCode != null && normalizedOrderCode.startsWith("POS-")
+                ? normalizedOrderCode.substring(4)
+                : normalizedOrderCode;
+    }
+
+    private long allocateUniquePosPayosCode() {
+        for (int attempt = 0; attempt < 50; attempt++) {
+            long candidate = ThreadLocalRandom.current().nextLong(1_000_000_000L, 9_000_000_000_000L);
+            if (!orderOnlineRepository.existsByOrderCode("POS-" + candidate)) {
+                return candidate;
+            }
+        }
+        throw new IllegalStateException("Không sinh được mã đơn POS PayOS duy nhất");
     }
 }
