@@ -1,6 +1,7 @@
 package com.fpoly.duan.controller;
 
 import com.fpoly.duan.dto.CinemaRankingDTO;
+import com.fpoly.duan.dto.CinemaDetailDTO;
 import com.fpoly.duan.dto.DashboardSummaryDTO;
 import com.fpoly.duan.dto.RevenueChartDTO;
 import com.fpoly.duan.service.DashboardService;
@@ -21,13 +22,13 @@ public class DashboardController {
     private final DashboardService dashboardService;
 
     @GetMapping("/summary")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
     public ResponseEntity<DashboardSummaryDTO> getSummary() {
         return ResponseEntity.ok(dashboardService.getSummary());
     }
 
     @GetMapping("/revenue-chart")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
     public ResponseEntity<List<RevenueChartDTO>> getRevenueChart(@RequestParam(required = false) Integer year) {
         if (year == null) {
             year = LocalDate.now().getYear();
@@ -36,8 +37,18 @@ public class DashboardController {
     }
 
     @GetMapping("/cinema-ranking")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
-    public ResponseEntity<List<CinemaRankingDTO>> getCinemaRanking() {
-        return ResponseEntity.ok(dashboardService.getCinemaRankings());
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    public ResponseEntity<List<CinemaRankingDTO>> getCinemaRanking(
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) Integer month) {
+        int targetYear = (year != null) ? year : java.time.LocalDate.now().getYear();
+        int targetMonth = (month != null) ? month : java.time.LocalDate.now().getMonthValue();
+        return ResponseEntity.ok(dashboardService.getCinemaRankings(targetYear, targetMonth));
+    }
+
+    @GetMapping("/cinema-detail/{id}")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    public ResponseEntity<CinemaDetailDTO> getCinemaDetail(@PathVariable Integer id) {
+        return ResponseEntity.ok(dashboardService.getCinemaDetail(id));
     }
 }

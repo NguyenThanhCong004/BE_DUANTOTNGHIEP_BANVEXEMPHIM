@@ -1,6 +1,7 @@
 package com.fpoly.duan.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -22,4 +23,35 @@ public class OrderOnlineDTO {
     private Integer userId;
     private String customerName;
     private String customerEmail;
+    private String customerPhone;
+    private String paymentMethod;
+    private String voucherCode;
+    
+    private String cinemaName;
+    private Integer cinemaId;
+    private String cinemaAddress;
+    private String staffName;
+    private List<TicketInfoDTO> tickets;
+    private List<FoodInfoDTO> foods;
+
+    @Data
+    @Builder
+    public static class TicketInfoDTO {
+        private String movieTitle;
+        private LocalDateTime showtime;
+        private String roomName;
+        private String seatNumber;
+        private String seatTypeName;
+        private Double originalPrice;
+        private Double promotionDiscount;
+        private Double price;
+    }
+
+    @Data
+    @Builder
+    public static class FoodInfoDTO {
+        private String productName;
+        private Integer quantity;
+        private Double price;
+    }
 }

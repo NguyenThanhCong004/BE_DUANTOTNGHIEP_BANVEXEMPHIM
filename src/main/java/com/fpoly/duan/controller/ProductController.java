@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,6 +26,7 @@ import com.fpoly.duan.repository.CategoryProductRepository;
 import com.fpoly.duan.repository.CinemaProductRepository;
 import com.fpoly.duan.repository.OrderDetailFoodRepository;
 import com.fpoly.duan.repository.ProductRepository;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -48,11 +50,20 @@ public class ProductController {
     @GetMapping
     @Operation(summary = "Danh sách sản phẩm")
     public ResponseEntity<ApiResponse<List<ProductDTO>>> list(
-            @RequestParam(required = false) Integer categoryId) {
+            @RequestParam(required = false) Integer categoryId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
         List<Product> list = categoryId != null
                 ? productRepository.findByCategory_CategoryProductIdOrderByProductIdDesc(categoryId)
                 : productRepository.findAllByOrderByProductIdDesc();
-        List<ProductDTO> data = list.stream().map(this::toDTO).collect(Collectors.toList());
+        List<ProductDTO> data = list.stream()
+                .filter(p -> SearchUtils.matches(term,
+                        p.getProductId(), p.getName(), p.getDescription(), p.getPrice(), p.getStatus(),
+                        p.getCategory() != null ? p.getCategory().getName() : null))
+                .map(this::toDTO)
+                .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.<List<ProductDTO>>builder()
                 .status(HttpStatus.OK.value())
                 .message("OK")
@@ -64,7 +75,7 @@ public class ProductController {
     @Operation(summary = "Chi tiết sản phẩm")
     public ResponseEntity<ApiResponse<ProductDTO>> getById(@PathVariable Integer id) {
         Product p = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm với id: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sản phẩm với id: " + id));
         return ResponseEntity.ok(ApiResponse.<ProductDTO>builder()
                 .status(HttpStatus.OK.value())
                 .message("OK")
@@ -89,7 +100,7 @@ public class ProductController {
     @Operation(summary = "Cập nhật sản phẩm")
     public ResponseEntity<ApiResponse<ProductDTO>> update(@PathVariable Integer id, @RequestBody ProductDTO dto) {
         Product p = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm với id: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sản phẩm với id: " + id));
         validate(dto, false);
 
         boolean hasChanges = applyChanges(p, dto);
@@ -114,7 +125,7 @@ public class ProductController {
     @Operation(summary = "Xóa sản phẩm")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
         if (!productRepository.existsById(id)) {
-            throw new RuntimeException("Không tìm thấy sản phẩm với id: " + id);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sản phẩm với id: " + id);
         }
 
         // Kiểm tra xem sản phẩm đã từng bán (có trong hóa đơn) chưa
@@ -136,19 +147,19 @@ public class ProductController {
 
     private void validate(ProductDTO dto, boolean isCreate) {
         if (dto == null) {
-            throw new RuntimeException("Dữ liệu không hợp lệ");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Dữ liệu không hợp lệ");
         }
         if (dto.getName() == null || dto.getName().trim().isEmpty()) {
-            throw new RuntimeException("Tên sản phẩm không được để trống");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tên sản phẩm không được để trống");
         }
         if (dto.getPrice() == null || dto.getPrice() <= 0) {
-            throw new RuntimeException("Giá không hợp lệ");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Giá sản phẩm phải lớn hơn 0");
         }
         if (isCreate && (dto.getImage() == null || dto.getImage().trim().isEmpty())) {
-            throw new RuntimeException("Ảnh sản phẩm không được để trống");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ảnh sản phẩm không được để trống");
         }
         if (dto.getCategoryId() != null && !categoryProductRepository.existsById(dto.getCategoryId())) {
-            throw new RuntimeException("Không tìm thấy loại sản phẩm với id: " + dto.getCategoryId());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy loại sản phẩm với id: " + dto.getCategoryId());
         }
     }
 
@@ -176,7 +187,7 @@ public class ProductController {
         p.setStatus(dto.getStatus() != null ? dto.getStatus() : 1);
         if (dto.getCategoryId() != null) {
             CategoryProduct c = categoryProductRepository.findById(dto.getCategoryId())
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy loại sản phẩm"));
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy loại sản phẩm"));
             p.setCategory(c);
         }
         return p;
@@ -221,7 +232,7 @@ public class ProductController {
             Integer currentCategoryId = currentCategory != null ? currentCategory.getCategoryProductId() : null;
             if (!dto.getCategoryId().equals(currentCategoryId)) {
                 CategoryProduct c = categoryProductRepository.findById(dto.getCategoryId())
-                        .orElseThrow(() -> new RuntimeException("Không tìm thấy loại sản phẩm"));
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy loại sản phẩm"));
                 p.setCategory(c);
                 hasChanges = true;
             }

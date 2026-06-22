@@ -21,19 +21,62 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        String key = username != null ? username.trim() : "";
-        // Tìm staff theo email (gmail) trước, nếu không có thì tìm theo username
-        Staff staff = staffRepository.findByEmail(key).orElse(null);
-        if (staff == null) {
-            staff = staffRepository.findByUsername(key).orElse(null);
-        }
-        if (staff != null) return CustomUserDetails.builder().staff(staff).build();
+        return loadAnyAccount(username);
+    }
 
-        // Then try in users table (username or email)
-        User user = userRepository.findByUsernameIgnoreCase(key)
-                .or(() -> userRepository.findByEmailIgnoreCase(key))
-                .orElseThrow(() -> new UsernameNotFoundException("User not found with username/email: " + key));
-        
+    public CustomUserDetails loadUserAccount(String usernameOrEmail) throws UsernameNotFoundException {
+        String key = usernameOrEmail != null ? usernameOrEmail.trim() : "";
+        User user = userRepository.findFirstByUsernameIgnoreCaseOrderByUserIdAsc(key).orElse(null);
+        if (user == null && key.contains("@")) {
+            user = userRepository.findFirstByEmailIgnoreCaseOrderByUserIdAsc(key).orElse(null);
+        }
+        if (user == null) {
+            throw new UsernameNotFoundException("User not found with username/email: " + usernameOrEmail);
+        }
+        return CustomUserDetails.builder().user(user).build();
+    }
+
+    public CustomUserDetails loadStaffAccount(String usernameOrEmail) throws UsernameNotFoundException {
+        String key = usernameOrEmail != null ? usernameOrEmail.trim() : "";
+        // Staff: tránh NonUniqueResult khi trùng email/username trong DB
+        Staff staff = staffRepository.findFirstByEmailOrderByStaffIdAsc(key).orElse(null);
+        if (staff == null) {
+            staff = staffRepository.findFirstByUsernameOrderByStaffIdAsc(key).orElse(null);
+        }
+        if (staff != null) {
+            return CustomUserDetails.builder().staff(staff).build();
+        }
+        throw new UsernameNotFoundException("Staff not found with username/email: " + usernameOrEmail);
+    }
+
+    public CustomUserDetails loadByUsernameAndAccountType(String usernameOrEmail, String accountType)
+            throws UsernameNotFoundException {
+        if ("STAFF".equalsIgnoreCase(accountType)) {
+            return loadStaffAccount(usernameOrEmail);
+        }
+        if ("USER".equalsIgnoreCase(accountType)) {
+            return loadUserAccount(usernameOrEmail);
+        }
+        return loadAnyAccount(usernameOrEmail);
+    }
+
+    private CustomUserDetails loadAnyAccount(String username) throws UsernameNotFoundException {
+        String key = username != null ? username.trim() : "";
+        Staff staff = staffRepository.findFirstByEmailOrderByStaffIdAsc(key).orElse(null);
+        if (staff == null) {
+            staff = staffRepository.findFirstByUsernameOrderByStaffIdAsc(key).orElse(null);
+        }
+        if (staff != null) {
+            return CustomUserDetails.builder().staff(staff).build();
+        }
+
+        User user = userRepository.findFirstByUsernameOrderByUserIdAsc(key).orElse(null);
+        if (user == null && key.contains("@")) {
+            user = userRepository.findFirstByEmailIgnoreCaseOrderByUserIdAsc(key).orElse(null);
+        }
+        if (user == null) {
+            throw new UsernameNotFoundException("User not found with username/email: " + username);
+        }
         return CustomUserDetails.builder().user(user).build();
     }
 }

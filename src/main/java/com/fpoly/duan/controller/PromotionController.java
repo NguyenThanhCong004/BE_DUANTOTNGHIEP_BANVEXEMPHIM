@@ -31,6 +31,8 @@ import com.fpoly.duan.entity.Promotion;
 import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.MovieRepository;
 import com.fpoly.duan.repository.PromotionRepository;
+import com.fpoly.duan.service.CinemaScopeService;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -48,11 +50,16 @@ public class PromotionController {
     private final PromotionRepository promotionRepository;
     private final MovieRepository movieRepository;
     private final CinemaRepository cinemaRepository;
+    private final CinemaScopeService cinemaScopeService;
 
     @GetMapping
     @Operation(summary = "Danh sách khuyến mãi (đã gom nhóm)")
     public ResponseEntity<ApiResponse<List<PromotionGroupResponse>>> getPromotions(
-            @Parameter(description = "Lọc theo rạp") @RequestParam(required = false) Integer cinemaId) {
+            @Parameter(description = "Lọc theo rạp") @RequestParam(required = false) Integer cinemaId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
         // Bắt buộc chọn rạp — không trả toàn bộ KM (super admin chọn rạp ở FE).
         List<Promotion> promotions = cinemaId == null ? java.util.Collections.emptyList()
                 : promotionRepository.findByCinema_CinemaId(cinemaId);
@@ -64,7 +71,10 @@ public class PromotionController {
 
         List<PromotionGroupResponse> response = grouped.entrySet().stream()
                 .map(entry -> toGroupResponse(entry.getKey(), entry.getValue(), today))
-                .sorted(Comparator.comparing(PromotionGroupResponse::getId, Comparator.nullsLast(Integer::compareTo)))
+                .filter(p -> SearchUtils.matches(term,
+                        p.getId(), p.getTitle(), p.getStatus(), p.getDiscount_percent(), p.getStartDate(),
+                        p.getEndDate(), p.getCinemaId(), String.join(" ", p.getSelectedMovieTitles())))
+                .sorted(Comparator.comparing(PromotionGroupResponse::getId, Comparator.nullsLast(Integer::compareTo)).reversed())
                 .collect(Collectors.toList());
 
         return ResponseEntity.status(HttpStatus.OK).body(ApiResponse.<List<PromotionGroupResponse>>builder()
@@ -111,6 +121,8 @@ public class PromotionController {
         Integer cinemaId = request.getCinemaId();
         Cinema cinema = cinemaRepository.findById(cinemaId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với mã: " + cinemaId));
+        cinemaScopeService.requireCinemaAccess(cinema);
+        cinemaScopeService.requireCinemaOperational(cinema);
 
         List<Integer> movieIds = request.getSelectedMovieIds();
         if (movieIds == null || movieIds.isEmpty()) {
@@ -158,20 +170,25 @@ public class PromotionController {
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy khuyến mãi với id: " + id));
 
         PromotionGroupKey oldKey = groupKey(rep);
+        cinemaScopeService.requireCinemaAccess(oldKey.getCinemaId());
+        Cinema oldCinema = cinemaRepository.findById(oldKey.getCinemaId())
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với mã: " + oldKey.getCinemaId()));
+        cinemaScopeService.requireCinemaOperational(oldCinema);
 
-        // Xóa toàn bộ nhóm cũ theo key, sau đó tạo nhóm mới theo payload
-        List<Promotion> candidates = promotionRepository.findByCinema_CinemaId(oldKey.cinemaId);
+        // Xóa toàn bộ nhóm cũ theo key
+        List<Promotion> candidates = promotionRepository.findByCinema_CinemaId(oldKey.getCinemaId());
         List<Promotion> oldGroup = candidates.stream()
-                .filter(p -> Objects.equals(p.getPromotionName(), oldKey.promotionName)
-                        && Objects.equals(p.getDiscountPercent(), oldKey.discountPercent)
-                        && Objects.equals(p.getStartDate(), oldKey.startDate)
-                        && Objects.equals(p.getEndDate(), oldKey.endDate))
+                .filter(p -> Objects.equals(p.getPromotionName(), oldKey.getPromotionName())
+                        && Objects.equals(p.getDiscountPercent(), oldKey.getDiscountPercent())
+                        && Objects.equals(p.getStartDate(), oldKey.getStartDate())
+                        && Objects.equals(p.getEndDate(), oldKey.getEndDate()))
                 .collect(Collectors.toList());
 
         promotionRepository.deleteAll(oldGroup);
+        promotionRepository.flush(); // Cưỡng ép xóa ngay lập tức để tránh lỗi Unique
 
         // Tạo mới
-        Integer cinemaId = request.getCinemaId() != null ? request.getCinemaId() : oldKey.cinemaId;
+        Integer cinemaId = request.getCinemaId() != null ? request.getCinemaId() : oldKey.getCinemaId();
         request.setCinemaId(cinemaId);
 
         List<Integer> movieIds = request.getSelectedMovieIds();
@@ -181,6 +198,8 @@ public class PromotionController {
 
         Cinema cinema = cinemaRepository.findById(cinemaId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với mã: " + cinemaId));
+        cinemaScopeService.requireCinemaAccess(cinema);
+        cinemaScopeService.requireCinemaOperational(cinema);
 
         LocalDate today = LocalDate.now();
         Integer statusInt = computeStatus(request.getStart_date(), request.getEnd_date(), today);
@@ -217,6 +236,12 @@ public class PromotionController {
         Promotion rep = promotionRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy khuyến mãi với id: " + id));
 
+        PromotionGroupKey key = groupKey(rep);
+        cinemaScopeService.requireCinemaAccess(key.getCinemaId());
+        Cinema cinema = cinemaRepository.findById(key.getCinemaId())
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với mã: " + key.getCinemaId()));
+        cinemaScopeService.requireCinemaOperational(cinema);
+
         LocalDate today = LocalDate.now();
         if (computeStatus(rep.getStartDate(), rep.getEndDate(), today) == 1) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.<Void>builder()
@@ -224,8 +249,6 @@ public class PromotionController {
                     .message("Không được xóa khuyến mãi đang diễn ra.")
                     .build());
         }
-
-        PromotionGroupKey key = groupKey(rep);
 
         List<Promotion> group = promotionRepository.findByCinema_CinemaId(key.cinemaId).stream()
                 .filter(p -> Objects.equals(p.getPromotionName(), key.promotionName)

@@ -8,6 +8,7 @@ import com.fpoly.duan.dto.StaffDashboardStats;
 import com.fpoly.duan.entity.OrderOnline;
 import com.fpoly.duan.security.CustomUserDetails;
 import com.fpoly.duan.service.StaffDashboardService;
+import com.fpoly.duan.util.SearchUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -28,8 +29,15 @@ public class StaffDashboardController {
 
     @GetMapping
     @Operation(summary = "Lấy thống kê dashboard cho nhân viên trong ca hiện tại")
-    public ResponseEntity<ApiResponse<StaffDashboardStats>> getStats(Authentication authentication) {
-        CustomUserDetails details = (CustomUserDetails) authentication.getPrincipal();
+    public ResponseEntity<ApiResponse<StaffDashboardStats>> getStats(
+            Authentication authentication,
+            @RequestParam(required = false) String date) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
+            return ResponseEntity.status(401).body(ApiResponse.<StaffDashboardStats>builder()
+                    .status(401)
+                    .message("Chưa đăng nhập hoặc phiên làm việc hết hạn")
+                    .build());
+        }
         Integer staffId = details.getStaff().getStaffId();
         
         StaffDashboardStats stats = staffDashboardService.getDashboardStats(staffId);
@@ -44,7 +52,9 @@ public class StaffDashboardController {
     @GetMapping("/products-breakdown")
     @Operation(summary = "Lấy chi tiết danh sách bắp nước đã bán")
     public ResponseEntity<ApiResponse<List<ProductSoldBreakdown>>> getProductsBreakdown(Authentication authentication) {
-        CustomUserDetails details = (CustomUserDetails) authentication.getPrincipal();
+        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
+            return ResponseEntity.status(401).body(ApiResponse.<List<ProductSoldBreakdown>>builder().status(401).message("Unauthorized").build());
+        }
         Integer staffId = details.getStaff().getStaffId();
         
         List<ProductSoldBreakdown> list = staffDashboardService.getProductsBreakdown(staffId);
@@ -59,7 +69,9 @@ public class StaffDashboardController {
     @GetMapping("/revenue-breakdown")
     @Operation(summary = "Lấy chi tiết doanh thu theo phương thức thanh toán")
     public ResponseEntity<ApiResponse<List<RevenueBreakdownDTO>>> getRevenueBreakdown(Authentication authentication) {
-        CustomUserDetails details = (CustomUserDetails) authentication.getPrincipal();
+        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
+            return ResponseEntity.status(401).body(ApiResponse.<List<RevenueBreakdownDTO>>builder().status(401).message("Unauthorized").build());
+        }
         Integer staffId = details.getStaff().getStaffId();
         
         List<RevenueBreakdownDTO> list = staffDashboardService.getRevenueBreakdown(staffId);
@@ -73,11 +85,24 @@ public class StaffDashboardController {
 
     @GetMapping("/recent-orders")
     @Operation(summary = "Lấy danh sách 10 hóa đơn gần nhất của nhân viên")
-    public ResponseEntity<ApiResponse<List<OrderOnline>>> getRecentOrders(Authentication authentication) {
-        CustomUserDetails details = (CustomUserDetails) authentication.getPrincipal();
+    public ResponseEntity<ApiResponse<List<OrderOnline>>> getRecentOrders(
+            Authentication authentication,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
+            return ResponseEntity.status(401).body(ApiResponse.<List<OrderOnline>>builder().status(401).message("Unauthorized").build());
+        }
         Integer staffId = details.getStaff().getStaffId();
+        String term = SearchUtils.pick(search, keyword, q);
         
-        List<OrderOnline> orders = staffDashboardService.getRecentOrders(staffId);
+        List<OrderOnline> orders = staffDashboardService.getRecentOrders(staffId).stream()
+                .filter(o -> SearchUtils.matches(term,
+                        o.getOrderOnlineId(), o.getOrderCode(), o.getPaymentMethod(), o.getStatus(), o.getFinalAmount(),
+                        o.getUser() != null ? o.getUser().getFullname() : null,
+                        o.getStaff() != null ? o.getStaff().getFullname() : null,
+                        o.getCinema() != null ? o.getCinema().getName() : null))
+                .toList();
         
         return ResponseEntity.ok(ApiResponse.<List<OrderOnline>>builder()
                 .status(200)

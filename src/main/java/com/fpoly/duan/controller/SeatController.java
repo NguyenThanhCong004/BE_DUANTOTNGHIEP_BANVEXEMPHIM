@@ -35,6 +35,8 @@ import com.fpoly.duan.repository.RoomRepository;
 import com.fpoly.duan.repository.SeatRepository;
 import com.fpoly.duan.repository.SeatTypeRepository;
 import com.fpoly.duan.repository.TicketRepository;
+import com.fpoly.duan.service.CinemaScopeService;
+import com.fpoly.duan.util.SearchUtils;
 import com.fpoly.duan.util.SeatTypeNaming;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -54,6 +56,7 @@ public class SeatController {
     private final SeatTypeRepository seatTypeRepository;
     private final RoomRepository roomRepository;
     private final TicketRepository ticketRepository;
+    private final CinemaScopeService cinemaScopeService;
 
     @GetMapping("/seat-types/{id}")
     @Operation(summary = "Chi tiết loại ghế", tags = { "Table: seat_types" })
@@ -184,8 +187,13 @@ public class SeatController {
 
     @GetMapping("/seat-types")
     @Operation(summary = "Danh sách loại ghế", tags = { "Table: seat_types" })
-    public ResponseEntity<ApiResponse<List<SeatTypeDTO>>> getSeatTypes() {
+    public ResponseEntity<ApiResponse<List<SeatTypeDTO>>> getSeatTypes(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
         List<SeatTypeDTO> data = seatTypeRepository.findAll().stream()
+                .filter(t -> SearchUtils.matches(term, t.getSeatTypeId(), t.getName(), t.getColor(), t.getSurcharge(), t.getCoupleSeat()))
                 .map(t -> SeatTypeDTO.builder()
                         .seatTypeId(t.getSeatTypeId())
                         .name(t.getName())
@@ -215,6 +223,10 @@ public class SeatController {
         
         Seat seat = seatRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy ghế với id: " + id));
+        if (seat.getRoom() != null) {
+            cinemaScopeService.requireCinemaAccess(seat.getRoom().getCinema());
+            cinemaScopeService.requireCinemaOperational(seat.getRoom().getCinema());
+        }
         
         seat.setStatus(status);
         seatRepository.save(seat);
@@ -250,6 +262,8 @@ public class SeatController {
         }
         Room room = roomRepository.findById(request.getRoomId())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy phòng với id: " + request.getRoomId()));
+        cinemaScopeService.requireCinemaAccess(room.getCinema());
+        cinemaScopeService.requireCinemaOperational(room.getCinema());
 
         List<Seat> existing = seatRepository.findByRoom_RoomId(request.getRoomId());
         Map<String, Seat> byXY = existing.stream()

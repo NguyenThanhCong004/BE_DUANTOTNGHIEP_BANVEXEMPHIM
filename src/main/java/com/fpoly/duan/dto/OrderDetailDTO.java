@@ -12,6 +12,7 @@ public class OrderDetailDTO {
     private Double finalAmount;
     private String paymentMethod;
     private String customerName;
+    private Integer status;
     private List<TicketInfo> tickets;
     private List<FoodInfo> foods;
 
@@ -22,6 +23,9 @@ public class OrderDetailDTO {
         private String showtime;
         private String roomName;
         private String seatNumber;
+        private String seatTypeName;
+        private Double originalPrice;
+        private Double promotionDiscount;
         private Double price;
     }
 

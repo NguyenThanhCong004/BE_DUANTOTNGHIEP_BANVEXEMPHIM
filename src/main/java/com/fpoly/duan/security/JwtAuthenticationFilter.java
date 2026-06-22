@@ -1,12 +1,13 @@
 package com.fpoly.duan.security;
 
 import java.io.IOException;
+import java.util.List;
 
 import org.springframework.lang.NonNull;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -22,20 +23,46 @@ import lombok.RequiredArgsConstructor;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
-    private final UserDetailsService userDetailsService;
+    private final CustomUserDetailsService userDetailsService;
     private final com.fpoly.duan.repository.RevokedTokenRepository revokedTokenRepository;
-
-    private boolean isProtectedPath(String path) {
-        return path.startsWith("/api/v1/shifts/me")
-                || path.startsWith("/api/v1/ticket-orders")
-                || path.startsWith("/api/v1/food-orders")
-                || path.startsWith("/api/v1/me");
-    }
+    private static final List<String> PUBLIC_GET_PREFIXES = List.of(
+            "/api/v1/cinemas",
+            "/api/v1/genres",
+            "/api/v1/membership-ranks",
+            "/api/v1/movies",
+            "/api/v1/news",
+            "/api/v1/product-categories",
+            "/api/v1/products",
+            "/api/v1/promotions",
+            "/api/v1/seat-types",
+            "/api/v1/seats",
+            "/api/v1/showtime-seat-holds",
+            "/api/v1/showtimes",
+            "/api/v1/vouchers");
 
     @Override
     protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
-        final String path = request.getServletPath();
-        return !isProtectedPath(path);
+        String path = request.getServletPath();
+        String method = request.getMethod();
+
+        if (HttpMethod.OPTIONS.matches(method)
+                || pathMatches(path, "/api/v1/auth")
+                || pathMatches(path, "/api/v1/payments/payos/webhook")
+                || pathMatches(path, "/v3/api-docs")
+                || pathMatches(path, "/swagger-ui")
+                || "/swagger-ui.html".equals(path)) {
+            return true;
+        }
+
+        if (HttpMethod.POST.matches(method) && pathMatches(path, "/api/v1/showtime-seat-holds")) {
+            return true;
+        }
+
+        return HttpMethod.GET.matches(method) && PUBLIC_GET_PREFIXES.stream().anyMatch(prefix -> pathMatches(path, prefix));
+    }
+
+    private boolean pathMatches(String path, String prefix) {
+        return path.equals(prefix) || path.startsWith(prefix + "/");
     }
 
     @Override
@@ -69,7 +96,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
+            String accountType = null;
+            try {
+                accountType = jwtService.extractAccountType(jwt);
+            } catch (Exception ignored) {
+                // Token cũ chưa có accountType vẫn được xử lý theo cơ chế fallback.
+            }
+            UserDetails userDetails = this.userDetailsService.loadByUsernameAndAccountType(username, accountType);
+            if (!userDetails.isEnabled() || !userDetails.isAccountNonLocked()) {
+                SecurityContextHolder.clearContext();
+                rejectDisabledAccount(response);
+                return;
+            }
             if (jwtService.isTokenValid(jwt, userDetails)) {
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                         userDetails,
@@ -80,5 +118,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private void rejectDisabledAccount(HttpServletResponse response) throws IOException {
+        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+        response.setCharacterEncoding("UTF-8");
+        response.setContentType("application/json;charset=UTF-8");
+        response.getWriter().write("{\"status\":403,\"message\":\"Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.\",\"data\":null}");
     }
 }

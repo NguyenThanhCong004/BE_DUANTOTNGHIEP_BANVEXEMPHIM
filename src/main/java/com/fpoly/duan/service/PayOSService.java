@@ -118,6 +118,35 @@ public class PayOSService {
         }
     }
 
+    /**
+     * Truy vấn thông tin thanh toán từ PayOS.
+     */
+    public PayOSCheckoutData getPaymentInformation(long orderCode) {
+        try {
+            String responseJson = payOSRestClient.get()
+                    .uri("/v2/payment-requests/" + orderCode)
+                    .retrieve()
+                    .body(String.class);
+
+            JsonNode root = objectMapper.readTree(responseJson);
+            String code = root.path("code").asText();
+            if (!"00".equals(code)) {
+                String desc = root.path("desc").asText("Lỗi PayOS");
+                throw new IllegalStateException(desc);
+            }
+            JsonNode data = root.get("data");
+            return PayOSCheckoutData.builder()
+                    .orderCode(data.path("orderCode").asLong())
+                    .amount(data.path("amount").asLong())
+                    .currency(data.path("currency").asText(null))
+                    .status(data.path("status").asText(null))
+                    .description(data.path("description").asText(null))
+                    .build();
+        } catch (Exception e) {
+            throw new IllegalStateException("Lỗi kiểm tra trạng thái PayOS: " + e.getMessage(), e);
+        }
+    }
+
     private static String hmacSha256Hex(String data, String key) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");

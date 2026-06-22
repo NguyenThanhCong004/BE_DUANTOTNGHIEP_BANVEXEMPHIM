@@ -26,8 +26,7 @@ public class TicketCheckoutRequest {
     private Integer showtimeId;
 
     @NotEmpty
-    @Size(max = 20)
-    @Schema(description = "Danh sách seat_id đã chọn")
+    @Schema(description = "Danh sách seat_id đã chọn; cho phép chọn nhiều ghế/bao rạp, backend sẽ kiểm tra ghế thuộc đúng phòng và chưa bị bán/giữ")
     private List<Integer> seatIds;
 
     @NotNull

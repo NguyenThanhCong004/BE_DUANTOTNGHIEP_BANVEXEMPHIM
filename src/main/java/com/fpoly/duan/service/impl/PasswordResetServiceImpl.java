@@ -205,9 +205,9 @@ public class PasswordResetServiceImpl implements PasswordResetService {
 
     private Optional<User> resolveUser(String raw) {
         if (raw.contains("@")) {
-            return userRepository.findByEmailIgnoreCase(raw);
+            return userRepository.findFirstByEmailIgnoreCaseOrderByUserIdAsc(raw);
         }
-        return userRepository.findByUsernameIgnoreCase(raw);
+        return userRepository.findFirstByUsernameIgnoreCaseOrderByUserIdAsc(raw);
     }
 
     private static String newSessionToken() {

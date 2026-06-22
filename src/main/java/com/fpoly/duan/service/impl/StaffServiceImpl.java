@@ -21,7 +21,6 @@ import com.fpoly.duan.repository.UserRepository;
 import com.fpoly.duan.service.EmailService;
 import com.fpoly.duan.service.StaffService;
 
-import jakarta.mail.MessagingException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -36,10 +35,10 @@ public class StaffServiceImpl implements StaffService {
 
     private final StaffRepository staffRepository;
     private final CinemaRepository cinemaRepository;
-    private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final StaffShiftRepository staffShiftRepository;
     private final EmailService emailService;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -63,8 +62,7 @@ public class StaffServiceImpl implements StaffService {
         return staffRepository.findAll()
                 .stream()
                 .filter(s -> cinemaId == null
-                        || s.getCinema() == null
-                        || cinemaId.equals(s.getCinema().getCinemaId()))
+                        || (s.getCinema() != null && cinemaId.equals(s.getCinema().getCinemaId())))
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
@@ -135,23 +133,15 @@ public class StaffServiceImpl implements StaffService {
         }
 
         // Uniqueness
-        if (staffRepository.existsByEmail(email)) {
+        if (staffRepository.existsByEmail(email) || userRepository.existsByEmail(email)) {
             throw new RuntimeException("Email đã tồn tại");
         }
-        if (userRepository.existsByEmail(email)) {
-            throw new RuntimeException("Email đã được dùng cho tài khoản khách hàng");
-        }
-        if (staffRepository.existsByUsername(username)) {
+        if (staffRepository.existsByUsername(username) || userRepository.existsByUsername(username)) {
             throw new RuntimeException("Username đã tồn tại");
         }
-        if (userRepository.existsByUsername(username)) {
-            throw new RuntimeException("Tên đăng nhập đã được dùng cho tài khoản khách hàng");
-        }
-        if (Boolean.TRUE.equals(staffRepository.existsByPhone(phone))) {
+        if (Boolean.TRUE.equals(staffRepository.existsByPhone(phone))
+                || Boolean.TRUE.equals(userRepository.existsByPhone(phone))) {
             throw new RuntimeException("Số điện thoại đã tồn tại");
-        }
-        if (Boolean.TRUE.equals(userRepository.existsByPhone(phone))) {
-            throw new RuntimeException("Số điện thoại đã được dùng cho tài khoản khách hàng");
         }
 
         String passwordField = staffDTO.getPassword() != null ? staffDTO.getPassword().trim() : "";
@@ -199,19 +189,21 @@ public class StaffServiceImpl implements StaffService {
         Staff saved = staffRepository.save(staff);
 
         if (sendPasswordByEmail) {
-            try {
-                emailService.sendHtml(
-                        email,
-                        NEW_STAFF_EMAIL_SUBJECT,
-                        buildNewStaffCredentialsHtml(
-                                staff.getFullname(),
-                                email,
-                                username,
-                                plainPassword));
-            } catch (MessagingException e) {
-                log.error("Không gửi được email mật khẩu nhân viên tới {}: {}", email, e.getMessage());
-                throw new RuntimeException(
-                        "Đã tạo tài khoản nhưng không gửi được email. Kiểm tra cấu hình SMTP hoặc thử lại sau.");
+            if (!emailService.isConfigured()) {
+                log.warn("Bỏ qua gửi email mật khẩu nhân viên tới {} vì SMTP chưa được cấu hình.", email);
+            } else {
+                try {
+                    emailService.sendHtml(
+                            email,
+                            NEW_STAFF_EMAIL_SUBJECT,
+                            buildNewStaffCredentialsHtml(
+                                    staff.getFullname(),
+                                    email,
+                                    username,
+                                    plainPassword));
+                } catch (Exception e) {
+                    log.error("Không gửi được email mật khẩu nhân viên tới {}: {}", email, e.getMessage(), e);
+                }
             }
         }
 
@@ -264,7 +256,8 @@ public class StaffServiceImpl implements StaffService {
                 throw new RuntimeException("Email phải đúng định dạng Gmail");
             }
             if (!email.equalsIgnoreCase(staff.getEmail())) {
-                if (Boolean.TRUE.equals(staffRepository.existsByEmailAndStaffIdNot(email, id))) {
+                if (Boolean.TRUE.equals(staffRepository.existsByEmailAndStaffIdNot(email, id))
+                        || Boolean.TRUE.equals(userRepository.existsByEmail(email))) {
                     throw new RuntimeException("Email đã tồn tại");
                 }
             }
@@ -277,7 +270,8 @@ public class StaffServiceImpl implements StaffService {
                 throw new RuntimeException("Số điện thoại phải có 10 chữ số");
             }
             if (!phone.equals(staff.getPhone())) {
-                if (Boolean.TRUE.equals(staffRepository.existsByPhoneAndStaffIdNot(phone, id))) {
+                if (Boolean.TRUE.equals(staffRepository.existsByPhoneAndStaffIdNot(phone, id))
+                        || Boolean.TRUE.equals(userRepository.existsByPhone(phone))) {
                     throw new RuntimeException("Số điện thoại đã tồn tại");
                 }
             }
@@ -331,15 +325,17 @@ public class StaffServiceImpl implements StaffService {
                 List<Staff> existingAdmins = staffRepository.findByCinema_CinemaIdAndRoleAndStatus(cinemaId, "ADMIN", 1);
                 // Loại trừ chính mình nếu đang là admin hoạt động của rạp này
                 boolean alreadyHasOtherAdmin = existingAdmins.stream()
-                        .anyMatch(s -> !s.getStaffId().equals(id));
-                
+                        .anyMatch(s -> s.getStaffId() != null && !s.getStaffId().equals(id));
+
                 if (alreadyHasOtherAdmin) {
-                    throw new RuntimeException("Rạp \"" + cinema.getName() + "\" đã có một Admin khác đang hoạt động. Vui lòng tạm ngưng tài khoản Admin kia trước khi kích hoạt tài khoản này.");
+                    Staff other = existingAdmins.stream()
+                            .filter(s -> !s.getStaffId().equals(id))
+                            .findFirst().orElse(null);
+                    String otherName = (other != null) ? other.getFullname() : "khác";
+                    throw new RuntimeException("Rạp \"" + cinema.getName() + "\" đã có Quản lý \"" + otherName + "\" đang hoạt động. Vui lòng tạm ngưng tài khoản kia trước.");
                 }
             }
             staff.setCinema(cinema);
-        } else {
-            staff.setCinema(null);
         }
 
         // Không thay đổi password ở update.

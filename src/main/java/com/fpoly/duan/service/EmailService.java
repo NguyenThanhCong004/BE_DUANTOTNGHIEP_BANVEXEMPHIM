@@ -22,12 +22,27 @@ public class EmailService {
     @Value("${spring.mail.username}")
     private String fromAddress;
 
+    @Value("${spring.mail.password:}")
+    private String mailPassword;
+
+    public boolean isConfigured() {
+        return fromAddress != null && !fromAddress.isBlank()
+                && mailPassword != null && !mailPassword.isBlank();
+    }
+
+    private String requireFromAddress() {
+        if (!isConfigured()) {
+            throw new IllegalStateException("Chưa cấu hình MAIL_USERNAME/MAIL_PASSWORD để gửi email.");
+        }
+        return fromAddress.trim();
+    }
+
     /**
      * Email dạng text thuần.
      */
     public void sendSimple(String to, String subject, String text) {
         SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromAddress);
+        message.setFrom(requireFromAddress());
         message.setTo(to);
         message.setSubject(subject);
         message.setText(text);
@@ -40,7 +55,7 @@ public class EmailService {
     public void sendHtml(String to, String subject, String htmlBody) throws MessagingException {
         MimeMessage mime = mailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(mime, true, "UTF-8");
-        helper.setFrom(fromAddress);
+        helper.setFrom(requireFromAddress());
         helper.setTo(to);
         helper.setSubject(subject);
         helper.setText(htmlBody, true);

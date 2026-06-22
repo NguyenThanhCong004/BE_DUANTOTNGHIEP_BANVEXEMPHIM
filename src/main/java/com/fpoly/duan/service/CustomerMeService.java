@@ -16,16 +16,20 @@ import org.springframework.web.server.ResponseStatusException;
 import com.fpoly.duan.dto.VoucherDTO;
 import com.fpoly.duan.dto.me.FavoriteMovieIdRequest;
 import com.fpoly.duan.dto.me.MeFavoriteMovieDto;
+import com.fpoly.duan.dto.me.MeMovieReviewDto;
+import com.fpoly.duan.dto.me.MeMovieReviewStatusDto;
 import com.fpoly.duan.dto.me.MePointsHistoryDto;
 import com.fpoly.duan.dto.me.MeTransactionDto;
 import com.fpoly.duan.dto.me.MeTransactionItemDto;
 import com.fpoly.duan.dto.me.MeUserVoucherRowDto;
+import com.fpoly.duan.dto.me.MovieReviewRequest;
 import com.fpoly.duan.entity.Favorite;
 import com.fpoly.duan.entity.Movie;
 import com.fpoly.duan.entity.OrderDetailFood;
 import com.fpoly.duan.entity.OrderOnline;
 import com.fpoly.duan.entity.PointsHistory;
 import com.fpoly.duan.entity.Product;
+import com.fpoly.duan.entity.Review;
 import com.fpoly.duan.entity.Seat;
 import com.fpoly.duan.entity.Showtime;
 import com.fpoly.duan.entity.Ticket;
@@ -37,6 +41,7 @@ import com.fpoly.duan.repository.MovieRepository;
 import com.fpoly.duan.repository.OrderDetailFoodRepository;
 import com.fpoly.duan.repository.OrderOnlineRepository;
 import com.fpoly.duan.repository.PointsHistoryRepository;
+import com.fpoly.duan.repository.ReviewRepository;
 import com.fpoly.duan.repository.TicketRepository;
 import com.fpoly.duan.repository.UserRepository;
 import com.fpoly.duan.repository.UserVoucherRepository;
@@ -56,6 +61,7 @@ public class CustomerMeService {
     private final PointsHistoryRepository pointsHistoryRepository;
     private final FavoriteRepository favoriteRepository;
     private final MovieRepository movieRepository;
+    private final ReviewRepository reviewRepository;
     private final UserVoucherRepository userVoucherRepository;
     private final VoucherRepository voucherRepository;
     private final UserRepository userRepository;
@@ -192,11 +198,11 @@ public class CustomerMeService {
 
     public List<MeFavoriteMovieDto> listFavorites(Integer userId) {
         return favoriteRepository.findByUser_UserIdOrderByFavoriteIdDesc(userId).stream()
-                .map(this::toFavoriteDto)
+                .map(f -> toFavoriteDto(userId, f))
                 .collect(Collectors.toList());
     }
 
-    private MeFavoriteMovieDto toFavoriteDto(Favorite f) {
+    private MeFavoriteMovieDto toFavoriteDto(Integer userId, Favorite f) {
         Movie m = f.getMovie();
         if (m == null) {
             return MeFavoriteMovieDto.builder()
@@ -206,8 +212,12 @@ public class CustomerMeService {
                     .poster(null)
                     .duration(null)
                     .status(null)
+                    .canReview(false)
+                    .review(null)
                     .build();
         }
+        MeMovieReviewDto review = findMyReview(userId, m.getMovieId());
+        boolean canReview = review != null || ticketRepository.existsPaidTicketByUserIdAndMovieId(userId, m.getMovieId());
         return MeFavoriteMovieDto.builder()
                 .favoriteId(f.getFavoriteId())
                 .movieId(m.getMovieId())
@@ -215,6 +225,8 @@ public class CustomerMeService {
                 .poster(m.getPoster())
                 .duration(m.getDuration())
                 .status(m.getStatus())
+                .canReview(canReview)
+                .review(review)
                 .build();
     }
 
@@ -239,6 +251,94 @@ public class CustomerMeService {
         favoriteRepository.deleteByUser_UserIdAndMovie_MovieId(userId, movieId);
     }
 
+    @Transactional
+    public MeMovieReviewDto saveMovieReview(Integer userId, Integer movieId, MovieReviewRequest req) {
+        if (!movieRepository.existsById(movieId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phim");
+        }
+
+        List<Ticket> paidTickets = ticketRepository.findPaidTicketsByUserIdAndMovieId(userId, movieId);
+        if (paidTickets.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Bạn cần mua vé và thanh toán thành công trước khi đánh giá phim này");
+        }
+
+        Review review = reviewRepository.findByUserIdAndMovieId(userId, movieId).stream()
+                .findFirst()
+                .orElseGet(() -> {
+                    Review r = new Review();
+                    r.setTicket(paidTickets.get(0));
+                    return r;
+                });
+
+        review.setRating(req.rating());
+        review.setComment(normalizeComment(req.comment()));
+        return toReviewDto(reviewRepository.save(review));
+    }
+
+    public MeMovieReviewStatusDto getMovieReviewStatus(Integer userId, Integer movieId) {
+        if (!movieRepository.existsById(movieId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phim");
+        }
+        MeMovieReviewDto review = findMyReview(userId, movieId);
+        boolean canReview = review != null || ticketRepository.existsPaidTicketByUserIdAndMovieId(userId, movieId);
+        return MeMovieReviewStatusDto.builder()
+                .movieId(movieId)
+                .canReview(canReview)
+                .review(review)
+                .build();
+    }
+
+    public List<MeMovieReviewDto> listMovieReviews(Integer movieId) {
+        if (!movieRepository.existsById(movieId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phim");
+        }
+        return reviewRepository.findPublicByMovieId(movieId).stream()
+                .map(this::toReviewDto)
+                .collect(Collectors.toList());
+    }
+
+    private MeMovieReviewDto findMyReview(Integer userId, Integer movieId) {
+        return reviewRepository.findByUserIdAndMovieId(userId, movieId).stream()
+                .findFirst()
+                .map(this::toReviewDto)
+                .orElse(null);
+    }
+
+    private String normalizeComment(String comment) {
+        if (comment == null) {
+            return null;
+        }
+        String trimmed = comment.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private MeMovieReviewDto toReviewDto(Review review) {
+        if (review == null) {
+            return null;
+        }
+        Ticket ticket = review.getTicket();
+        Showtime showtime = ticket != null ? ticket.getShowtime() : null;
+        Movie movie = showtime != null ? showtime.getMovie() : null;
+        OrderOnline order = ticket != null ? ticket.getOrderOnline() : null;
+        User user = order != null ? order.getUser() : null;
+        String userName = user != null
+                ? (user.getFullname() != null && !user.getFullname().isBlank() ? user.getFullname() : user.getUsername())
+                : "Khách hàng";
+
+        return MeMovieReviewDto.builder()
+                .reviewId(review.getReviewId())
+                .movieId(movie != null ? movie.getMovieId() : null)
+                .ticketId(ticket != null ? ticket.getTicketId() : null)
+                .rating(review.getRating())
+                .comment(review.getComment())
+                .userName(userName)
+                .userAvatar(user != null ? user.getAvatar() : null)
+                .createdAt(review.getCreatedAt())
+                .updatedAt(review.getUpdatedAt())
+                .build();
+    }
+
     public List<MeUserVoucherRowDto> listUserVouchers(Integer userId) {
         return userVoucherRepository.findByUser_UserIdOrderByUserVoucherIdDesc(userId).stream()
                 .map(uv -> MeUserVoucherRowDto.builder()
@@ -261,7 +361,7 @@ public class CustomerMeService {
                 .minOrderValue(v.getMinOrderValue())
                 .startDate(v.getStartDate())
                 .endDate(v.getEndDate())
-                .pointVoucher(v.getPointVoucher())
+                .pointVoucher(java.math.BigDecimal.valueOf(v.getPointVoucher() != null ? v.getPointVoucher() : 0))
                 .status(v.getStatus() != null ? v.getStatus() : 1)
                 .build();
     }

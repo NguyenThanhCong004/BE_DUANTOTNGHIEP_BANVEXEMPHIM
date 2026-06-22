@@ -1,5 +1,6 @@
 package com.fpoly.duan.dto;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 import lombok.AllArgsConstructor;
@@ -20,7 +21,7 @@ public class VoucherDTO {
     private Double maxDiscountAmount;
     private LocalDate startDate;
     private LocalDate endDate;
-    private Integer pointVoucher;
+    private BigDecimal pointVoucher;
     /** 1 = Active, 0 = Inactive */
     private Integer status;
 }

@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -31,20 +32,7 @@ public class CounterOrderController {
             Authentication authentication,
             @Valid @RequestBody CounterCheckoutRequest request) {
 
-        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-        
-        // Chỉ nhân viên hoặc Admin được thực hiện
-        if (details.getStaff() == null) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
-                    ApiResponse.builder()
-                            .status(HttpStatus.FORBIDDEN.value())
-                            .message("Chỉ nhân viên mới được bán hàng tại quầy")
-                            .build());
-        }
-
-        Integer staffId = details.getStaff().getStaffId();
+        Integer staffId = requireStaffId(authentication);
         Object data = counterCheckoutService.checkout(staffId, request);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
@@ -55,14 +43,54 @@ public class CounterOrderController {
                         .build());
     }
 
+    @GetMapping("/{orderCode}/status")
+    @Operation(summary = "Kiểm tra trạng thái đơn hàng (Dành cho chuyển khoản tại quầy)")
+    public ResponseEntity<ApiResponse<com.fpoly.duan.entity.OrderOnline>> checkStatus(
+            Authentication authentication,
+            @PathVariable String orderCode) {
+        Integer staffId = requireStaffId(authentication);
+        com.fpoly.duan.entity.OrderOnline order = counterCheckoutService.checkStatus(staffId, orderCode);
+        return ResponseEntity.ok(ApiResponse.<com.fpoly.duan.entity.OrderOnline>builder()
+                .status(200)
+                .message("Lấy trạng thái đơn hàng thành công")
+                .data(order)
+                .build());
+    }
+
     @PostMapping("/{orderCode}/confirm-paid")
     @Operation(summary = "Xác nhận đơn hàng đã thanh toán (Dành cho chuyển khoản tại quầy)")
-    public ResponseEntity<ApiResponse<com.fpoly.duan.entity.OrderOnline>> confirmPaid(@PathVariable String orderCode) {
-        com.fpoly.duan.entity.OrderOnline order = counterCheckoutService.confirmPaid(orderCode);
+    public ResponseEntity<ApiResponse<com.fpoly.duan.entity.OrderOnline>> confirmPaid(
+            Authentication authentication,
+            @PathVariable String orderCode) {
+        Integer staffId = requireStaffId(authentication);
+        com.fpoly.duan.entity.OrderOnline order = counterCheckoutService.confirmPaid(staffId, orderCode);
         return ResponseEntity.ok(ApiResponse.<com.fpoly.duan.entity.OrderOnline>builder()
                 .status(200)
                 .message("Xác nhận thanh toán thành công")
                 .data(order)
                 .build());
+    }
+
+    @PostMapping("/{orderCode}/cancel")
+    @Operation(summary = "Hủy đơn hàng đang chờ thanh toán (Giải phóng ghế)")
+    public ResponseEntity<ApiResponse<Void>> cancelOrder(
+            Authentication authentication,
+            @PathVariable String orderCode) {
+        Integer staffId = requireStaffId(authentication);
+        counterCheckoutService.cancelOrder(staffId, orderCode);
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .status(200)
+                .message("Đã hủy đơn hàng và giải phóng ghế")
+                .build());
+    }
+
+    private Integer requireStaffId(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Chưa đăng nhập");
+        }
+        if (details.getStaff() == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ nhân viên mới được bán hàng tại quầy");
+        }
+        return details.getStaff().getStaffId();
     }
 }

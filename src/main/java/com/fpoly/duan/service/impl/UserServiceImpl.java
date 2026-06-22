@@ -14,6 +14,7 @@ import com.fpoly.duan.entity.MembershipRank;
 import com.fpoly.duan.entity.User;
 import com.fpoly.duan.repository.MembershipRankRepository;
 import com.fpoly.duan.repository.OrderOnlineRepository;
+import com.fpoly.duan.repository.StaffRepository;
 import com.fpoly.duan.repository.UserRepository;
 import com.fpoly.duan.service.UserService;
 
@@ -27,6 +28,7 @@ public class UserServiceImpl implements UserService {
     private final UserRepository userRepository;
     private final MembershipRankRepository membershipRankRepository;
     private final OrderOnlineRepository orderOnlineRepository;
+    private final StaffRepository staffRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
@@ -48,7 +50,8 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(readOnly = true)
     public UserDTO getUserByUsername(String username) {
-        return userRepository.findByUsername(username)
+        String key = username != null ? username.trim() : "";
+        return userRepository.findFirstByUsernameOrderByUserIdAsc(key)
                 .map(this::convertToDTO)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng với tên đăng nhập: " + username));
     }
@@ -65,6 +68,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserDTO createUser(UserDTO userDTO, String password) {
+        validateUserUniqueForCreate(userDTO);
         User user = convertToEntity(userDTO);
         user.setRankId(resolveRankIdForWrite(userDTO.getRankId()));
         user.setPassword(passwordEncoder.encode(password));
@@ -78,13 +82,27 @@ public class UserServiceImpl implements UserService {
 
         // Cập nhật mọi trường thông tin được gửi lên (Khôi phục lại như lúc đầu)
         if (userDTO.getEmail() != null && !userDTO.getEmail().isBlank()) {
-            user.setEmail(userDTO.getEmail().trim());
+            String email = userDTO.getEmail().trim();
+            if (!email.equalsIgnoreCase(user.getEmail())) {
+                if (Boolean.TRUE.equals(userRepository.existsByEmailAndUserIdNot(email, id))
+                        || Boolean.TRUE.equals(staffRepository.existsByEmail(email))) {
+                    throw new RuntimeException("Email đã tồn tại");
+                }
+            }
+            user.setEmail(email);
         }
         if (userDTO.getFullname() != null) {
             user.setFullname(userDTO.getFullname().trim());
         }
         if (userDTO.getPhone() != null) {
-            user.setPhone(userDTO.getPhone().trim());
+            String phone = userDTO.getPhone().trim();
+            if (!phone.equals(user.getPhone())) {
+                if (Boolean.TRUE.equals(userRepository.existsByPhoneAndUserIdNot(phone, id))
+                        || Boolean.TRUE.equals(staffRepository.existsByPhone(phone))) {
+                    throw new RuntimeException("Số điện thoại đã tồn tại");
+                }
+            }
+            user.setPhone(phone);
         }
         if (userDTO.getStatus() != null) {
             user.setStatus(userDTO.getStatus());
@@ -124,12 +142,43 @@ public class UserServiceImpl implements UserService {
         userRepository.save(user);
     }
 
+    @Override
+    public void recalculateAllUserRanks() {
+        List<User> allUsers = userRepository.findAll();
+        List<MembershipRank> activeRanks = membershipRankRepository.findAll().stream()
+                .filter(r -> r.getStatus() == null || r.getStatus() == 1)
+                .sorted(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0, Comparator.reverseOrder()))
+                .collect(Collectors.toList());
+
+        if (activeRanks.isEmpty()) {
+            return;
+        }
+
+        int currentYear = LocalDate.now().getYear();
+        for (User user : allUsers) {
+            double completedRevenue = orderOnlineRepository
+                    .sumCompletedRevenueByUserAndYear(user.getUserId(), currentYear);
+            
+            // Tìm hạng cao nhất mà người dùng đủ điều kiện
+            MembershipRank matched = activeRanks.stream()
+                    .filter(r -> completedRevenue >= (r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                    .findFirst()
+                    .orElse(activeRanks.get(activeRanks.size() - 1)); // Nếu không đạt hạng nào, lấy hạng thấp nhất trong số các hạng đang hoạt động
+
+            user.setTotalSpending(completedRevenue);
+            user.setRankId(matched.getRankId());
+        }
+        userRepository.saveAll(allUsers);
+    }
+
     private UserDTO convertToDTO(User user) {
         int currentYear = LocalDate.now().getYear();
         double currentYearSpending = orderOnlineRepository
                 .sumCompletedRevenueByUserAndYear(user.getUserId(), currentYear);
-
-        MembershipRank assignedRank = resolveRankEntityForRead(user.getRankId());
+        MembershipRank assignedRank = resolveRankBySpending(currentYearSpending);
+        if (assignedRank == null) {
+            assignedRank = resolveRankEntityForRead(user.getRankId());
+        }
 
         return UserDTO.builder()
                 .userId(user.getUserId())
@@ -147,6 +196,21 @@ public class UserServiceImpl implements UserService {
                 .build();
     }
 
+    private MembershipRank resolveRankBySpending(double spending) {
+        List<MembershipRank> activeRanks = membershipRankRepository.findAll().stream()
+                .filter(r -> r.getStatus() == null || r.getStatus() == 1)
+                .toList();
+        if (activeRanks.isEmpty()) return null;
+        MembershipRank matched = activeRanks.stream()
+                .filter(r -> spending >= (r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .max(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .orElse(null);
+        if (matched != null) return matched;
+        return activeRanks.stream()
+                .min(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .orElse(null);
+    }
+
     private User convertToEntity(UserDTO userDTO) {
         User user = new User();
         user.setUserId(userDTO.getUserId());
@@ -161,6 +225,28 @@ public class UserServiceImpl implements UserService {
         user.setRankId(resolveRankIdForWrite(userDTO.getRankId()));
         user.setTotalSpending(userDTO.getTotalSpending() != null ? userDTO.getTotalSpending() : 0.0);
         return user;
+    }
+
+    private void validateUserUniqueForCreate(UserDTO userDTO) {
+        if (userDTO == null) {
+            throw new RuntimeException("Dữ liệu người dùng không hợp lệ");
+        }
+        String username = userDTO.getUsername() != null ? userDTO.getUsername().trim() : "";
+        String email = userDTO.getEmail() != null ? userDTO.getEmail().trim() : "";
+        String phone = userDTO.getPhone() != null ? userDTO.getPhone().trim() : "";
+
+        if (Boolean.TRUE.equals(userRepository.existsByUsername(username))
+                || Boolean.TRUE.equals(staffRepository.existsByUsername(username))) {
+            throw new RuntimeException("Tên đăng nhập đã tồn tại");
+        }
+        if (Boolean.TRUE.equals(userRepository.existsByEmail(email))
+                || Boolean.TRUE.equals(staffRepository.existsByEmail(email))) {
+            throw new RuntimeException("Email đã tồn tại");
+        }
+        if (Boolean.TRUE.equals(userRepository.existsByPhone(phone))
+                || Boolean.TRUE.equals(staffRepository.existsByPhone(phone))) {
+            throw new RuntimeException("Số điện thoại đã tồn tại");
+        }
     }
 
     private Integer resolveRankIdForWrite(Integer rankId) {

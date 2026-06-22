@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,6 +14,11 @@ import com.fpoly.duan.entity.Promotion;
 
 @Repository
 public interface PromotionRepository extends JpaRepository<Promotion, Integer> {
+    @Override
+    @EntityGraph(attributePaths = { "movie", "cinema" })
+    Optional<Promotion> findById(Integer id);
+
+    @EntityGraph(attributePaths = { "movie", "cinema" })
     List<Promotion> findByCinema_CinemaId(Integer cinemaId);
 
     /**
@@ -20,13 +26,14 @@ public interface PromotionRepository extends JpaRepository<Promotion, Integer> {
      * Ưu tiên: (movie + cinema) > (movie only) > (cinema only) > general
      */
     @Query("SELECT p FROM Promotion p WHERE " +
-           "p.status = 1 AND " +
            "(p.startDate IS NULL OR p.startDate <= :today) AND " +
            "(p.endDate IS NULL OR p.endDate >= :today) AND " +
            "(p.movie.movieId = :movieId OR p.movie IS NULL) AND " +
            "(p.cinema.cinemaId = :cinemaId OR p.cinema IS NULL) " +
-           "ORDER BY CASE WHEN p.movie IS NOT NULL THEN 1 ELSE 0 END DESC, " +
+           "ORDER BY p.discountPercent DESC, " +
+           "CASE WHEN p.movie IS NOT NULL THEN 1 ELSE 0 END DESC, " +
            "CASE WHEN p.cinema IS NOT NULL THEN 1 ELSE 0 END DESC")
+    @EntityGraph(attributePaths = { "movie", "cinema" })
     List<Promotion> findActivePromotions(@Param("movieId") Integer movieId,
                                          @Param("cinemaId") Integer cinemaId,
                                          @Param("today") LocalDate today);

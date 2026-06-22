@@ -16,4 +16,6 @@ public class MeFavoriteMovieDto {
     private String poster;
     private Integer duration;
     private Integer status;
+    private Boolean canReview;
+    private MeMovieReviewDto review;
 }

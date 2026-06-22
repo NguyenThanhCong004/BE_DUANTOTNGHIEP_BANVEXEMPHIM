@@ -1,20 +1,16 @@
-version: "3.8"
+name: java6-backend
 
 services:
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     platform: linux/amd64
-<<<<<<< HEAD
-    container_name: sqlserver_db
-=======
-    container_name: JAVA6 
->>>>>>> 5fc493a92115f21ee289cee34af6b9c07694d03b
+    container_name: java6_backend_sqlserver
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: ${DB_PASSWORD}
+      MSSQL_SA_PASSWORD: ${DB_PASSWORD:-Java6_Docker@12345}
       MSSQL_PID: ${MSSQL_PID:-Developer}
     ports:
-      - "${DB_PORT}:1433"
+      - "${DB_PORT:-1433}:1433"
     volumes:
       - sqlserver_data:/var/opt/mssql
       - sqlserver_backup:/var/opt/mssql/backup
@@ -22,7 +18,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -Q \"SELECT 1\" || exit 1",
+          "(/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -Q \"SELECT 1\" || /opt/mssql-tools/bin/sqlcmd -C -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -Q \"SELECT 1\") || exit 1",
         ]
       interval: 15s
       timeout: 5s
@@ -31,27 +27,62 @@ services:
     restart: unless-stopped
     networks:
       - java6_backend
+      - java6_public
 
-  app:
-    build:
-      context: .
-    container_name: java6_app
-    ports:
-      - "8080:8080"
+  sqlserver-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    container_name: java6_backend_sqlserver_init
     environment:
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_ACCESS_EXPIRATION_MS: ${JWT_ACCESS_EXPIRATION_MS}
-      JWT_REFRESH_EXPIRATION_MS: ${JWT_REFRESH_EXPIRATION_MS}
-      UPLOAD_PRODUCT_IMAGE_DIR: ${UPLOAD_PRODUCT_IMAGE_DIR}
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+      DB_NAME: ${DB_NAME:-JAVA6}
+      MSSQL_SA_PASSWORD: ${DB_PASSWORD:-Java6_Docker@12345}
+    volumes:
+      - ./docker/mssql-init.sh:/docker/mssql-init.sh:ro
+    command: ["/bin/bash", "/docker/mssql-init.sh"]
     depends_on:
       sqlserver:
         condition: service_healthy
+    restart: "no"
+    networks:
+      - java6_backend
+
+  backend:
+    build:
+      context: .
+    container_name: java6_backend_app
+    ports:
+      - "${BACKEND_PORT:-18080}:8080"
+    environment:
+      DB_URL: jdbc:sqlserver://sqlserver:1433;databaseName=${DB_NAME:-JAVA6};encrypt=true;trustServerCertificate=true;sendStringParametersAsUnicode=true
+      DB_USERNAME: ${DB_USERNAME:-sa}
+      DB_PASSWORD: ${DB_PASSWORD:-Java6_Docker@12345}
+      JWT_SECRET: ${JWT_SECRET:-Zm9ycG9seS1qYXZhNi1kZXZlbG9wbWVudC1qd3Qtc2VjcmV0LTMydiE=}
+      JWT_ACCESS_EXPIRATION_MS: ${JWT_ACCESS_EXPIRATION_MS:-7200000}
+      JWT_REFRESH_EXPIRATION_MS: ${JWT_REFRESH_EXPIRATION_MS:-864000000}
+      APP_DATA_SEED: ${APP_DATA_SEED:-true}
+      SEED_ADMIN_USERNAME: ${SEED_ADMIN_USERNAME:-admin}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@fpoly.local}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin@123}
+      SEED_ADMIN_FULLNAME: ${SEED_ADMIN_FULLNAME:-System Admin}
+      SEED_ADMIN_PHONE: ${SEED_ADMIN_PHONE:-0901111111}
+      TICKET_EXPORT_DIR: /app/tickets-export
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
+      PAYOS_BASE_URL: ${PAYOS_BASE_URL:-https://api-merchant.payos.vn}
+      PAYOS_CLIENT_ID: ${PAYOS_CLIENT_ID:-}
+      PAYOS_API_KEY: ${PAYOS_API_KEY:-}
+      PAYOS_CHECKSUM_KEY: ${PAYOS_CHECKSUM_KEY:-}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-default}
+    depends_on:
+      sqlserver-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/swagger-ui.html >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 45s
     restart: unless-stopped
     read_only: true
     tmpfs:
@@ -65,6 +96,7 @@ services:
     cpus: 1.0
     volumes:
       - ./uploads:/app/uploads
+      - ./TICKETS_EXPORT:/app/tickets-export
     logging:
       driver: json-file
       options:
