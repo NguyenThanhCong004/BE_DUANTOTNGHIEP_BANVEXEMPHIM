@@ -14,6 +14,7 @@ import com.fpoly.duan.entity.MembershipRank;
 import com.fpoly.duan.entity.User;
 import com.fpoly.duan.repository.MembershipRankRepository;
 import com.fpoly.duan.repository.OrderOnlineRepository;
+import com.fpoly.duan.repository.StaffRepository;
 import com.fpoly.duan.repository.UserRepository;
 import com.fpoly.duan.service.UserService;
 
@@ -27,6 +28,7 @@ public class UserServiceImpl implements UserService {
     private final UserRepository userRepository;
     private final MembershipRankRepository membershipRankRepository;
     private final OrderOnlineRepository orderOnlineRepository;
+    private final StaffRepository staffRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
@@ -66,6 +68,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserDTO createUser(UserDTO userDTO, String password) {
+        validateUserUniqueForCreate(userDTO);
         User user = convertToEntity(userDTO);
         user.setRankId(resolveRankIdForWrite(userDTO.getRankId()));
         user.setPassword(passwordEncoder.encode(password));
@@ -79,13 +82,27 @@ public class UserServiceImpl implements UserService {
 
         // Cập nhật mọi trường thông tin được gửi lên (Khôi phục lại như lúc đầu)
         if (userDTO.getEmail() != null && !userDTO.getEmail().isBlank()) {
-            user.setEmail(userDTO.getEmail().trim());
+            String email = userDTO.getEmail().trim();
+            if (!email.equalsIgnoreCase(user.getEmail())) {
+                if (Boolean.TRUE.equals(userRepository.existsByEmailAndUserIdNot(email, id))
+                        || Boolean.TRUE.equals(staffRepository.existsByEmail(email))) {
+                    throw new RuntimeException("Email đã tồn tại");
+                }
+            }
+            user.setEmail(email);
         }
         if (userDTO.getFullname() != null) {
             user.setFullname(userDTO.getFullname().trim());
         }
         if (userDTO.getPhone() != null) {
-            user.setPhone(userDTO.getPhone().trim());
+            String phone = userDTO.getPhone().trim();
+            if (!phone.equals(user.getPhone())) {
+                if (Boolean.TRUE.equals(userRepository.existsByPhoneAndUserIdNot(phone, id))
+                        || Boolean.TRUE.equals(staffRepository.existsByPhone(phone))) {
+                    throw new RuntimeException("Số điện thoại đã tồn tại");
+                }
+            }
+            user.setPhone(phone);
         }
         if (userDTO.getStatus() != null) {
             user.setStatus(userDTO.getStatus());
@@ -208,6 +225,28 @@ public class UserServiceImpl implements UserService {
         user.setRankId(resolveRankIdForWrite(userDTO.getRankId()));
         user.setTotalSpending(userDTO.getTotalSpending() != null ? userDTO.getTotalSpending() : 0.0);
         return user;
+    }
+
+    private void validateUserUniqueForCreate(UserDTO userDTO) {
+        if (userDTO == null) {
+            throw new RuntimeException("Dữ liệu người dùng không hợp lệ");
+        }
+        String username = userDTO.getUsername() != null ? userDTO.getUsername().trim() : "";
+        String email = userDTO.getEmail() != null ? userDTO.getEmail().trim() : "";
+        String phone = userDTO.getPhone() != null ? userDTO.getPhone().trim() : "";
+
+        if (Boolean.TRUE.equals(userRepository.existsByUsername(username))
+                || Boolean.TRUE.equals(staffRepository.existsByUsername(username))) {
+            throw new RuntimeException("Tên đăng nhập đã tồn tại");
+        }
+        if (Boolean.TRUE.equals(userRepository.existsByEmail(email))
+                || Boolean.TRUE.equals(staffRepository.existsByEmail(email))) {
+            throw new RuntimeException("Email đã tồn tại");
+        }
+        if (Boolean.TRUE.equals(userRepository.existsByPhone(phone))
+                || Boolean.TRUE.equals(staffRepository.existsByPhone(phone))) {
+            throw new RuntimeException("Số điện thoại đã tồn tại");
+        }
     }
 
     private Integer resolveRankIdForWrite(Integer rankId) {

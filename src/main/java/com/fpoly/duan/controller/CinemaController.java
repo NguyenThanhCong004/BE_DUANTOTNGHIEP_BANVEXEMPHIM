@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -25,6 +26,7 @@ import com.fpoly.duan.entity.Cinema;
 import com.fpoly.duan.entity.Room;
 import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.RoomRepository;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -46,8 +48,13 @@ public class CinemaController {
 
     @GetMapping
     @Operation(summary = "Danh sách rạp")
-    public ResponseEntity<ApiResponse<List<CinemaDTO>>> list() {
+    public ResponseEntity<ApiResponse<List<CinemaDTO>>> list(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
         List<CinemaDTO> data = cinemaRepository.findAll().stream()
+                .filter(c -> SearchUtils.matches(term, c.getCinemaId(), c.getName(), c.getAddress(), c.getStatus()))
                 .map(this::toDTO)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.<List<CinemaDTO>>builder()

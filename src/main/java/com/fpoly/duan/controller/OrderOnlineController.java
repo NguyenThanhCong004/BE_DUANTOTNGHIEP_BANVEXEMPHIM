@@ -24,6 +24,7 @@ import com.fpoly.duan.repository.OrderDetailFoodRepository;
 import com.fpoly.duan.repository.OrderOnlineRepository;
 import com.fpoly.duan.repository.TicketRepository;
 import com.fpoly.duan.service.CinemaScopeService;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -45,8 +46,13 @@ public class OrderOnlineController {
 
     @GetMapping
     @Operation(summary = "Danh sách đơn online (có lọc theo rạp)")
-    public ResponseEntity<ApiResponse<List<OrderOnlineDTO>>> list(@RequestParam(required = false) Integer cinemaId) {
+    public ResponseEntity<ApiResponse<List<OrderOnlineDTO>>> list(
+            @RequestParam(required = false) Integer cinemaId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
         Integer effectiveCinemaId = cinemaScopeService.effectiveCinemaId(cinemaId);
+        String term = SearchUtils.pick(search, keyword, q);
         List<OrderOnline> orders;
         if (effectiveCinemaId != null) {
             orders = orderOnlineRepository.findAll().stream()
@@ -61,6 +67,16 @@ public class OrderOnlineController {
 
         List<OrderOnlineDTO> data = orders.stream()
                 .map(this::toDTO)
+                .filter(o -> SearchUtils.matches(term,
+                        o.getId(), o.getOrderCode(), o.getCustomerName(), o.getCustomerEmail(),
+                        o.getCinemaName(), o.getCinemaAddress(), o.getStaffName(), o.getVoucherCode(),
+                        o.getStatus(), o.getFinalAmount(),
+                        o.getTickets() != null ? o.getTickets().stream()
+                                .map(OrderOnlineDTO.TicketInfoDTO::getMovieTitle)
+                                .collect(Collectors.joining(" ")) : null,
+                        o.getFoods() != null ? o.getFoods().stream()
+                                .map(OrderOnlineDTO.FoodInfoDTO::getProductName)
+                                .collect(Collectors.joining(" ")) : null))
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.<List<OrderOnlineDTO>>builder()
                 .status(HttpStatus.OK.value())
@@ -104,6 +120,10 @@ public class OrderOnlineController {
                 ? u.getFullname()
                 : u.getUsername()) : "Khách vãng lai";
         String email = u != null && u.getEmail() != null ? u.getEmail() : "—";
+        String phone = u != null && u.getPhone() != null ? u.getPhone() : "—";
+        String voucherCode = o.getUserVoucher() != null && o.getUserVoucher().getVoucher() != null
+                ? o.getUserVoucher().getVoucher().getCode()
+                : null;
 
         // Lấy thông tin vé
         List<OrderOnlineDTO.TicketInfoDTO> tickets = ticketRepository.findByOrderOnline_OrderOnlineId(o.getOrderOnlineId())
@@ -112,8 +132,14 @@ public class OrderOnlineController {
                                 ? t.getShowtime().getMovie().getTitle()
                                 : "N/A")
                         .showtime(t.getShowtime() != null ? t.getShowtime().getStartTime() : null)
+                        .roomName(t.getShowtime() != null && t.getShowtime().getRoom() != null
+                                ? t.getShowtime().getRoom().getName()
+                                : "N/A")
                         .seatNumber(t.getSeat() != null
                                 ? (t.getSeat().getRow() + t.getSeat().getNumber())
+                                : "N/A")
+                        .seatTypeName(t.getSeat() != null && t.getSeat().getSeatType() != null
+                                ? t.getSeat().getSeatType().getName()
                                 : "N/A")
                         .originalPrice(t.getOriginalPrice() != null ? t.getOriginalPrice() : t.getPrice())
                         .promotionDiscount(t.getPromotionDiscount() != null ? t.getPromotionDiscount() : 0.0)
@@ -133,14 +159,17 @@ public class OrderOnlineController {
         // Tên rạp (Ưu tiên lấy từ trường cinema trực tiếp của đơn hàng)
         String cinemaName = "N/A";
         Integer cinemaId = null;
+        String cinemaAddress = "N/A";
         
         if (o.getCinema() != null) {
             cinemaName = o.getCinema().getName();
             cinemaId = o.getCinema().getCinemaId();
+            cinemaAddress = o.getCinema().getAddress();
         } else if (s != null && s.getCinema() != null) {
             // Dự phòng 1: Từ nhân viên (Dữ liệu cũ)
             cinemaName = s.getCinema().getName();
             cinemaId = s.getCinema().getCinemaId();
+            cinemaAddress = s.getCinema().getAddress();
         } else {
             // Dự phòng 2: Từ vé phim (Dữ liệu cũ/Online)
             var allTickets = ticketRepository.findByOrderOnline_OrderOnlineId(o.getOrderOnlineId());
@@ -150,6 +179,7 @@ public class OrderOnlineController {
                         && firstTicket.getShowtime().getRoom().getCinema() != null) {
                     cinemaName = firstTicket.getShowtime().getRoom().getCinema().getName();
                     cinemaId = firstTicket.getShowtime().getRoom().getCinema().getCinemaId();
+                    cinemaAddress = firstTicket.getShowtime().getRoom().getCinema().getAddress();
                 }
             }
         }
@@ -165,8 +195,12 @@ public class OrderOnlineController {
                 .userId(u != null ? u.getUserId() : null)
                 .customerName(name)
                 .customerEmail(email)
+                .customerPhone(phone)
+                .paymentMethod(o.getPaymentMethod())
+                .voucherCode(voucherCode)
                 .cinemaName(cinemaName)
                 .cinemaId(cinemaId)
+                .cinemaAddress(cinemaAddress)
                 .staffName(s != null ? s.getFullname() : "Đặt Online")
                 .tickets(tickets)
                 .foods(foods)

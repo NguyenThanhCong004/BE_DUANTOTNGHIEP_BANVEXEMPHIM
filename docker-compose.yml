@@ -27,6 +27,7 @@ services:
     restart: unless-stopped
     networks:
       - java6_backend
+      - java6_public
 
   sqlserver-init:
     image: mcr.microsoft.com/mssql/server:2022-latest

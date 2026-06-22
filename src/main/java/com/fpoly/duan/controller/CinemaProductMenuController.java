@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.fpoly.duan.config.OpenApiConfig;
@@ -29,6 +30,7 @@ import com.fpoly.duan.repository.CinemaProductRepository;
 import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.ProductRepository;
 import com.fpoly.duan.service.CinemaScopeService;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -50,7 +52,16 @@ public class CinemaProductMenuController {
 
     @GetMapping
     @Operation(summary = "Danh sách sản phẩm chia 2 nhóm: đang bán và chưa bán tại rạp")
-    public ResponseEntity<ApiResponse<CinemaProductMenuDTO>> getMenu(@PathVariable Integer cinemaId) {
+    public ResponseEntity<ApiResponse<CinemaProductMenuDTO>> getMenu(
+            @PathVariable Integer cinemaId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String onSaleSearch,
+            @RequestParam(required = false) String notOnSaleSearch,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
+        String onSaleTerm = SearchUtils.isBlank(onSaleSearch) ? term : onSaleSearch;
+        String notOnSaleTerm = SearchUtils.isBlank(notOnSaleSearch) ? term : notOnSaleSearch;
         Cinema cinema = cinemaRepository.findById(cinemaId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với id: " + cinemaId));
 
@@ -70,6 +81,12 @@ public class CinemaProductMenuController {
             }
             CinemaProduct cp = byProductId.get(p.getProductId());
             boolean selling = cinemaScopeService.isCinemaPubliclyAvailable(cinema) && cp != null && Boolean.TRUE.equals(cp.getIsActive());
+            String groupTerm = selling ? onSaleTerm : notOnSaleTerm;
+            if (!SearchUtils.matches(groupTerm,
+                    p.getProductId(), p.getName(), p.getDescription(), p.getPrice(),
+                    p.getCategory() != null ? p.getCategory().getName() : null)) {
+                continue;
+            }
             CinemaProductOfferDTO row = toOffer(p, cp);
             if (selling) {
                 onSale.add(row);

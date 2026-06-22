@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,6 +28,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class StaffDashboardService {
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private final OrderOnlineRepository orderOnlineRepository;
     private final TicketRepository ticketRepository;
@@ -130,7 +132,7 @@ public class StaffDashboardService {
 
     public StaffDashboardStats getDashboardStats(Integer staffId) {
         try {
-            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime now = nowInAppZone();
             
             // Lấy tên rạp
             String cinemaName = "N/A";
@@ -141,19 +143,15 @@ public class StaffDashboardService {
 
             Optional<StaffShift> currentShift = staffShiftRepository.findActiveShift(staffId, now);
 
-            LocalDateTime start;
-            LocalDateTime end;
+            LocalDateTime start = now.toLocalDate().atStartOfDay();
+            LocalDateTime end = now.toLocalDate().atTime(23, 59, 59);
             String shiftName;
 
             if (currentShift.isPresent()) {
                 StaffShift shift = currentShift.get();
-                start = shift.getStartTime();
-                end = shift.getEndTime();
                 DateTimeFormatter fmt = DateTimeFormatter.ofPattern("HH:mm");
-                shiftName = "Ca: " + start.format(fmt) + " - " + end.format(fmt);
+                shiftName = "Ca: " + shift.getStartTime().format(fmt) + " - " + shift.getEndTime().format(fmt);
             } else {
-                start = now.toLocalDate().atStartOfDay();
-                end = now.toLocalDate().atTime(23, 59, 59);
                 shiftName = "Cả ngày hôm nay";
             }
 
@@ -180,12 +178,11 @@ public class StaffDashboardService {
     }
 
     private LocalDateTime[] getCurrentRange(Integer staffId) {
-        LocalDateTime now = LocalDateTime.now();
-        Optional<StaffShift> currentShift = staffShiftRepository.findActiveShift(staffId, now);
-        if (currentShift.isPresent()) {
-            return new LocalDateTime[]{currentShift.get().getStartTime(), currentShift.get().getEndTime()};
-        } else {
-            return new LocalDateTime[]{now.toLocalDate().atStartOfDay(), now.toLocalDate().atTime(23, 59, 59)};
-        }
+        LocalDateTime now = nowInAppZone();
+        return new LocalDateTime[]{now.toLocalDate().atStartOfDay(), now.toLocalDate().atTime(23, 59, 59)};
+    }
+
+    private LocalDateTime nowInAppZone() {
+        return LocalDateTime.now(APP_ZONE);
     }
 }

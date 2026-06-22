@@ -1,6 +1,7 @@
 package com.fpoly.duan.service;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -25,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 @Slf4j
 public class OrderCleanupService {
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     private static final int ORDER_STATUS_PENDING = 0;
     private static final int ORDER_STATUS_CANCELLED = 2;
     private static final int TICKET_STATUS_CANCELLED = 2;
@@ -38,13 +40,13 @@ public class OrderCleanupService {
     private final TicketCheckoutService ticketCheckoutService;
 
     /**
-     * Tự động dọn dẹp các đơn hàng PENDING (trạng thái 0) quá 15 phút.
-     * Chạy mỗi 5 phút một lần.
+     * Tự động dọn dẹp các đơn hàng PENDING (trạng thái 0) quá 5 phút.
+     * Chạy mỗi 1 phút một lần để trả ghế/đơn chờ sát thời hạn.
      */
-    @Scheduled(fixedRate = 300_000)
+    @Scheduled(fixedRate = 60_000)
     @Transactional
     public void cleanupExpiredPendingOrders() {
-        LocalDateTime expiryTime = LocalDateTime.now().minusMinutes(15);
+        LocalDateTime expiryTime = LocalDateTime.now(APP_ZONE).minusMinutes(5);
         List<OrderOnline> expiredOrders = orderOnlineRepository.findAll().stream()
                 .filter(o -> o.getStatus() != null && o.getStatus() == ORDER_STATUS_PENDING)
                 .filter(o -> o.getCreatedAt() != null && o.getCreatedAt().isBefore(expiryTime))

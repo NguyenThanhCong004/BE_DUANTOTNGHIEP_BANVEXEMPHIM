@@ -11,7 +11,6 @@ import java.util.List;
 @Data
 public class CounterCheckoutRequest {
 
-    @NotNull(message = "Thiếu ID suất chiếu")
     private Integer showtimeId;
 
     private List<Integer> seatIds;

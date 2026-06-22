@@ -2,6 +2,7 @@ package com.fpoly.duan.service;
 
 import java.time.LocalDateTime;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -64,6 +65,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 @Slf4j
 public class TicketCheckoutService {
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private static final int ORDER_STATUS_PENDING = 0;
     private static final int ORDER_STATUS_PAID = 1;
@@ -74,6 +76,7 @@ public class TicketCheckoutService {
     private static final int FOOD_STATUS_PENDING = 0;
     private static final int FOOD_STATUS_PAID = 1;
     private static final int FOOD_STATUS_CANCELLED = 2;
+    private static final long PENDING_SEAT_HOLD_MINUTES = 5;
 
     private final ShowtimeRepository showtimeRepository;
     private final SeatRepository seatRepository;
@@ -123,7 +126,10 @@ public class TicketCheckoutService {
         }
 
         List<Seat> allRoomSeats = seatRepository.findByRoom_RoomId(roomId);
-        List<Integer> dbHeldSeatIds = ticketRepository.findHeldSeatIdsByShowtime(showtime.getShowtimeId());
+        LocalDateTime pendingSince = nowInAppZone().minusMinutes(PENDING_SEAT_HOLD_MINUTES);
+        List<Integer> dbHeldSeatIds = ticketRepository.findHeldSeatIdsByShowtime(
+                showtime.getShowtimeId(),
+                pendingSince);
         SeatLayoutRules.assertNoSingleSeatOrphanInRows(allRoomSeats,
                 SeatLayoutRules.mergeBlocked(dbHeldSeatIds, seatIdSet));
 
@@ -137,7 +143,10 @@ public class TicketCheckoutService {
             }
         }
 
-        long conflict = ticketRepository.countHeldOrPaidTicketsForSeats(showtime.getShowtimeId(), seatIdSet);
+        long conflict = ticketRepository.countHeldOrPaidTicketsForSeats(
+                showtime.getShowtimeId(),
+                seatIdSet,
+                pendingSince);
         if (conflict > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Một hoặc nhiều ghế đã được giữ hoặc đã bán");
         }
@@ -158,7 +167,7 @@ public class TicketCheckoutService {
 
         OrderOnline order = new OrderOnline();
         order.setUser(user);
-        order.setCreatedAt(LocalDateTime.now());
+        order.setCreatedAt(nowInAppZone());
         order.setStatus(ORDER_STATUS_PENDING);
         order.setUserVoucher(null);
         order.setOrderCode(String.valueOf(payosOrderCode));
@@ -215,7 +224,7 @@ public class TicketCheckoutService {
             if (voucher == null || voucher.getStatus() == null || voucher.getStatus() != 1) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher không khả dụng");
             }
-            LocalDate todayVoucher = LocalDate.now();
+            LocalDate todayVoucher = todayInAppZone();
             if (voucher.getStartDate() != null && todayVoucher.isBefore(voucher.getStartDate())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher chưa có hiệu lực");
             }
@@ -514,7 +523,7 @@ public class TicketCheckoutService {
 
         OrderOnline order = new OrderOnline();
         order.setUser(user);
-        order.setCreatedAt(LocalDateTime.now());
+        order.setCreatedAt(nowInAppZone());
         order.setStatus(ORDER_STATUS_PENDING);
         order.setUserVoucher(null);
         order.setOrderCode(String.valueOf(payosOrderCode));
@@ -546,8 +555,8 @@ public class TicketCheckoutService {
             String cancelUrl,
             OrderOnline order) {
 
-        // Thiết lập link thanh toán hết hạn sau 15 phút (900 giây)
-        long expiredAt = System.currentTimeMillis() / 1000 + 900;
+        // Thiết lập link thanh toán hết hạn sau 5 phút (300 giây)
+        long expiredAt = System.currentTimeMillis() / 1000 + 300;
 
         PayOSCreatePaymentLinkRequest payReq = PayOSCreatePaymentLinkRequest.builder()
                 .orderCode(payosOrderCode)
@@ -597,7 +606,7 @@ public class TicketCheckoutService {
         Cinema cinema = loadCinema(cinemaId);
         if (cinema.getStatus() != null && cinema.getStatus() != 1) {
             boolean hasRemainingShowtimes = showtimeRepository.existsByRoom_Cinema_CinemaIdAndStartTimeGreaterThanEqual(
-                    cinema.getCinemaId(), LocalDateTime.now().toLocalDate().atStartOfDay());
+                    cinema.getCinemaId(), todayInAppZone().atStartOfDay());
             if (!hasRemainingShowtimes) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Rạp đã tạm ngừng và không còn suất chiếu đang mở");
@@ -682,7 +691,7 @@ public class TicketCheckoutService {
         if (v == null || v.getStatus() == null || v.getStatus() != 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher không khả dụng");
         }
-        LocalDate today = LocalDate.now();
+        LocalDate today = todayInAppZone();
         if (v.getStartDate() != null && today.isBefore(v.getStartDate())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher chưa có hiệu lực");
         }
@@ -709,7 +718,7 @@ public class TicketCheckoutService {
         double unitBase = computeUnitBasePrice(showtime);
 
         Integer movieId = showtime.getMovie() != null ? showtime.getMovie().getMovieId() : null;
-        LocalDate today = LocalDate.now();
+        LocalDate today = todayInAppZone();
         List<Promotion> promotions = promotionRepository.findActivePromotions(movieId, cinemaId, today);
         double promotionDiscountPercent = 0.0;
         if (!promotions.isEmpty()) {
@@ -734,7 +743,7 @@ public class TicketCheckoutService {
      */
     private MembershipRank resolveEffectiveRank(User user) {
         if (user == null || user.getUserId() == null) return null;
-        int currentYear = LocalDate.now().getYear();
+        int currentYear = todayInAppZone().getYear();
         double spending = orderOnlineRepository.sumCompletedRevenueByUserAndYear(user.getUserId(), currentYear);
 
         List<MembershipRank> activeRanks = membershipRankRepository.findAll().stream()
@@ -988,7 +997,7 @@ public class TicketCheckoutService {
             // Lưu lịch sử điểm
             PointsHistory pointsHistory = new PointsHistory();
             pointsHistory.setUser(user);
-            pointsHistory.setDate(LocalDate.now());
+            pointsHistory.setDate(todayInAppZone());
             pointsHistory.setDescription(descriptionPrefix +
                                        " (" + pointsFromAmount + " điểm từ số tiền" + 
                                        (bonusPoints > 0 ? " + " + bonusPoints + " điểm bonus" : "") + ")");
@@ -1001,7 +1010,7 @@ public class TicketCheckoutService {
     }
 
     private void recalculateUserRankFromPaidOrders(User user) {
-        int currentYear = LocalDate.now().getYear();
+        int currentYear = todayInAppZone().getYear();
         double completedRevenue = orderOnlineRepository
                 .sumCompletedRevenueByUserAndYear(user.getUserId(), currentYear);
 
@@ -1030,7 +1039,7 @@ public class TicketCheckoutService {
     }
 
     private static void assertShowtimeBookable(Showtime s) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = nowInAppZone();
         Movie movie = s.getMovie();
         if (s.getStartTime() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Suất chiếu chưa có thời gian");
@@ -1048,6 +1057,14 @@ public class TicketCheckoutService {
         double basePrice = movie != null && movie.getBasePrice() != null ? movie.getBasePrice() : 0.0;
         double surcharge = s.getSurcharge() != null ? s.getSurcharge() : 0.0;
         return basePrice + surcharge;
+    }
+
+    private static LocalDateTime nowInAppZone() {
+        return LocalDateTime.now(APP_ZONE);
+    }
+
+    private static LocalDate todayInAppZone() {
+        return LocalDate.now(APP_ZONE);
     }
 
     private static String truncate(String s, int max) {

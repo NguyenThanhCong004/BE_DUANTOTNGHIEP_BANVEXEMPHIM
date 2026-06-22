@@ -54,13 +54,6 @@ IF NOT EXISTS (SELECT 1 FROM cinemas WHERE name = N'Beta Thủ Đức')
 IF NOT EXISTS (SELECT 1 FROM cinemas WHERE name = N'CGV Vincom Đồng Khởi')
     INSERT INTO cinemas(name, address, status) VALUES (N'CGV Vincom Đồng Khởi', N'72 Lê Thánh Tôn, Quận 1, TP.HCM', 1);
 
-IF NOT EXISTS (SELECT 1 FROM seatype WHERE name = N'Thường')
-    INSERT INTO seatype(name, surcharge, color, couple_seat) VALUES (N'Thường', 0, '#0D6EFD', 0);
-IF NOT EXISTS (SELECT 1 FROM seatype WHERE name = N'VIP')
-    INSERT INTO seatype(name, surcharge, color, couple_seat) VALUES (N'VIP', 30000, '#FFC107', 0);
-IF NOT EXISTS (SELECT 1 FROM seatype WHERE name = N'Đôi')
-    INSERT INTO seatype(name, surcharge, color, couple_seat) VALUES (N'Đôi', 20000, '#DC3545', 1);
-
 DECLARE @cinemaId int;
 DECLARE cinema_cursor CURSOR LOCAL FAST_FORWARD FOR
     SELECT cinema_id FROM cinemas WHERE ISNULL(status, 1) = 1;
@@ -77,9 +70,10 @@ END
 CLOSE cinema_cursor;
 DEALLOCATE cinema_cursor;
 
-DECLARE @regularSeatTypeId int = (SELECT TOP 1 seat_type_id FROM seatype WHERE name = N'Thường');
-DECLARE @vipSeatTypeId int = (SELECT TOP 1 seat_type_id FROM seatype WHERE name = N'VIP');
-DECLARE @coupleSeatTypeId int = (SELECT TOP 1 seat_type_id FROM seatype WHERE name = N'Đôi');
+DECLARE @regularSeatTypeId int = (SELECT TOP 1 seat_type_id FROM seatype ORDER BY couple_seat ASC, seat_type_id ASC);
+DECLARE @vipSeatTypeId int = @regularSeatTypeId;
+DECLARE @coupleSeatTypeId int = (SELECT TOP 1 seat_type_id FROM seatype WHERE couple_seat = 1 ORDER BY seat_type_id ASC);
+IF @coupleSeatTypeId IS NULL SET @coupleSeatTypeId = @regularSeatTypeId;
 DECLARE @roomId int;
 DECLARE room_cursor CURSOR LOCAL FAST_FORWARD FOR
     SELECT room_id FROM rooms WHERE ISNULL(status, 1) = 1;
@@ -87,7 +81,7 @@ OPEN room_cursor;
 FETCH NEXT FROM room_cursor INTO @roomId;
 WHILE @@FETCH_STATUS = 0
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM seats WHERE room_id = @roomId)
+    IF @regularSeatTypeId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM seats WHERE room_id = @roomId)
     BEGIN
         ;WITH Rows(row_name, row_order) AS (
             SELECT 'A', 1 UNION ALL SELECT 'B', 2 UNION ALL SELECT 'C', 3

@@ -2,6 +2,7 @@ package com.fpoly.duan.repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.time.LocalDateTime;
 
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -37,6 +38,18 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, Integer> {
     List<Showtime> findByMovie_MovieIdAndRoom_Cinema_CinemaId(Integer movieId, Integer cinemaId);
 
     boolean existsByRoom_Cinema_CinemaIdAndStartTimeGreaterThanEqual(Integer cinemaId, java.time.LocalDateTime startTime);
+
+    @Query("SELECT DISTINCT s FROM Showtime s " +
+            "JOIN FETCH s.movie m " +
+            "JOIN FETCH s.room r " +
+            "JOIN FETCH r.cinema c " +
+            "WHERE c.cinemaId = :cinemaId " +
+            "AND s.startTime >= :start " +
+            "AND s.startTime < :endExclusive")
+    List<Showtime> findPromotionEligibleShowtimes(
+            @Param("cinemaId") Integer cinemaId,
+            @Param("start") LocalDateTime start,
+            @Param("endExclusive") LocalDateTime endExclusive);
 
     @Query("SELECT s.movie.movieId, COUNT(s) FROM Showtime s GROUP BY s.movie.movieId")
     List<Object[]> countShowtimesGroupedByMovieId();

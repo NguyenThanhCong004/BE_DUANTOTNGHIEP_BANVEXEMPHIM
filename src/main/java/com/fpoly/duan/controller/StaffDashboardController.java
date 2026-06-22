@@ -8,6 +8,7 @@ import com.fpoly.duan.dto.StaffDashboardStats;
 import com.fpoly.duan.entity.OrderOnline;
 import com.fpoly.duan.security.CustomUserDetails;
 import com.fpoly.duan.service.StaffDashboardService;
+import com.fpoly.duan.util.SearchUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -84,13 +85,24 @@ public class StaffDashboardController {
 
     @GetMapping("/recent-orders")
     @Operation(summary = "Lấy danh sách 10 hóa đơn gần nhất của nhân viên")
-    public ResponseEntity<ApiResponse<List<OrderOnline>>> getRecentOrders(Authentication authentication) {
+    public ResponseEntity<ApiResponse<List<OrderOnline>>> getRecentOrders(
+            Authentication authentication,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
         if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
             return ResponseEntity.status(401).body(ApiResponse.<List<OrderOnline>>builder().status(401).message("Unauthorized").build());
         }
         Integer staffId = details.getStaff().getStaffId();
+        String term = SearchUtils.pick(search, keyword, q);
         
-        List<OrderOnline> orders = staffDashboardService.getRecentOrders(staffId);
+        List<OrderOnline> orders = staffDashboardService.getRecentOrders(staffId).stream()
+                .filter(o -> SearchUtils.matches(term,
+                        o.getOrderOnlineId(), o.getOrderCode(), o.getPaymentMethod(), o.getStatus(), o.getFinalAmount(),
+                        o.getUser() != null ? o.getUser().getFullname() : null,
+                        o.getStaff() != null ? o.getStaff().getFullname() : null,
+                        o.getCinema() != null ? o.getCinema().getName() : null))
+                .toList();
         
         return ResponseEntity.ok(ApiResponse.<List<OrderOnline>>builder()
                 .status(200)

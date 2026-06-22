@@ -12,8 +12,10 @@ import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.StaffDTO;
 import com.fpoly.duan.dto.UserPasswordChangeRequest;
+import com.fpoly.duan.security.CustomUserDetails;
 import com.fpoly.duan.service.CinemaScopeService;
 import com.fpoly.duan.service.StaffService;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -34,9 +36,16 @@ public class StaffController {
     @GetMapping
     @Operation(summary = "Danh sách nhân viên (Admin dùng)")
     public ResponseEntity<ApiResponse<List<StaffDTO>>> getAllStaff(
-            @RequestParam(required = false) Integer cinemaId) {
+            @RequestParam(required = false) Integer cinemaId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
         Integer effectiveCinemaId = cinemaScopeService.effectiveCinemaId(cinemaId);
-        List<StaffDTO> staff = effectiveCinemaId == null ? staffService.getAllStaff() : staffService.listStaffByCinema(effectiveCinemaId);
+        String term = SearchUtils.pick(search, keyword, q);
+        List<StaffDTO> staff = (effectiveCinemaId == null ? staffService.getAllStaff() : staffService.listStaffByCinema(effectiveCinemaId))
+                .stream()
+                .filter(s -> matchesSearch(term, s))
+                .toList();
         return ResponseEntity.ok(ApiResponse.<List<StaffDTO>>builder()
                 .status(HttpStatus.OK.value())
                 .message("Thành công")
@@ -46,11 +55,17 @@ public class StaffController {
 
     @GetMapping("/super-admin-view")
     @Operation(summary = "Danh sách nhân viên (Super Admin dùng)")
-    public ResponseEntity<ApiResponse<List<StaffDTO>>> getStaffForSuperAdmin() {
+    public ResponseEntity<ApiResponse<List<StaffDTO>>> getStaffForSuperAdmin(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
         return ResponseEntity.ok(ApiResponse.<List<StaffDTO>>builder()
                 .status(HttpStatus.OK.value())
                 .message("Thành công")
-                .data(staffService.getAllStaffForSuperAdmin())
+                .data(staffService.getAllStaffForSuperAdmin().stream()
+                        .filter(s -> matchesSearch(term, s))
+                        .toList())
                 .build());
     }
 
@@ -84,7 +99,10 @@ public class StaffController {
     public ResponseEntity<ApiResponse<StaffDTO>> updateStaff(@PathVariable Integer id, @RequestBody StaffDTO staffDTO) {
         StaffDTO current = staffService.getStaffById(id);
         requireStaffScope(current);
-        requireWritableRole(staffDTO.getRole());
+        boolean selfProfileUpdate = isSelfProfileUpdate(id, current, staffDTO);
+        if (!selfProfileUpdate) {
+            requireWritableRole(staffDTO.getRole());
+        }
         if (staffDTO.getCinemaId() != null) {
             cinemaScopeService.requireCinemaAccess(staffDTO.getCinemaId());
         }
@@ -157,5 +175,39 @@ public class StaffController {
             throw new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Quản trị rạp chỉ được quản lý nhân viên STAFF");
         }
+    }
+
+    private boolean isSelfProfileUpdate(Integer id, StaffDTO current, StaffDTO requested) {
+        if (id == null || current == null || requested == null || cinemaScopeService.isSuperAdmin()) {
+            return false;
+        }
+        org.springframework.security.core.Authentication auth =
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !(auth.getPrincipal() instanceof CustomUserDetails details)
+                || details.getStaff() == null
+                || !id.equals(details.getStaff().getStaffId())) {
+            return false;
+        }
+
+        String currentRole = normalizeRole(current.getRole());
+        String requestedRole = requested.getRole() == null ? currentRole : normalizeRole(requested.getRole());
+        Integer currentCinemaId = current.getCinemaId();
+        Integer requestedCinemaId = requested.getCinemaId() == null ? currentCinemaId : requested.getCinemaId();
+        Integer currentStatus = current.getStatus();
+        Integer requestedStatus = requested.getStatus() == null ? currentStatus : requested.getStatus();
+
+        return currentRole.equals(requestedRole)
+                && java.util.Objects.equals(currentCinemaId, requestedCinemaId)
+                && java.util.Objects.equals(currentStatus, requestedStatus);
+    }
+
+    private String normalizeRole(String role) {
+        return role == null ? "" : role.trim().toUpperCase().replaceFirst("^ROLE_", "");
+    }
+
+    private boolean matchesSearch(String term, StaffDTO staff) {
+        return SearchUtils.matches(term,
+                staff.getStaffId(), staff.getFullname(), staff.getUsername(), staff.getEmail(),
+                staff.getPhone(), staff.getRole(), staff.getStatus(), staff.getCinemaId(), staff.getCinemaName());
     }
 }

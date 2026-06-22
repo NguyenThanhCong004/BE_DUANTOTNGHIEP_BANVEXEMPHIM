@@ -153,6 +153,9 @@ public class AuthServiceImpl implements AuthService {
         } catch (UsernameNotFoundException ex) {
             throw new RuntimeException("Refresh token không hợp lệ");
         }
+        if (!userDetails.isEnabled() || !userDetails.isAccountNonLocked()) {
+            throw new DisabledException("Tài khoản đã bị khóa");
+        }
         if (!jwtService.isRefreshTokenValid(refreshToken, userDetails)) {
             throw new RuntimeException("Refresh token không hợp lệ");
         }

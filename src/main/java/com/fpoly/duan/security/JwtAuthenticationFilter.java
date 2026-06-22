@@ -103,6 +103,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // Token cũ chưa có accountType vẫn được xử lý theo cơ chế fallback.
             }
             UserDetails userDetails = this.userDetailsService.loadByUsernameAndAccountType(username, accountType);
+            if (!userDetails.isEnabled() || !userDetails.isAccountNonLocked()) {
+                SecurityContextHolder.clearContext();
+                rejectDisabledAccount(response);
+                return;
+            }
             if (jwtService.isTokenValid(jwt, userDetails)) {
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                         userDetails,
@@ -113,5 +118,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private void rejectDisabledAccount(HttpServletResponse response) throws IOException {
+        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+        response.setCharacterEncoding("UTF-8");
+        response.setContentType("application/json;charset=UTF-8");
+        response.getWriter().write("{\"status\":403,\"message\":\"Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.\",\"data\":null}");
     }
 }

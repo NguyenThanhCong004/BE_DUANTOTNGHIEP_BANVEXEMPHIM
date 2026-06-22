@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -25,6 +26,7 @@ import com.fpoly.duan.entity.Genre;
 import com.fpoly.duan.entity.Movie;
 import com.fpoly.duan.repository.GenreRepository;
 import com.fpoly.duan.repository.MovieRepository;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -46,8 +48,13 @@ public class GenreController {
 
     @GetMapping
     @Operation(summary = "Danh sách thể loại")
-    public ResponseEntity<ApiResponse<List<GenreDTO>>> list() {
+    public ResponseEntity<ApiResponse<List<GenreDTO>>> list(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
         List<GenreDTO> data = genreRepository.findAll().stream()
+                .filter(g -> SearchUtils.matches(term, g.getGenreId(), g.getName()))
                 .map(this::toDTO)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.<List<GenreDTO>>builder()

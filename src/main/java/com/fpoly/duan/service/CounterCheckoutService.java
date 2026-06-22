@@ -13,6 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -24,6 +25,8 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @Slf4j
 public class CounterCheckoutService {
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+    private static final long PENDING_SEAT_HOLD_MINUTES = 5;
 
     @Value("${app.password-reset.frontend-base-url:http://localhost:5173}")
     private String frontendBaseUrl;
@@ -75,9 +78,21 @@ public class CounterCheckoutService {
         Integer staffCinemaId = requireStaffCinema(staff);
         requireOperationalCinema(staff.getCinema());
 
-        Showtime showtime = showtimeRepository.findByIdForUpdate(request.getShowtimeId())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy suất chiếu"));
-        assertSameCinema(staffCinemaId, showtimeCinemaId(showtime), "Suất chiếu không thuộc rạp của nhân viên");
+        boolean hasSeats = request.getSeatIds() != null && !request.getSeatIds().isEmpty();
+        boolean hasProducts = request.getProducts() != null && !request.getProducts().isEmpty();
+        if (!hasSeats && !hasProducts) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng chọn ghế hoặc bắp nước");
+        }
+
+        Showtime showtime = null;
+        if (hasSeats) {
+            if (request.getShowtimeId() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thiếu ID suất chiếu khi bán vé");
+            }
+            showtime = showtimeRepository.findByIdForUpdate(request.getShowtimeId())
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy suất chiếu"));
+            assertSameCinema(staffCinemaId, showtimeCinemaId(showtime), "Suất chiếu không thuộc rạp của nhân viên");
+        }
 
         User customer = null;
         if (request.getUserId() != null) {
@@ -86,7 +101,7 @@ public class CounterCheckoutService {
 
         double totalTicketsPrice = 0;
         List<Seat> selectedSeats = new ArrayList<>();
-        if (request.getSeatIds() != null) {
+        if (hasSeats) {
             Integer showtimeRoomId = showtime.getRoom() != null ? showtime.getRoom().getRoomId() : null;
             for (Integer seatId : request.getSeatIds()) {
                 Seat seat = seatRepository.findById(seatId)
@@ -97,7 +112,8 @@ public class CounterCheckoutService {
                     throw new RuntimeException("Ghế " + seat.getRow() + seat.getNumber() + " không thuộc phòng của suất chiếu");
                 }
                 
-                if (ticketRepository.countHeldOrPaidTicketsForSeats(showtime.getShowtimeId(), List.of(seatId)) > 0) {
+                LocalDateTime pendingSince = nowInAppZone().minusMinutes(PENDING_SEAT_HOLD_MINUTES);
+                if (ticketRepository.countHeldOrPaidTicketsForSeats(showtime.getShowtimeId(), List.of(seatId), pendingSince) > 0) {
                     throw new RuntimeException("Ghế " + seat.getRow() + seat.getNumber() + " đã được giữ hoặc đã bán");
                 }
 
@@ -114,7 +130,7 @@ public class CounterCheckoutService {
 
         double totalFoodPrice = 0;
         List<OrderDetailFood> foodDetails = new ArrayList<>();
-        if (request.getProducts() != null) {
+        if (hasProducts) {
             for (CounterCheckoutRequest.ProductItem item : request.getProducts()) {
                 CinemaProduct cinemaProduct = cinemaProductRepository
                         .findByCinema_CinemaIdAndProduct_ProductId(staffCinemaId, item.getProductId())
@@ -151,7 +167,7 @@ public class CounterCheckoutService {
         OrderOnline order = new OrderOnline();
         long payOsCode = isTransfer ? allocateUniquePosPayosCode() : 0L;
         order.setOrderCode("POS-" + (isTransfer ? payOsCode : UUID.randomUUID().toString().substring(0, 8).toUpperCase()));
-        order.setCreatedAt(LocalDateTime.now());
+        order.setCreatedAt(nowInAppZone());
         order.setOriginalAmount(totalAmount);
         order.setFinalAmount(totalAmount);
         order.setDiscountAmount(0.0);
@@ -196,6 +212,7 @@ public class CounterCheckoutService {
                         .cancelUrl(frontendBaseUrl + "/payment/cancel")
                         .returnUrl(frontendBaseUrl + "/payment/success")
                         .buyerName(customer != null ? customer.getFullname() : "Khach POS")
+                        .expiredAt(System.currentTimeMillis() / 1000 + 300)
                         .build();
                 return payOSService.createPaymentLink(payReq);
             } catch (Exception e) {
@@ -318,7 +335,7 @@ public class CounterCheckoutService {
             // Lưu lịch sử điểm
             PointsHistory pointsHistory = new PointsHistory();
             pointsHistory.setUser(user);
-            pointsHistory.setDate(LocalDate.now());
+            pointsHistory.setDate(todayInAppZone());
             pointsHistory.setDescription("Tích điểm từ đơn " + order.getOrderCode() + 
                                        " (" + pointsFromAmount + " điểm từ số tiền" + 
                                        (bonusPoints > 0 ? " + " + bonusPoints + " điểm bonus" : "") + ")");
@@ -335,7 +352,7 @@ public class CounterCheckoutService {
      */
     private MembershipRank resolveEffectiveRank(User user) {
         if (user == null || user.getUserId() == null) return null;
-        int currentYear = LocalDate.now().getYear();
+        int currentYear = todayInAppZone().getYear();
         double spending = orderOnlineRepository.sumCompletedRevenueByUserAndYear(user.getUserId(), currentYear);
 
         List<MembershipRank> activeRanks = membershipRankRepository.findAll().stream()
@@ -471,5 +488,13 @@ public class CounterCheckoutService {
             }
         }
         throw new IllegalStateException("Không sinh được mã đơn POS PayOS duy nhất");
+    }
+
+    private LocalDateTime nowInAppZone() {
+        return LocalDateTime.now(APP_ZONE);
+    }
+
+    private LocalDate todayInAppZone() {
+        return LocalDate.now(APP_ZONE);
     }
 }

@@ -112,7 +112,7 @@ public class SecurityConfig {
                         .hasAnyAuthority("ROLE_STAFF", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
                         .requestMatchers("/api/v1/counter-orders/export-pdf/**")
                         .hasAnyAuthority("ROLE_STAFF", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
-                        .requestMatchers("/api/v1/staff/dashboard-stats/**")
+                        .requestMatchers("/api/v1/staff/dashboard-stats", "/api/v1/staff/dashboard-stats/**")
                         .hasAnyAuthority("ROLE_STAFF", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
                         .requestMatchers("/api/v1/shifts/me", "/api/v1/shifts/active")
                         .hasAnyAuthority("ROLE_STAFF", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")

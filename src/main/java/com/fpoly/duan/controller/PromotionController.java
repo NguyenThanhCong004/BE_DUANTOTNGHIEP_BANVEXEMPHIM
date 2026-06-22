@@ -32,6 +32,7 @@ import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.MovieRepository;
 import com.fpoly.duan.repository.PromotionRepository;
 import com.fpoly.duan.service.CinemaScopeService;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -54,7 +55,11 @@ public class PromotionController {
     @GetMapping
     @Operation(summary = "Danh sách khuyến mãi (đã gom nhóm)")
     public ResponseEntity<ApiResponse<List<PromotionGroupResponse>>> getPromotions(
-            @Parameter(description = "Lọc theo rạp") @RequestParam(required = false) Integer cinemaId) {
+            @Parameter(description = "Lọc theo rạp") @RequestParam(required = false) Integer cinemaId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
         // Bắt buộc chọn rạp — không trả toàn bộ KM (super admin chọn rạp ở FE).
         List<Promotion> promotions = cinemaId == null ? java.util.Collections.emptyList()
                 : promotionRepository.findByCinema_CinemaId(cinemaId);
@@ -66,6 +71,9 @@ public class PromotionController {
 
         List<PromotionGroupResponse> response = grouped.entrySet().stream()
                 .map(entry -> toGroupResponse(entry.getKey(), entry.getValue(), today))
+                .filter(p -> SearchUtils.matches(term,
+                        p.getId(), p.getTitle(), p.getStatus(), p.getDiscount_percent(), p.getStartDate(),
+                        p.getEndDate(), p.getCinemaId(), String.join(" ", p.getSelectedMovieTitles())))
                 .sorted(Comparator.comparing(PromotionGroupResponse::getId, Comparator.nullsLast(Integer::compareTo)).reversed())
                 .collect(Collectors.toList());
 

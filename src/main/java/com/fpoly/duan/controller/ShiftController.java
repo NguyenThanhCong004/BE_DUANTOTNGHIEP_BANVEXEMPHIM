@@ -2,6 +2,7 @@ package com.fpoly.duan.controller;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
@@ -62,6 +63,7 @@ public class ShiftController {
     private final CinemaScopeService cinemaScopeService;
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     @GetMapping("/debug")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
@@ -129,7 +131,7 @@ public class ShiftController {
                     .collect(Collectors.toList());
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = nowInAppZone();
 
         List<ShiftItemResponse> data = filtered.stream()
                 .map(s -> toShiftItemResponse(s, now))
@@ -162,7 +164,7 @@ public class ShiftController {
         }
         Integer staffId = details.getStaff().getStaffId();
         List<StaffShift> mine = staffShiftRepository.findByStaffStaffIdOrderByDateDescStartTimeAsc(staffId);
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = nowInAppZone();
         List<ShiftItemResponse> data = mine.stream()
                 .map(s -> toShiftItemResponse(s, now))
                 .collect(Collectors.toList());
@@ -192,7 +194,7 @@ public class ShiftController {
 
         Integer staffId = details.getStaff().getStaffId();
         List<StaffShift> mine = staffShiftRepository.findByStaffStaffIdOrderByDateDescStartTimeAsc(staffId);
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = nowInAppZone();
 
         // Tìm ca đang diễn ra (startTime <= now <= endTime)
         StaffShift active = mine.stream()
@@ -530,6 +532,10 @@ public class ShiftController {
         return "Đang làm";
     }
 
+    private LocalDateTime nowInAppZone() {
+        return LocalDateTime.now(APP_ZONE);
+    }
+
     private ShiftItemResponse toShiftItemResponse(StaffShift ss, LocalDateTime now) {
         Staff st = ss.getStaff();
         // Ưu tiên lấy role từ StaffShift, nếu không có thì lấy từ Staff
@@ -550,6 +556,7 @@ public class ShiftController {
 
         return ShiftItemResponse.builder()
                 .id(ss.getStaffShiftId())
+                .staffId(st != null ? st.getStaffId() : null)
                 .staffName(st != null ? st.getFullname() : "")
                 .role(roleLabel)
                 .phone(st != null ? st.getPhone() : "")

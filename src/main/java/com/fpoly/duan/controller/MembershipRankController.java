@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -25,6 +26,7 @@ import com.fpoly.duan.entity.MembershipRank;
 import com.fpoly.duan.repository.MembershipRankRepository;
 import com.fpoly.duan.repository.UserRepository;
 import com.fpoly.duan.service.UserService;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -47,8 +49,15 @@ public class MembershipRankController {
 
     @GetMapping
     @Operation(summary = "Danh sách hạng")
-    public ResponseEntity<ApiResponse<List<MembershipRankDTO>>> list() {
+    public ResponseEntity<ApiResponse<List<MembershipRankDTO>>> list(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
         List<MembershipRankDTO> data = membershipRankRepository.findAllByOrderByMinSpendingAsc().stream()
+                .filter(r -> SearchUtils.matches(term,
+                        r.getRankId(), r.getRankName(), r.getDescription(), r.getMinSpending(),
+                        r.getDiscountPercent(), r.getBonusPoint(), r.getStatus()))
                 .map(this::toDTO)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.<List<MembershipRankDTO>>builder()

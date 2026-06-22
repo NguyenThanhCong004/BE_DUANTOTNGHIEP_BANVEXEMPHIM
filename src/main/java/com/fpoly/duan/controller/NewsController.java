@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -23,6 +24,7 @@ import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.NewsDTO;
 import com.fpoly.duan.entity.News;
 import com.fpoly.duan.repository.NewsRepository;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -43,8 +45,13 @@ public class NewsController {
 
     @GetMapping
     @Operation(summary = "Danh sách tin tức")
-    public ResponseEntity<ApiResponse<List<NewsDTO>>> list() {
+    public ResponseEntity<ApiResponse<List<NewsDTO>>> list(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
         List<NewsDTO> data = newsRepository.findAll().stream()
+                .filter(n -> SearchUtils.matches(term, n.getNewsId(), n.getTitle(), n.getContent(), n.getStatus()))
                 .map(this::toDTO)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.<List<NewsDTO>>builder()

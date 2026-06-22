@@ -142,7 +142,6 @@ public class DatabaseSeedService {
 
     @Transactional
     public void seedIfEnabled() {
-        ensureDefaultSeatTypes();
         ensureDefaultGenres();
         seedMembershipRanks();
         backfillMissingMembershipRankStatus();
@@ -431,27 +430,6 @@ public class DatabaseSeedService {
                 .orElse(null);
     }
 
-    /** Tạo loại ghế Thường / VIP / Đôi nếu chưa có (theo tên), mỗi lần chạy seed. */
-    private void ensureDefaultSeatTypes() {
-        upsertSeatTypeIfMissing("Thường", 0.0, false, "#0D6EFD");
-        upsertSeatTypeIfMissing("VIP", 30_000.0, false, "#FFC107");
-        upsertSeatTypeIfMissing("Đôi", 20_000.0, true, "#DC3545");
-    }
-
-    private void upsertSeatTypeIfMissing(String name, double surcharge, boolean coupleSeat, String colorHex) {
-        Optional<SeatType> existing = seatTypeRepository.findByName(name);
-        if (existing.isPresent()) {
-            return;
-        }
-        SeatType t = new SeatType();
-        t.setName(name);
-        t.setSurcharge(surcharge);
-        t.setCoupleSeat(coupleSeat);
-        t.setColor(SeatTypeNaming.normalizeColorHex(colorHex));
-        seatTypeRepository.save(t);
-        log.info("[DataSeed] Đã tạo loại ghế: {} (phụ thu {}) couple={} color={}", name, surcharge, coupleSeat, colorHex);
-    }
-
     private void seedRoomsSeatsAndShowtimes() {
         if (showtimeRepository.count() > 0 || roomRepository.count() > 0) {
             log.info("[DataSeed] Đã có phòng/suất chiếu -> bỏ qua.");
@@ -470,14 +448,19 @@ public class DatabaseSeedService {
         room.setCinema(cinema);
         room = roomRepository.save(room);
 
-        ensureDefaultSeatTypes();
-        SeatType thuong = seatTypeRepository.findByName("Thường")
-                .orElseThrow(() -> new IllegalStateException("Thiếu loại ghế Thường sau seed"));
-        SeatType vip = seatTypeRepository.findByName("VIP").orElse(thuong);
-        SeatType doi = seatTypeRepository.findByName("Đôi").orElse(thuong);
+        List<SeatType> availableSeatTypes = seatTypeRepository.findAll();
+        if (availableSeatTypes.isEmpty()) {
+            log.info("[DataSeed] Chưa có loại ghế -> bỏ qua seed sơ đồ phòng mẫu.");
+            return;
+        }
+        SeatType defaultSeatType = availableSeatTypes.get(0);
+        SeatType coupleSeatType = availableSeatTypes.stream()
+                .filter(t -> Boolean.TRUE.equals(t.getCoupleSeat()))
+                .findFirst()
+                .orElse(defaultSeatType);
 
         String[] rows = { "A", "B", "C" };
-        SeatType[] typesPerRow = { thuong, vip, doi };
+        SeatType[] typesPerRow = { defaultSeatType, defaultSeatType, coupleSeatType };
         for (int ri = 0; ri < rows.length; ri++) {
             String rowName = rows[ri];
             SeatType rowType = typesPerRow[ri];

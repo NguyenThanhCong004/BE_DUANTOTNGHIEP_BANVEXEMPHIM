@@ -26,6 +26,7 @@ import com.fpoly.duan.repository.CategoryProductRepository;
 import com.fpoly.duan.repository.CinemaProductRepository;
 import com.fpoly.duan.repository.OrderDetailFoodRepository;
 import com.fpoly.duan.repository.ProductRepository;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -49,11 +50,20 @@ public class ProductController {
     @GetMapping
     @Operation(summary = "Danh sách sản phẩm")
     public ResponseEntity<ApiResponse<List<ProductDTO>>> list(
-            @RequestParam(required = false) Integer categoryId) {
+            @RequestParam(required = false) Integer categoryId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
         List<Product> list = categoryId != null
                 ? productRepository.findByCategory_CategoryProductIdOrderByProductIdDesc(categoryId)
                 : productRepository.findAllByOrderByProductIdDesc();
-        List<ProductDTO> data = list.stream().map(this::toDTO).collect(Collectors.toList());
+        List<ProductDTO> data = list.stream()
+                .filter(p -> SearchUtils.matches(term,
+                        p.getProductId(), p.getName(), p.getDescription(), p.getPrice(), p.getStatus(),
+                        p.getCategory() != null ? p.getCategory().getName() : null))
+                .map(this::toDTO)
+                .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.<List<ProductDTO>>builder()
                 .status(HttpStatus.OK.value())
                 .message("OK")

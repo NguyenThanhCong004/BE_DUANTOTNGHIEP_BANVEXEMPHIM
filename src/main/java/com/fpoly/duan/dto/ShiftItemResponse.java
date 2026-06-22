@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ShiftItemResponse {
     private Integer id; // staffShiftId
+    private Integer staffId;
     private String staffName;
     private String role; // Bán vé / Soát vé / Phục vụ
     private String phone;
