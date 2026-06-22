@@ -57,28 +57,31 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
+                // Kích hoạt CORS với cấu hình bên dưới
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((request, response, authException) -> writeJsonApiResponse(response,
                                 HttpServletResponse.SC_UNAUTHORIZED,
                                 "Chưa đăng nhập hoặc token không hợp lệ. Vui lòng đăng nhập tài khoản khách và gửi Bearer token."))
-                        .accessDeniedHandler((request, response, accessDeniedException) -> writeJsonApiResponse(response,
+                        .accessDeniedHandler((request, response, accessDeniedException) -> writeJsonApiResponse(
+                                response,
                                 HttpServletResponse.SC_FORBIDDEN,
                                 "Không có quyền truy cập API này.")))
                 .authorizeHttpRequests(auth -> auth
+                        // Cho phép các yêu cầu tiền kiểm (Preflight) của trình duyệt
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/payments/payos/webhook").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        .requestMatchers("/api/v1/shifts/me").authenticated()
+                         .requestMatchers("/api/v1/shifts/me").authenticated()
                         .requestMatchers("/api/v1/ticket-orders/**").authenticated()
                         .requestMatchers("/api/v1/food-orders/**").authenticated()
                         .requestMatchers("/api/v1/me/**").authenticated()
-                        .anyRequest().permitAll()
-                )
+                        
+                        // Tất cả các yêu cầu GET công khai (Phim, Rạp, Banner...)
+                        .anyRequest().permitAll())
                 .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                )
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
@@ -105,11 +108,20 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // SỬA LỖI CORS: Sử dụng setAllowedOriginPatterns("*") để tránh bị block khi FE chạy khác cổng (ví dụ port tự động đổi sang 5175, 3000...)
+        // Cho phép FE chạy ở các cổng/domain triển khai khác nhau.
         configuration.setAllowedOriginPatterns(Collections.singletonList("*"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept"));
+        configuration.setAllowedHeaders(Arrays.asList(
+                "Authorization",
+                "Content-Type",
+                "X-Requested-With",
+                "Accept",
+                "Origin",
+                "Access-Control-Request-Method",
+                "Access-Control-Request-Headers"));
         configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
