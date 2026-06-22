@@ -1,6 +1,10 @@
 package com.fpoly.duan.controller;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +23,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -31,11 +36,13 @@ import com.fpoly.duan.dto.MovieWriteDTO;
 import com.fpoly.duan.dto.me.MeMovieReviewDto;
 import com.fpoly.duan.entity.Genre;
 import com.fpoly.duan.entity.Movie;
+import com.fpoly.duan.entity.Showtime;
 import com.fpoly.duan.repository.GenreRepository;
 import com.fpoly.duan.repository.MovieRepository;
 import com.fpoly.duan.repository.ShowtimeRepository;
 import com.fpoly.duan.repository.TicketRepository;
 import com.fpoly.duan.service.CustomerMeService;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -71,9 +78,16 @@ public class MovieController {
 
     @GetMapping
     @Operation(summary = "Danh sách phim")
-    public ResponseEntity<ApiResponse<List<MovieDTO>>> getAllMovies() {
+    public ResponseEntity<ApiResponse<List<MovieDTO>>> getAllMovies(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
         List<MovieDTO> movies = movieRepository.findAll()
                 .stream()
+                .filter(m -> SearchUtils.matches(term,
+                        m.getMovieId(), m.getTitle(), m.getAuthor(), m.getNation(), m.getDescription(),
+                        m.getContent(), m.getStatus(), m.getGenre() != null ? m.getGenre().getName() : null))
                 .map(this::toDTO)
                 .collect(Collectors.toList());
 
@@ -154,13 +168,37 @@ public class MovieController {
     }
 
     @GetMapping("/promotion-eligible")
-    @Operation(summary = "Lọc phim phù hợp cho khuyến mãi", description = "Lọc phim đang hoạt động để áp dụng khuyến mãi.")
+    @Operation(summary = "Lọc phim phù hợp cho khuyến mãi", description = "Chỉ trả phim có suất chiếu tại rạp trong khoảng ngày đã chọn.")
     public ResponseEntity<ApiResponse<List<MovieDTO>>> getPromotionEligible(
             @org.springframework.web.bind.annotation.RequestParam Integer cinemaId,
             @org.springframework.web.bind.annotation.RequestParam String startDate,
             @org.springframework.web.bind.annotation.RequestParam String endDate) {
-        List<MovieDTO> movies = movieRepository.findAll().stream()
-                .filter(m -> m.getStatus() != null && m.getStatus() != 2)
+        LocalDate start;
+        LocalDate end;
+        try {
+            start = LocalDate.parse(startDate);
+            end = LocalDate.parse(endDate);
+        } catch (DateTimeParseException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Khoảng ngày khuyến mãi không hợp lệ");
+        }
+        if (end.isBefore(start)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ngày kết thúc không được trước ngày bắt đầu");
+        }
+
+        LocalDateTime startAt = start.atStartOfDay();
+        LocalDateTime endExclusive = end.plusDays(1).atStartOfDay();
+        Map<Integer, Movie> uniqueMovies = new LinkedHashMap<>();
+        List<Showtime> showtimes = showtimeRepository.findPromotionEligibleShowtimes(cinemaId, startAt, endExclusive);
+        for (Showtime showtime : showtimes) {
+            Movie movie = showtime.getMovie();
+            if (movie == null || movie.getMovieId() == null) continue;
+            Integer status = movie.getStatus();
+            if (status != null && status == 2) continue;
+            uniqueMovies.putIfAbsent(movie.getMovieId(), movie);
+        }
+
+        List<MovieDTO> movies = uniqueMovies.values().stream()
+                .sorted(Comparator.comparing(Movie::getTitle, Comparator.nullsLast(String::compareToIgnoreCase)))
                 .map(this::toDTO)
                 .collect(Collectors.toList());
 

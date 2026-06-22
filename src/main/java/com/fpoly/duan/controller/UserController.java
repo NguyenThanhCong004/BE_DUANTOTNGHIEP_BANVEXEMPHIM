@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.fpoly.duan.config.OpenApiConfig;
@@ -24,6 +25,7 @@ import com.fpoly.duan.dto.UserPasswordChangeRequest;
 import com.fpoly.duan.dto.UserRequest;
 import com.fpoly.duan.security.CustomUserDetails;
 import com.fpoly.duan.service.UserService;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -47,8 +49,16 @@ public class UserController {
     @GetMapping
     @Operation(summary = "Danh sách tất cả user")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SUPER_ADMIN')")
-    public ResponseEntity<ApiResponse<List<UserDTO>>> getAllUsers() {
-        List<UserDTO> users = userService.getAllUsers();
+    public ResponseEntity<ApiResponse<List<UserDTO>>> getAllUsers(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
+        List<UserDTO> users = userService.getAllUsers().stream()
+                .filter(u -> SearchUtils.matches(term,
+                        u.getUserId(), u.getUsername(), u.getFullname(), u.getEmail(), u.getPhone(),
+                        u.getStatus(), u.getRankName(), u.getPoints(), u.getTotalSpending()))
+                .toList();
         return ResponseEntity.ok(ApiResponse.<List<UserDTO>>builder()
                 .status(200)
                 .message("Lấy danh sách người dùng thành công")

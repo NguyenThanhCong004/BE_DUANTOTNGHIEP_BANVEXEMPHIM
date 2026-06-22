@@ -1,6 +1,7 @@
 package com.fpoly.duan.controller;
 
 import com.fpoly.duan.dto.CinemaRankingDTO;
+import com.fpoly.duan.dto.CinemaDetailDTO;
 import com.fpoly.duan.dto.DashboardSummaryDTO;
 import com.fpoly.duan.dto.RevenueChartDTO;
 import com.fpoly.duan.service.DashboardService;
@@ -43,5 +44,11 @@ public class DashboardController {
         int targetYear = (year != null) ? year : java.time.LocalDate.now().getYear();
         int targetMonth = (month != null) ? month : java.time.LocalDate.now().getMonthValue();
         return ResponseEntity.ok(dashboardService.getCinemaRankings(targetYear, targetMonth));
+    }
+
+    @GetMapping("/cinema-detail/{id}")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    public ResponseEntity<CinemaDetailDTO> getCinemaDetail(@PathVariable Integer id) {
+        return ResponseEntity.ok(dashboardService.getCinemaDetail(id));
     }
 }

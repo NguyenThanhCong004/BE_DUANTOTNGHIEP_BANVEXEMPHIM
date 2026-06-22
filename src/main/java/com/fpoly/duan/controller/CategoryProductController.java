@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.fpoly.duan.config.OpenApiConfig;
@@ -21,6 +22,7 @@ import com.fpoly.duan.dto.CategoryProductDTO;
 import com.fpoly.duan.entity.CategoryProduct;
 import com.fpoly.duan.repository.CategoryProductRepository;
 import com.fpoly.duan.repository.ProductRepository;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -40,8 +42,13 @@ public class CategoryProductController {
 
     @GetMapping
     @Operation(summary = "Danh sách loại sản phẩm")
-    public ResponseEntity<ApiResponse<List<CategoryProductDTO>>> list() {
+    public ResponseEntity<ApiResponse<List<CategoryProductDTO>>> list(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
         List<CategoryProductDTO> data = categoryProductRepository.findAll().stream()
+                .filter(c -> SearchUtils.matches(term, c.getCategoryProductId(), c.getName()))
                 .map(this::toDTO)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.<List<CategoryProductDTO>>builder()

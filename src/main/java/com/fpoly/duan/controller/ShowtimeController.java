@@ -2,6 +2,7 @@ package com.fpoly.duan.controller;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -35,6 +36,7 @@ import com.fpoly.duan.repository.RoomRepository;
 import com.fpoly.duan.repository.ShowtimeRepository;
 import com.fpoly.duan.repository.TicketRepository;
 import com.fpoly.duan.service.CinemaScopeService;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -49,6 +51,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
 @SuppressWarnings("null")
 public class ShowtimeController {
+    private static final long PENDING_SEAT_HOLD_MINUTES = 5;
 
     private final ShowtimeRepository showtimeRepository;
     private final MovieRepository movieRepository;
@@ -70,12 +73,19 @@ public class ShowtimeController {
     }
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+    private static final int BUSINESS_START_MINUTE = 7 * 60;
+    private static final int BUSINESS_END_MINUTE = 25 * 60;
+    private static final int MIN_SHOWTIME_LEAD_MINUTES = 60;
 
     @GetMapping
     @Operation(summary = "Danh sách suất chiếu")
     public ResponseEntity<ApiResponse<List<ShowtimeSlotResponse>>> getShowtimes(
             @Parameter(description = "Lọc theo rạp") @RequestParam(required = false) Integer cinemaId,
-            @Parameter(description = "Lọc theo phim") @RequestParam(required = false) Integer movieId) {
+            @Parameter(description = "Lọc theo phim") @RequestParam(required = false) Integer movieId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
         List<Showtime> showtimes;
         if (movieId != null && cinemaId != null) {
             showtimes = showtimeRepository.findByMovie_MovieIdAndRoom_Cinema_CinemaId(movieId, cinemaId);
@@ -87,15 +97,23 @@ public class ShowtimeController {
             showtimes = showtimeRepository.findAll();
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = nowInAppZone();
         LocalDate maxDate = now.toLocalDate().plusDays(7);
+
+        String needle = SearchUtils.pick(search, keyword, q);
 
         List<ShowtimeSlotResponse> slotList = showtimes.stream()
                 .filter(s -> s.getStartTime() != null)
                 .filter(s -> !s.getStartTime().toLocalDate().isBefore(now.toLocalDate()))
                 .filter(s -> !s.getStartTime().toLocalDate().isAfter(maxDate))
+                .filter(s -> SearchUtils.isBlank(needle) || SearchUtils.matches(needle,
+                        s.getMovie() != null ? s.getMovie().getTitle() : null,
+                        s.getRoom() != null ? s.getRoom().getName() : null,
+                        s.getRoom() != null && s.getRoom().getCinema() != null ? s.getRoom().getCinema().getName() : null))
                 .map(s -> {
-                    List<Integer> held = ticketRepository.findHeldSeatIdsByShowtime(s.getShowtimeId());
+                    List<Integer> held = ticketRepository.findHeldSeatIdsByShowtime(
+                            s.getShowtimeId(),
+                            now.minusMinutes(PENDING_SEAT_HOLD_MINUTES));
                     return toDTO(s, now, held);
                 })
                 .collect(Collectors.toList());
@@ -113,12 +131,15 @@ public class ShowtimeController {
         Showtime s = showtimeRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy suất chiếu với id: " + id));
 
-        List<Integer> bookedSeatIds = ticketRepository.findHeldSeatIdsByShowtime(id);
+        LocalDateTime now = nowInAppZone();
+        List<Integer> bookedSeatIds = ticketRepository.findHeldSeatIdsByShowtime(
+                id,
+                now.minusMinutes(PENDING_SEAT_HOLD_MINUTES));
 
         return ResponseEntity.ok(ApiResponse.<ShowtimeSlotResponse>builder()
                 .status(HttpStatus.OK.value())
                 .message("Lấy thông tin suất chiếu thành công")
-                .data(toDTO(s, LocalDateTime.now(), bookedSeatIds))
+                .data(toDTO(s, now, bookedSeatIds))
                 .build());
     }
 
@@ -142,6 +163,7 @@ public class ShowtimeController {
         s.setStartTime(request.getStartTime());
         s.setSurcharge(request.getSurcharge());
 
+        assertShowtimeTimeAllowed(movie, request.getStartTime());
         assertNoRoomOverlap(null, room, movie, request.getStartTime());
 
         Showtime created = showtimeRepository.save(s);
@@ -179,6 +201,7 @@ public class ShowtimeController {
         s.setStartTime(request.getStartTime());
         s.setSurcharge(request.getSurcharge());
 
+        assertShowtimeTimeAllowed(movie, request.getStartTime());
         assertNoRoomOverlap(id, room, movie, request.getStartTime());
 
         Showtime updated = showtimeRepository.save(s);
@@ -275,6 +298,28 @@ public class ShowtimeController {
         }
         if (request.getSurcharge() < 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Phụ thu không được nhỏ hơn 0");
+        }
+    }
+
+    private LocalDateTime nowInAppZone() {
+        return LocalDateTime.now(APP_ZONE);
+    }
+
+    private void assertShowtimeTimeAllowed(Movie movie, LocalDateTime start) {
+        if (start == null) return;
+        LocalDateTime now = nowInAppZone();
+        if (start.isBefore(now)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không thể tạo hoặc cập nhật suất chiếu vào thời gian đã qua");
+        }
+        if (start.isBefore(now.plusMinutes(MIN_SHOWTIME_LEAD_MINUTES))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Suất chiếu phải bắt đầu sau thời điểm hiện tại ít nhất 1 giờ");
+        }
+        int durationMin = movie != null && movie.getDuration() != null ? movie.getDuration() : 120;
+        int startMinute = start.getHour() * 60 + start.getMinute();
+        int businessMinute = startMinute < BUSINESS_START_MINUTE ? startMinute + 24 * 60 : startMinute;
+        int endMinute = businessMinute + durationMin;
+        if (businessMinute < BUSINESS_START_MINUTE || endMinute > BUSINESS_END_MINUTE) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Suất chiếu phải nằm trong khung 07:00 - 01:00 và không được kết thúc sau 01:00");
         }
     }
 

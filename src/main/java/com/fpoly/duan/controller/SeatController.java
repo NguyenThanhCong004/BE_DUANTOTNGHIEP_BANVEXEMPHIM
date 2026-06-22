@@ -36,6 +36,7 @@ import com.fpoly.duan.repository.SeatRepository;
 import com.fpoly.duan.repository.SeatTypeRepository;
 import com.fpoly.duan.repository.TicketRepository;
 import com.fpoly.duan.service.CinemaScopeService;
+import com.fpoly.duan.util.SearchUtils;
 import com.fpoly.duan.util.SeatTypeNaming;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -186,8 +187,13 @@ public class SeatController {
 
     @GetMapping("/seat-types")
     @Operation(summary = "Danh sách loại ghế", tags = { "Table: seat_types" })
-    public ResponseEntity<ApiResponse<List<SeatTypeDTO>>> getSeatTypes() {
+    public ResponseEntity<ApiResponse<List<SeatTypeDTO>>> getSeatTypes(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
         List<SeatTypeDTO> data = seatTypeRepository.findAll().stream()
+                .filter(t -> SearchUtils.matches(term, t.getSeatTypeId(), t.getName(), t.getColor(), t.getSurcharge(), t.getCoupleSeat()))
                 .map(t -> SeatTypeDTO.builder()
                         .seatTypeId(t.getSeatTypeId())
                         .name(t.getName())

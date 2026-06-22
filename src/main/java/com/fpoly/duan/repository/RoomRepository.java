@@ -10,5 +10,9 @@ import com.fpoly.duan.entity.Room;
 @Repository
 public interface RoomRepository extends JpaRepository<Room, Integer> {
     List<Room> findByCinema_CinemaId(Integer cinemaId);
+
+    boolean existsByCinema_CinemaIdAndNameIgnoreCase(Integer cinemaId, String name);
+
+    boolean existsByCinema_CinemaIdAndNameIgnoreCaseAndRoomIdNot(Integer cinemaId, String name, Integer roomId);
 }
 

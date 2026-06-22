@@ -27,6 +27,7 @@ import com.fpoly.duan.entity.Room;
 import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.RoomRepository;
 import com.fpoly.duan.service.CinemaScopeService;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -50,10 +51,19 @@ public class RoomController {
     @GetMapping
     @Operation(summary = "Danh sách phòng")
     public ResponseEntity<ApiResponse<List<RoomDTO>>> getRooms(
-            @Parameter(description = "Lọc theo rạp") @RequestParam(required = false) Integer cinemaId) {
+            @Parameter(description = "Lọc theo rạp") @RequestParam(required = false) Integer cinemaId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
         Integer effectiveCinemaId = cinemaScopeService.effectiveCinemaId(cinemaId);
+        String term = SearchUtils.pick(search, keyword, q);
         List<Room> rooms = effectiveCinemaId == null ? roomRepository.findAll() : roomRepository.findByCinema_CinemaId(effectiveCinemaId);
-        List<RoomDTO> dto = rooms.stream().map(this::toDTO).collect(Collectors.toList());
+        List<RoomDTO> dto = rooms.stream()
+                .filter(r -> SearchUtils.matches(term,
+                        r.getRoomId(), r.getName(), r.getStatus(),
+                        r.getCinema() != null ? r.getCinema().getName() : null))
+                .map(this::toDTO)
+                .collect(Collectors.toList());
 
         return ResponseEntity.status(HttpStatus.OK).body(ApiResponse.<List<RoomDTO>>builder()
                 .status(HttpStatus.OK.value())
@@ -91,8 +101,13 @@ public class RoomController {
         cinemaScopeService.requireCinemaAccess(cinema);
         cinemaScopeService.requireCinemaOperational(cinema);
 
+        String roomName = roomDTO.getName().trim();
+        if (roomRepository.existsByCinema_CinemaIdAndNameIgnoreCase(cinema.getCinemaId(), roomName)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tên phòng chiếu '" + roomName + "' đã tồn tại trong rạp này");
+        }
+
         Room room = new Room();
-        room.setName(roomDTO.getName().trim());
+        room.setName(roomName);
         room.setStatus(roomDTO.getStatus() != null ? roomDTO.getStatus() : 1);
         room.setCinema(cinema);
 
@@ -112,18 +127,29 @@ public class RoomController {
         cinemaScopeService.requireCinemaAccess(room.getCinema());
         cinemaScopeService.requireCinemaOperational(room.getCinema());
 
-        if (roomDTO.getName() != null && !roomDTO.getName().trim().isEmpty()) {
-            room.setName(roomDTO.getName().trim());
-        }
-        if (roomDTO.getStatus() != null) {
-            room.setStatus(roomDTO.getStatus());
-        }
+        Cinema targetCinema = room.getCinema();
         if (roomDTO.getCinemaId() != null) {
             Cinema cinema = cinemaRepository.findById(roomDTO.getCinemaId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy rạp với mã: " + roomDTO.getCinemaId()));
             cinemaScopeService.requireCinemaAccess(cinema);
             cinemaScopeService.requireCinemaOperational(cinema);
-            room.setCinema(cinema);
+            targetCinema = cinema;
+        }
+
+        if (roomDTO.getName() != null && !roomDTO.getName().trim().isEmpty()) {
+            String roomName = roomDTO.getName().trim();
+            Integer targetCinemaId = targetCinema != null ? targetCinema.getCinemaId() : null;
+            if (targetCinemaId != null
+                    && roomRepository.existsByCinema_CinemaIdAndNameIgnoreCaseAndRoomIdNot(targetCinemaId, roomName, id)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tên phòng chiếu '" + roomName + "' đã tồn tại trong rạp này");
+            }
+            room.setName(roomName);
+        }
+        if (roomDTO.getStatus() != null) {
+            room.setStatus(roomDTO.getStatus());
+        }
+        if (targetCinema != null) {
+            room.setCinema(targetCinema);
         }
 
         Room updated = roomRepository.save(room);

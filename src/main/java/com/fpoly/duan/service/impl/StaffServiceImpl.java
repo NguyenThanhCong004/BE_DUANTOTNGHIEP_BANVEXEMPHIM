@@ -17,6 +17,7 @@ import com.fpoly.duan.entity.Staff;
 import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.StaffRepository;
 import com.fpoly.duan.repository.StaffShiftRepository;
+import com.fpoly.duan.repository.UserRepository;
 import com.fpoly.duan.service.EmailService;
 import com.fpoly.duan.service.StaffService;
 
@@ -37,6 +38,7 @@ public class StaffServiceImpl implements StaffService {
     private final PasswordEncoder passwordEncoder;
     private final StaffShiftRepository staffShiftRepository;
     private final EmailService emailService;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -131,13 +133,14 @@ public class StaffServiceImpl implements StaffService {
         }
 
         // Uniqueness
-        if (staffRepository.existsByEmail(email)) {
+        if (staffRepository.existsByEmail(email) || userRepository.existsByEmail(email)) {
             throw new RuntimeException("Email đã tồn tại");
         }
-        if (staffRepository.existsByUsername(username)) {
+        if (staffRepository.existsByUsername(username) || userRepository.existsByUsername(username)) {
             throw new RuntimeException("Username đã tồn tại");
         }
-        if (Boolean.TRUE.equals(staffRepository.existsByPhone(phone))) {
+        if (Boolean.TRUE.equals(staffRepository.existsByPhone(phone))
+                || Boolean.TRUE.equals(userRepository.existsByPhone(phone))) {
             throw new RuntimeException("Số điện thoại đã tồn tại");
         }
 
@@ -253,7 +256,8 @@ public class StaffServiceImpl implements StaffService {
                 throw new RuntimeException("Email phải đúng định dạng Gmail");
             }
             if (!email.equalsIgnoreCase(staff.getEmail())) {
-                if (Boolean.TRUE.equals(staffRepository.existsByEmailAndStaffIdNot(email, id))) {
+                if (Boolean.TRUE.equals(staffRepository.existsByEmailAndStaffIdNot(email, id))
+                        || Boolean.TRUE.equals(userRepository.existsByEmail(email))) {
                     throw new RuntimeException("Email đã tồn tại");
                 }
             }
@@ -266,7 +270,8 @@ public class StaffServiceImpl implements StaffService {
                 throw new RuntimeException("Số điện thoại phải có 10 chữ số");
             }
             if (!phone.equals(staff.getPhone())) {
-                if (Boolean.TRUE.equals(staffRepository.existsByPhoneAndStaffIdNot(phone, id))) {
+                if (Boolean.TRUE.equals(staffRepository.existsByPhoneAndStaffIdNot(phone, id))
+                        || Boolean.TRUE.equals(userRepository.existsByPhone(phone))) {
                     throw new RuntimeException("Số điện thoại đã tồn tại");
                 }
             }
