@@ -3,6 +3,7 @@ package com.fpoly.duan.repository;
 import java.util.Collection;
 import java.util.List;
 
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -12,6 +13,7 @@ import com.fpoly.duan.entity.Seat;
 
 @Repository
 public interface SeatRepository extends JpaRepository<Seat, Integer> {
+    @EntityGraph(attributePaths = { "room", "seatType" })
     List<Seat> findByRoom_RoomId(Integer roomId);
 
     void deleteByRoom_RoomId(Integer roomId);

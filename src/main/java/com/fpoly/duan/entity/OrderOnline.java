@@ -42,6 +42,10 @@ public class OrderOnline {
     @JoinColumn(name = "staff_id")
     private Staff staff;
 
+    @ManyToOne
+    @JoinColumn(name = "cinema_id")
+    private Cinema cinema;
+
     @Column(name = "payment_method")
     private String paymentMethod; // CASH, TRANSFER, PAYOS
 }

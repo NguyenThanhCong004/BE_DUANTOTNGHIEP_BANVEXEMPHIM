@@ -1,6 +1,7 @@
 package com.fpoly.duan.security;
 
 import java.security.Key;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -22,13 +23,13 @@ import org.springframework.security.core.GrantedAuthority;
 @Service
 public class JwtService {
 
-    @Value("${application.security.jwt.secret-key:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}")
+    @Value("${app.jwt.secret}")
     private String secretKey;
 
-    @Value("${application.security.jwt.expiration:7200000}") // 2 hours
+    @Value("${app.jwt.access-expiration-ms:7200000}") // 2 hours
     private long jwtExpiration;
 
-    @Value("${application.security.jwt.refresh-token.expiration:864000000}") // 10 days
+    @Value("${app.jwt.refresh-expiration-ms:864000000}") // 10 days
     private long refreshExpiration;
 
     public String extractUsername(String token) {
@@ -56,6 +57,7 @@ public class JwtService {
         Map<String, Object> claims = new HashMap<>(extraClaims);
         if (userDetails instanceof CustomUserDetails customUser) {
             claims.put("userId", customUser.getUserId());
+            claims.put("accountType", customUser.getAccountType());
         }
         // Thêm danh sách quyền vào claim "authorities"
         claims.put("authorities", userDetails.getAuthorities().stream()
@@ -87,18 +89,61 @@ public class JwtService {
         return TokenType.valueOf(type);
     }
 
+    public String extractAccountType(String token) {
+        return extractClaim(token, this::resolveAccountType);
+    }
+
+    public String extractAccountTypeAllowExpired(String token) {
+        return extractClaimAllowExpired(token, this::resolveAccountType);
+    }
+
     public Date extractExpirationAllowExpired(String token) {
         return extractClaimAllowExpired(token, Claims::getExpiration);
     }
 
     public boolean isTokenValid(String token, UserDetails userDetails) {
         final String username = extractUsername(token);
-        return (username.equals(userDetails.getUsername())) && !isTokenExpired(token) && extractTokenType(token) == TokenType.ACCESS;
+        return username.equals(userDetails.getUsername())
+                && sameAccountType(token, userDetails)
+                && !isTokenExpired(token)
+                && extractTokenType(token) == TokenType.ACCESS;
     }
 
     public boolean isRefreshTokenValid(String token, UserDetails userDetails) {
         final String username = extractUsername(token);
-        return (username.equals(userDetails.getUsername())) && !isTokenExpired(token) && extractTokenType(token) == TokenType.REFRESH;
+        return username.equals(userDetails.getUsername())
+                && sameAccountType(token, userDetails)
+                && !isTokenExpired(token)
+                && extractTokenType(token) == TokenType.REFRESH;
+    }
+
+    private boolean sameAccountType(String token, UserDetails userDetails) {
+        String tokenAccountType = extractAccountType(token);
+        if (tokenAccountType == null || tokenAccountType.isBlank()) {
+            return true;
+        }
+        if (userDetails instanceof CustomUserDetails customUser) {
+            return tokenAccountType.equalsIgnoreCase(customUser.getAccountType());
+        }
+        return true;
+    }
+
+    private String resolveAccountType(Claims claims) {
+        String accountType = (String) claims.get("accountType");
+        if (accountType != null && !accountType.isBlank()) {
+            return accountType;
+        }
+        Object authorities = claims.get("authorities");
+        if (authorities instanceof Collection<?> roles) {
+            boolean onlyUser = roles.size() == 1 && roles.stream().anyMatch("ROLE_USER"::equals);
+            if (onlyUser) {
+                return "USER";
+            }
+            if (!roles.isEmpty()) {
+                return "STAFF";
+            }
+        }
+        return null;
     }
 
     private boolean isTokenExpired(String token) {
@@ -132,7 +177,18 @@ public class JwtService {
     }
 
     private Key getSignInKey() {
-        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
+        if (secretKey == null || secretKey.isBlank()) {
+            throw new IllegalStateException("JWT_SECRET chưa được cấu hình");
+        }
+        final byte[] keyBytes;
+        try {
+            keyBytes = Decoders.BASE64.decode(secretKey.trim());
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalStateException("JWT_SECRET phải là chuỗi Base64 hợp lệ", ex);
+        }
+        if (keyBytes.length < 32) {
+            throw new IllegalStateException("JWT_SECRET phải giải mã ra ít nhất 32 bytes để ký HS256");
+        }
         return Keys.hmacShaKeyFor(keyBytes);
     }
 }

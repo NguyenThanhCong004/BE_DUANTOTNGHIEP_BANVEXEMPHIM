@@ -5,7 +5,6 @@ import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.lang.NonNull;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,7 +13,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+import jakarta.validation.Valid;
 
 import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
@@ -23,6 +26,7 @@ import com.fpoly.duan.entity.Genre;
 import com.fpoly.duan.entity.Movie;
 import com.fpoly.duan.repository.GenreRepository;
 import com.fpoly.duan.repository.MovieRepository;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -35,6 +39,7 @@ import lombok.RequiredArgsConstructor;
 @CrossOrigin(origins = "*", maxAge = 3600)
 @Tag(name = "1c. Thể loại phim (Genres)", description = "Danh sách thể loại — FE Super Admin.")
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
+@SuppressWarnings("null")
 // [SUPER ADMIN ONLY] - This section belongs to Super Admin. Do not modify without authorization.
 public class GenreController {
 
@@ -43,8 +48,13 @@ public class GenreController {
 
     @GetMapping
     @Operation(summary = "Danh sách thể loại")
-    public ResponseEntity<ApiResponse<List<GenreDTO>>> list() {
+    public ResponseEntity<ApiResponse<List<GenreDTO>>> list(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
         List<GenreDTO> data = genreRepository.findAll().stream()
+                .filter(g -> SearchUtils.matches(term, g.getGenreId(), g.getName()))
                 .map(this::toDTO)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.<List<GenreDTO>>builder()
@@ -56,9 +66,9 @@ public class GenreController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Chi tiết thể loại")
-    public ResponseEntity<ApiResponse<GenreDTO>> getById(@PathVariable @NonNull Integer id) {
+    public ResponseEntity<ApiResponse<GenreDTO>> getById(@PathVariable Integer id) {
         Genre g = genreRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy thể loại với id: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thể loại với id: " + id));
         return ResponseEntity.ok(ApiResponse.<GenreDTO>builder()
                 .status(HttpStatus.OK.value())
                 .message("Lấy thông tin thể loại thành công")
@@ -68,9 +78,9 @@ public class GenreController {
 
     @PostMapping
     @Operation(summary = "Tạo thể loại")
-    public ResponseEntity<ApiResponse<GenreDTO>> create(@RequestBody GenreDTO dto) {
-        if (dto == null || dto.getName() == null || dto.getName().trim().isEmpty()) {
-            throw new RuntimeException("Tên thể loại không được để trống");
+    public ResponseEntity<ApiResponse<GenreDTO>> create(@Valid @RequestBody GenreDTO dto) {
+        if (dto.getName() == null || dto.getName().trim().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tên thể loại không được để trống");
         }
         Genre g = new Genre();
         g.setName(dto.getName().trim());
@@ -84,10 +94,10 @@ public class GenreController {
 
     @PutMapping("/{id}")
     @Operation(summary = "Cập nhật thể loại")
-    public ResponseEntity<ApiResponse<GenreDTO>> update(@PathVariable @NonNull Integer id, @RequestBody GenreDTO dto) {
+    public ResponseEntity<ApiResponse<GenreDTO>> update(@PathVariable Integer id, @RequestBody GenreDTO dto) {
         Genre g = genreRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy thể loại với id: " + id));
-        
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thể loại với id: " + id));
+
         if (dto != null && dto.getName() != null && !dto.getName().trim().isEmpty()) {
             String newName = dto.getName().trim();
             if (newName.equals(g.getName())) {
@@ -99,7 +109,7 @@ public class GenreController {
             }
             g.setName(newName);
         }
-        
+
         Genre saved = genreRepository.save(g);
         return ResponseEntity.ok(ApiResponse.<GenreDTO>builder()
                 .status(HttpStatus.OK.value())
@@ -110,18 +120,18 @@ public class GenreController {
 
     @DeleteMapping("/{id}")
     @Operation(summary = "Xóa thể loại")
-    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable @NonNull Integer id) {
+    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
         if (!genreRepository.existsById(id)) {
-            throw new RuntimeException("Không tìm thấy thể loại với id: " + id);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thể loại với id: " + id);
         }
-        
-        // Kiểm tra xem có phim nào đang sử dụng thể loại này không
+
         List<Movie> moviesWithGenre = movieRepository.findByGenre_GenreId(id);
         if (!moviesWithGenre.isEmpty()) {
-            throw new RuntimeException("Không thể xóa thể loại này vì đang có " + moviesWithGenre.size() + 
-                " phim sử dụng. Vui lòng xóa hoặc thay đổi thể loại của các phim trước.");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Không thể xóa thể loại này vì đang có " + moviesWithGenre.size()
+                    + " phim sử dụng. Vui lòng xóa hoặc thay đổi thể loại của các phim trước.");
         }
-        
+
         genreRepository.deleteById(id);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())

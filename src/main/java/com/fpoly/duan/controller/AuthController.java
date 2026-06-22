@@ -31,7 +31,7 @@ import lombok.RequiredArgsConstructor;
 @CrossOrigin(origins = "*", maxAge = 3600)
 @Tag(name = "1. Xác thực (Auth)", description = """
         Đăng nhập / đăng ký / refresh / quên mật khẩu — **không cần JWT**.
-        FE: `Login.jsx`, `Register.jsx`, `LoginEmployee.jsx` gọi `/login` và `/register`.
+        FE: khách dùng `/login`, nhân viên/admin dùng `/staff-login`, đăng ký khách dùng `/register`.
         """)
 public class AuthController {
 
@@ -39,15 +39,28 @@ public class AuthController {
     private final PasswordResetService passwordResetService;
 
     @PostMapping("/login")
-    @Operation(summary = "Đăng nhập", description = """
-            Trả `data.token` (JWT), `data.refreshToken`, và **một trong hai**: `data.user` (khách) hoặc `data.staff` (nhân sự).
-            Staff đăng nhập bằng email + mật khẩu (gửi email vào trường `username`).
+    @Operation(summary = "Đăng nhập khách hàng", description = """
+            Chỉ đọc bảng `users`. Trả `data.token`, `data.refreshToken`, `data.user`.
             """)
     public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest loginRequest) {
         AuthResponse response = authService.login(loginRequest);
         return ResponseEntity.ok(ApiResponse.<AuthResponse>builder()
                 .status(200)
                 .message("Đăng nhập thành công")
+                .data(response)
+                .build());
+    }
+
+    @PostMapping("/staff-login")
+    @Operation(summary = "Đăng nhập nhân viên/admin", description = """
+            Chỉ đọc bảng `staff`. Trả `data.token`, `data.refreshToken`, `data.staff`.
+            Username nhận username hoặc email của nhân viên.
+            """)
+    public ResponseEntity<ApiResponse<AuthResponse>> staffLogin(@Valid @RequestBody LoginRequest loginRequest) {
+        AuthResponse response = authService.staffLogin(loginRequest);
+        return ResponseEntity.ok(ApiResponse.<AuthResponse>builder()
+                .status(200)
+                .message("Đăng nhập nhân viên thành công")
                 .data(response)
                 .build());
     }

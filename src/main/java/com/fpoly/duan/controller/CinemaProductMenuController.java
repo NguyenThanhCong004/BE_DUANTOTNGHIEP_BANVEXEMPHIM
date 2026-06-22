@@ -3,17 +3,18 @@ package com.fpoly.duan.controller;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.fpoly.duan.config.OpenApiConfig;
@@ -28,6 +29,8 @@ import com.fpoly.duan.entity.Product;
 import com.fpoly.duan.repository.CinemaProductRepository;
 import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.ProductRepository;
+import com.fpoly.duan.service.CinemaScopeService;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -45,11 +48,21 @@ public class CinemaProductMenuController {
     private final CinemaRepository cinemaRepository;
     private final ProductRepository productRepository;
     private final CinemaProductRepository cinemaProductRepository;
+    private final CinemaScopeService cinemaScopeService;
 
     @GetMapping
     @Operation(summary = "Danh sách sản phẩm chia 2 nhóm: đang bán và chưa bán tại rạp")
-    public ResponseEntity<ApiResponse<CinemaProductMenuDTO>> getMenu(@PathVariable Integer cinemaId) {
-        cinemaRepository.findById(cinemaId)
+    public ResponseEntity<ApiResponse<CinemaProductMenuDTO>> getMenu(
+            @PathVariable Integer cinemaId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String onSaleSearch,
+            @RequestParam(required = false) String notOnSaleSearch,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
+        String onSaleTerm = SearchUtils.isBlank(onSaleSearch) ? term : onSaleSearch;
+        String notOnSaleTerm = SearchUtils.isBlank(notOnSaleSearch) ? term : notOnSaleSearch;
+        Cinema cinema = cinemaRepository.findById(cinemaId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với id: " + cinemaId));
 
         List<Product> allProducts = productRepository.findAllByOrderByProductIdDesc();
@@ -67,7 +80,13 @@ public class CinemaProductMenuController {
                 continue;
             }
             CinemaProduct cp = byProductId.get(p.getProductId());
-            boolean selling = cp != null && Boolean.TRUE.equals(cp.getIsActive());
+            boolean selling = cinemaScopeService.isCinemaPubliclyAvailable(cinema) && cp != null && Boolean.TRUE.equals(cp.getIsActive());
+            String groupTerm = selling ? onSaleTerm : notOnSaleTerm;
+            if (!SearchUtils.matches(groupTerm,
+                    p.getProductId(), p.getName(), p.getDescription(), p.getPrice(),
+                    p.getCategory() != null ? p.getCategory().getName() : null)) {
+                continue;
+            }
             CinemaProductOfferDTO row = toOffer(p, cp);
             if (selling) {
                 onSale.add(row);
@@ -90,7 +109,7 @@ public class CinemaProductMenuController {
     }
 
     @PutMapping("/products/{productId}/selling")
-    @Operation(summary = "Bật/tắt bán sản phẩm tại rạp")
+    @Operation(summary = "Bật/tắt trạng thái Còn hàng/Hết hàng của sản phẩm tại rạp")
     public ResponseEntity<ApiResponse<Void>> setSelling(
             @PathVariable Integer cinemaId,
             @PathVariable Integer productId,
@@ -102,29 +121,45 @@ public class CinemaProductMenuController {
 
         Cinema cinema = cinemaRepository.findById(cinemaId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với id: " + cinemaId));
+        cinemaScopeService.requireCinemaAccess(cinema);
+        cinemaScopeService.requireCinemaOperational(cinema);
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm với id: " + productId));
 
-        Optional<CinemaProduct> existing = cinemaProductRepository
-                .findByCinema_CinemaIdAndProduct_ProductId(cinemaId, productId);
+        CinemaProduct cp = cinemaProductRepository
+                .findByCinema_CinemaIdAndProduct_ProductId(cinemaId, productId)
+                .orElseGet(() -> {
+                    CinemaProduct n = new CinemaProduct();
+                    n.setCinema(cinema);
+                    n.setProduct(product);
+                    return n;
+                });
 
-        if (selling) {
-            CinemaProduct cp = existing.orElseGet(() -> {
-                CinemaProduct n = new CinemaProduct();
-                n.setCinema(cinema);
-                n.setProduct(product);
-                return n;
-            });
-            cp.setIsActive(true);
-            cinemaProductRepository.save(cp);
-        } else {
-            /* Tắt bán = xóa hẳn khỏi bảng cinema_products (không còn dòng inactive). */
-            existing.ifPresent(cinemaProductRepository::delete);
-        }
+        cp.setIsActive(selling);
+        cinemaProductRepository.save(cp);
 
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
-                .message(selling ? "Đã thêm sản phẩm vào menu rạp" : "Đã xóa sản phẩm khỏi menu rạp")
+                .message(selling ? "Đã cập nhật: Còn hàng" : "Đã cập nhật: Hết hàng")
+                .data(null)
+                .build());
+    }
+
+    @DeleteMapping("/products/{productId}")
+    @Operation(summary = "Xóa hẳn sản phẩm khỏi menu rạp")
+    public ResponseEntity<ApiResponse<Void>> removeFromMenu(
+            @PathVariable Integer cinemaId,
+            @PathVariable Integer productId) {
+        Cinema cinema = cinemaRepository.findById(cinemaId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với id: " + cinemaId));
+        cinemaScopeService.requireCinemaAccess(cinema);
+        cinemaScopeService.requireCinemaOperational(cinema);
+        cinemaProductRepository.findByCinema_CinemaIdAndProduct_ProductId(cinemaId, productId)
+                .ifPresent(cinemaProductRepository::delete);
+
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .status(HttpStatus.OK.value())
+                .message("Đã gỡ sản phẩm khỏi menu rạp")
                 .data(null)
                 .build());
     }

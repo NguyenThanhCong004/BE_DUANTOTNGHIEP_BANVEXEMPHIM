@@ -1,5 +1,11 @@
 HELP.md
 target/
+.env
+.env.*
+!.env.example
+TICKETS_EXPORT/
+replay_pid*.log
+uploads/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

@@ -2,6 +2,7 @@ package com.fpoly.duan.service;
 
 import java.time.LocalDateTime;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -23,13 +24,17 @@ import com.fpoly.duan.dto.FoodOnlyCheckoutRequest;
 import com.fpoly.duan.dto.SnackLineRequest;
 import com.fpoly.duan.dto.TicketCheckoutRequest;
 import com.fpoly.duan.dto.TicketCheckoutResponse;
+import com.fpoly.duan.dto.TicketQuoteLineDTO;
+import com.fpoly.duan.dto.TicketQuoteResponse;
 import com.fpoly.duan.dto.payos.PayOSCheckoutData;
 import com.fpoly.duan.dto.payos.PayOSCreatePaymentLinkRequest;
 import com.fpoly.duan.entity.CinemaProduct;
+import com.fpoly.duan.entity.Cinema;
 import com.fpoly.duan.entity.Movie;
 import com.fpoly.duan.entity.MembershipRank;
 import com.fpoly.duan.entity.OrderDetailFood;
 import com.fpoly.duan.entity.OrderOnline;
+import com.fpoly.duan.entity.PointsHistory;
 import com.fpoly.duan.entity.Product;
 import com.fpoly.duan.entity.Seat;
 import com.fpoly.duan.entity.SeatType;
@@ -41,6 +46,7 @@ import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.OrderDetailFoodRepository;
 import com.fpoly.duan.repository.OrderOnlineRepository;
 import com.fpoly.duan.repository.MembershipRankRepository;
+import com.fpoly.duan.repository.PointsHistoryRepository;
 import com.fpoly.duan.repository.PromotionRepository;
 import com.fpoly.duan.repository.ProductRepository;
 import com.fpoly.duan.repository.SeatRepository;
@@ -53,10 +59,13 @@ import com.fpoly.duan.entity.UserVoucher;
 import com.fpoly.duan.entity.Voucher;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TicketCheckoutService {
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private static final int ORDER_STATUS_PENDING = 0;
     private static final int ORDER_STATUS_PAID = 1;
@@ -67,6 +76,7 @@ public class TicketCheckoutService {
     private static final int FOOD_STATUS_PENDING = 0;
     private static final int FOOD_STATUS_PAID = 1;
     private static final int FOOD_STATUS_CANCELLED = 2;
+    private static final long PENDING_SEAT_HOLD_MINUTES = 5;
 
     private final ShowtimeRepository showtimeRepository;
     private final SeatRepository seatRepository;
@@ -82,6 +92,7 @@ public class TicketCheckoutService {
     private final CinemaRepository cinemaRepository;
     private final EphemeralSeatHoldService ephemeralSeatHoldService;
     private final PromotionRepository promotionRepository;
+    private final PointsHistoryRepository pointsHistoryRepository;
 
     @Transactional
     public TicketCheckoutResponse checkout(Integer userId, TicketCheckoutRequest req) {
@@ -102,6 +113,7 @@ public class TicketCheckoutService {
         }
         Integer roomId = showtime.getRoom().getRoomId();
         Integer cinemaId = showtime.getRoom().getCinema() != null ? showtime.getRoom().getCinema().getCinemaId() : null;
+        Cinema cinema = loadCinema(cinemaId);
 
         List<Seat> seats = seatRepository.findAllByIdWithType(seatIdSet);
         if (seats.size() != seatIdSet.size()) {
@@ -114,7 +126,10 @@ public class TicketCheckoutService {
         }
 
         List<Seat> allRoomSeats = seatRepository.findByRoom_RoomId(roomId);
-        List<Integer> dbHeldSeatIds = ticketRepository.findHeldSeatIdsByShowtime(showtime.getShowtimeId());
+        LocalDateTime pendingSince = nowInAppZone().minusMinutes(PENDING_SEAT_HOLD_MINUTES);
+        List<Integer> dbHeldSeatIds = ticketRepository.findHeldSeatIdsByShowtime(
+                showtime.getShowtimeId(),
+                pendingSince);
         SeatLayoutRules.assertNoSingleSeatOrphanInRows(allRoomSeats,
                 SeatLayoutRules.mergeBlocked(dbHeldSeatIds, seatIdSet));
 
@@ -128,53 +143,21 @@ public class TicketCheckoutService {
             }
         }
 
-        long conflict = ticketRepository.countHeldOrPaidTicketsForSeats(showtime.getShowtimeId(), seatIdSet);
+        long conflict = ticketRepository.countHeldOrPaidTicketsForSeats(
+                showtime.getShowtimeId(),
+                seatIdSet,
+                pendingSince);
         if (conflict > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Một hoặc nhiều ghế đã được giữ hoặc đã bán");
         }
 
-        double unitBase = computeUnitBasePrice(showtime);
+        PricingContext pricing = buildPricingContext(user, showtime, cinemaId);
+        List<PricedSeatLine> pricedLines = priceSeats(seats, pricing);
 
-        // Tìm khuyến mãi phim đang active
-        Integer movieId = showtime.getMovie() != null ? showtime.getMovie().getMovieId() : null;
-        LocalDate today = LocalDate.now();
-        List<Promotion> promotions = promotionRepository.findActivePromotions(movieId, cinemaId, today);
-        double promotionDiscountPercent = 0.0;
-        if (!promotions.isEmpty()) {
-            Promotion promo = promotions.get(0); // Ưu tiên cao nhất theo ORDER BY
-            promotionDiscountPercent = promo.getDiscountPercent() != null ? promo.getDiscountPercent() : 0.0;
-        }
-
-        // Tính giá vé: basePrice áp dụng promotion, sau đó cộng surcharges
-        List<Double> linePrices = new ArrayList<>();
-        int ticketVnd = 0;
-        // Giá phim sau khuyến mãi (không bao gồm surcharges)
-        double basePriceWithPromotion = unitBase;
-        if (promotionDiscountPercent > 0) {
-            basePriceWithPromotion = unitBase * (1 - promotionDiscountPercent / 100.0);
-        }
-
-        for (Seat seat : seats) {
-            double surcharge = 0.0;
-            boolean isCouple = false;
-            SeatType st = seat.getSeatType();
-            if (st != null) {
-                if (st.getSurcharge() != null) {
-                    surcharge = st.getSurcharge();
-                }
-                isCouple = Boolean.TRUE.equals(st.getCoupleSeat());
-            }
-            // Giá vé cuối = giá phim sau KM + showtime surcharge + seatType surcharge
-            double linePrice = basePriceWithPromotion + surcharge;
-            // Ghế đôi x2 giá
-            if (isCouple) {
-                linePrice = linePrice * 2;
-            }
-            long lineRounded = Math.round(linePrice);
-            linePrices.add((double) lineRounded);
-            ticketVnd += (int) lineRounded;
-        }
-        double ticketDouble = linePrices.stream().mapToDouble(Double::doubleValue).sum();
+        int ticketVnd = pricedLines.stream()
+                .mapToInt(l -> (int) Math.round(l.finalPrice()))
+                .sum();
+        double ticketDouble = (double) ticketVnd;
 
         if (req.getSnacks() != null && !req.getSnacks().isEmpty() && cinemaId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Suất chiếu chưa gắn rạp — không thể thêm bắp nước");
@@ -184,10 +167,12 @@ public class TicketCheckoutService {
 
         OrderOnline order = new OrderOnline();
         order.setUser(user);
-        order.setCreatedAt(LocalDateTime.now());
+        order.setCreatedAt(nowInAppZone());
         order.setStatus(ORDER_STATUS_PENDING);
         order.setUserVoucher(null);
         order.setOrderCode(String.valueOf(payosOrderCode));
+        order.setPaymentMethod("PAYOS");
+        order.setCinema(cinema);
         order = orderOnlineRepository.save(order);
 
         List<Ticket> tickets = new ArrayList<>();
@@ -196,7 +181,10 @@ public class TicketCheckoutService {
             t.setShowtime(showtime);
             t.setSeat(seats.get(i));
             t.setOrderOnline(order);
-            t.setPrice(linePrices.get(i));
+            PricedSeatLine pl = pricedLines.get(i);
+            t.setOriginalPrice(pl.originalPrice());
+            t.setPromotionDiscount(pl.promotionDiscount());
+            t.setPrice(pl.finalPrice());
             t.setStatus(TICKET_STATUS_PENDING);
             tickets.add(t);
         }
@@ -236,7 +224,7 @@ public class TicketCheckoutService {
             if (voucher == null || voucher.getStatus() == null || voucher.getStatus() != 1) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher không khả dụng");
             }
-            LocalDate todayVoucher = LocalDate.now();
+            LocalDate todayVoucher = todayInAppZone();
             if (voucher.getStartDate() != null && todayVoucher.isBefore(voucher.getStartDate())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher chưa có hiệu lực");
             }
@@ -283,16 +271,99 @@ public class TicketCheckoutService {
     }
 
     /**
+     * Báo giá theo đúng công thức BE (không tạo order/ticket).
+     */
+    @Transactional(readOnly = true)
+    public TicketQuoteResponse quote(Integer userId, TicketCheckoutRequest req) {
+        User user = loadUser(userId);
+
+        LinkedHashSet<Integer> seatIdSet = new LinkedHashSet<>(req.getSeatIds());
+        if (seatIdSet.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng chọn ít nhất một ghế");
+        }
+
+        Showtime showtime = showtimeRepository.findById(req.getShowtimeId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy suất chiếu"));
+
+        Integer cinemaId = showtime.getRoom() != null && showtime.getRoom().getCinema() != null
+                ? showtime.getRoom().getCinema().getCinemaId()
+                : null;
+        loadCinema(cinemaId);
+
+        List<Seat> seats = seatRepository.findAllByIdWithType(seatIdSet);
+        if (seats.size() != seatIdSet.size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Một hoặc nhiều ghế không tồn tại");
+        }
+
+        PricingContext pricing = buildPricingContext(user, showtime, cinemaId);
+        List<PricedSeatLine> pricedLines = priceSeats(seats, pricing);
+
+        double ticketTotal = pricedLines.stream().mapToDouble(PricedSeatLine::finalPrice).sum();
+
+        double snackTotal = 0.0;
+        if (req.getSnacks() != null && !req.getSnacks().isEmpty()) {
+            if (cinemaId == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Suất chiếu chưa gắn rạp — không thể thêm bắp nước");
+            }
+            SnackTotals st = buildValidatedSnackLines(cinemaId, req.getSnacks(), null);
+            snackTotal = st.doubleTotal();
+        }
+
+        double subtotal = ticketTotal + snackTotal;
+        VoucherDiscount vd = computeVoucherDiscountForQuote(userId, req.getUserVoucherId(), subtotal);
+
+        double finalAmount = subtotal - vd.discountAmount();
+        if (finalAmount < 0) finalAmount = 0;
+
+        List<TicketQuoteLineDTO> dtoLines = pricedLines.stream()
+                .map(l -> TicketQuoteLineDTO.builder()
+                        .seatId(l.seatId())
+                        .seatLabel(l.seatLabel())
+                        .seatTypeName(l.seatTypeName())
+                        .originalPrice(l.originalPrice())
+                        .promotionDiscount(l.promotionDiscount())
+                        .membershipDiscount(l.membershipDiscount())
+                        .finalPrice(l.finalPrice())
+                        .build())
+                .toList();
+
+        return TicketQuoteResponse.builder()
+                .ticketLines(dtoLines)
+                .ticketTotal(ticketTotal)
+                .snackTotal(snackTotal)
+                .voucherDiscount(vd.discountAmount())
+                .finalAmount(finalAmount)
+                .rankName(pricing.rankName())
+                .membershipDiscountPercent(pricing.membershipDiscountPercent())
+                .build();
+    }
+
+    /**
      * Khách hủy thanh toán PayOS — giữ lịch sử đơn nhưng chuyển trạng thái hủy để trả ghế.
      */
     @Transactional
-    public void cancelPendingOrderByPayosCode(Integer userId, long payosOrderCode) {
+    public boolean cancelPendingOrderByPayosCode(Integer userId, long payosOrderCode) {
         OrderOnline o = orderOnlineRepository.findByOrderCode(String.valueOf(payosOrderCode))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn với mã PayOS"));
 
         if (o.getUser() == null || !o.getUser().getUserId().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Đơn không thuộc tài khoản của bạn");
         }
+
+        if (o.getStatus() != null && o.getStatus() == ORDER_STATUS_PAID) {
+            rewardPaidOrder(o);
+            return true;
+        }
+
+        try {
+            if (syncPaidPayosOrderIfPaid(o)) {
+                return true;
+            }
+        } catch (IllegalStateException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Chưa hủy đơn vì không kiểm tra được trạng thái PayOS: " + e.getMessage(), e);
+        }
+
         if (o.getStatus() == null || o.getStatus() != ORDER_STATUS_PENDING) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ hủy được đơn đang chờ thanh toán");
         }
@@ -333,22 +404,131 @@ public class TicketCheckoutService {
         if (stId != null && !seatIds.isEmpty()) {
             ephemeralSeatHoldService.releaseSeats(stId, seatIds);
         }
+        return false;
+    }
+
+    /**
+     * Đồng bộ lại đơn PayOS trước khi hủy/dọn quá hạn.
+     * Nếu PayOS đã PAID thì chốt đơn và cộng điểm, tránh trường hợp webhook local/LAN không gọi được.
+     */
+    public boolean syncPaidPayosOrderIfPaid(OrderOnline order) {
+        if (order == null) {
+            return false;
+        }
+
+        Long payosOrderCode = parsePositiveLong(order.getOrderCode());
+        if (payosOrderCode == null) {
+            return false;
+        }
+
+        if (order.getStatus() != null && order.getStatus() == ORDER_STATUS_PAID) {
+            rewardPaidOrder(order);
+            return true;
+        }
+
+        boolean isPending = order.getStatus() != null && order.getStatus() == ORDER_STATUS_PENDING;
+        boolean isCancelled = order.getStatus() != null && order.getStatus() == ORDER_STATUS_CANCELLED;
+        if (!isPending && !isCancelled) {
+            return false;
+        }
+
+        PayOSCheckoutData payos = payOSService.getPaymentInformation(payosOrderCode);
+        if (!"PAID".equalsIgnoreCase(payos.getStatus())) {
+            return false;
+        }
+
+        int expected = (int) Math.round(order.getFinalAmount() != null ? order.getFinalAmount() : 0.0);
+        assertPayosAmountMatches(payos, expected);
+
+        if (isCancelled) {
+            assertCanRestoreCancelledPaidOrder(order);
+        }
+
+        finalizePaidOrder(order);
+        rewardPaidOrder(order);
+        return true;
+    }
+
+    @Transactional
+    public TicketCheckoutResponse confirmPaidOrderByPayosCode(Integer userId, Long payosOrderCode) {
+        if (payosOrderCode == null || payosOrderCode <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mã PayOS không hợp lệ");
+        }
+
+        OrderOnline order = orderOnlineRepository.findByOrderCode(String.valueOf(payosOrderCode))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn với mã PayOS"));
+
+        if (order.getUser() == null || !order.getUser().getUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Đơn không thuộc tài khoản của bạn");
+        }
+
+        int expected = (int) Math.round(order.getFinalAmount() != null ? order.getFinalAmount() : 0.0);
+
+        if (order.getStatus() != null && order.getStatus() == ORDER_STATUS_PAID) {
+            rewardPaidOrder(order);
+            return TicketCheckoutResponse.builder()
+                    .orderOnlineId(order.getOrderOnlineId())
+                    .payosOrderCode(payosOrderCode)
+                    .amountVnd(expected)
+                    .payos(PayOSCheckoutData.builder()
+                            .orderCode(payosOrderCode)
+                            .amount((long) expected)
+                            .currency("VND")
+                            .status("PAID")
+                            .build())
+                    .build();
+        }
+
+        boolean isPending = order.getStatus() != null && order.getStatus() == ORDER_STATUS_PENDING;
+        boolean isCancelled = order.getStatus() != null && order.getStatus() == ORDER_STATUS_CANCELLED;
+        if (!isPending && !isCancelled) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Đơn không còn ở trạng thái có thể xác nhận");
+        }
+
+        PayOSCheckoutData payos;
+        try {
+            payos = payOSService.getPaymentInformation(payosOrderCode);
+        } catch (IllegalStateException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "PayOS: " + e.getMessage(), e);
+        }
+
+        if (!"PAID".equalsIgnoreCase(payos.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "PayOS chưa xác nhận thanh toán cho đơn này (trạng thái: " + payos.getStatus() + ")");
+        }
+
+        assertPayosAmountMatches(payos, expected);
+
+        if (isCancelled) {
+            assertCanRestoreCancelledPaidOrder(order);
+        }
+
+        finalizePaidOrder(order);
+        rewardPaidOrder(order);
+
+        return TicketCheckoutResponse.builder()
+                .orderOnlineId(order.getOrderOnlineId())
+                .payosOrderCode(payosOrderCode)
+                .amountVnd(expected)
+                .payos(payos)
+                .build();
     }
 
     @Transactional
     public TicketCheckoutResponse checkoutFoodOnly(Integer userId, FoodOnlyCheckoutRequest req) {
         User user = loadUser(userId);
-        cinemaRepository.findById(req.getCinemaId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy rạp"));
+        Cinema cinema = requireCustomerCinemaAvailable(req.getCinemaId());
 
         long payosOrderCode = allocateUniquePayosOrderCode();
 
         OrderOnline order = new OrderOnline();
         order.setUser(user);
-        order.setCreatedAt(LocalDateTime.now());
+        order.setCreatedAt(nowInAppZone());
         order.setStatus(ORDER_STATUS_PENDING);
         order.setUserVoucher(null);
         order.setOrderCode(String.valueOf(payosOrderCode));
+        order.setPaymentMethod("PAYOS");
+        order.setCinema(cinema);
         order = orderOnlineRepository.save(order);
 
         SnackTotals st = buildValidatedSnackLines(req.getCinemaId(), req.getItems(), order);
@@ -375,6 +555,9 @@ public class TicketCheckoutService {
             String cancelUrl,
             OrderOnline order) {
 
+        // Thiết lập link thanh toán hết hạn sau 5 phút (300 giây)
+        long expiredAt = System.currentTimeMillis() / 1000 + 300;
+
         PayOSCreatePaymentLinkRequest payReq = PayOSCreatePaymentLinkRequest.builder()
                 .orderCode(payosOrderCode)
                 .amount(amountVnd)
@@ -384,6 +567,7 @@ public class TicketCheckoutService {
                 .buyerName(user.getFullname() != null && !user.getFullname().isBlank() ? user.getFullname() : user.getUsername())
                 .buyerEmail(user.getEmail())
                 .buyerPhone(user.getPhone())
+                .expiredAt(expiredAt) // Thêm thuộc tính này
                 .build();
 
         PayOSCheckoutData payos;
@@ -408,6 +592,27 @@ public class TicketCheckoutService {
     private User loadUser(Integer userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng"));
+    }
+
+    private Cinema loadCinema(Integer cinemaId) {
+        if (cinemaId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không xác định được rạp");
+        }
+        return cinemaRepository.findById(cinemaId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy rạp"));
+    }
+
+    private Cinema requireCustomerCinemaAvailable(Integer cinemaId) {
+        Cinema cinema = loadCinema(cinemaId);
+        if (cinema.getStatus() != null && cinema.getStatus() != 1) {
+            boolean hasRemainingShowtimes = showtimeRepository.existsByRoom_Cinema_CinemaIdAndStartTimeGreaterThanEqual(
+                    cinema.getCinemaId(), todayInAppZone().atStartOfDay());
+            if (!hasRemainingShowtimes) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Rạp đã tạm ngừng và không còn suất chiếu đang mở");
+            }
+        }
+        return cinema;
     }
 
     private SnackTotals buildValidatedSnackLines(Integer cinemaId, List<SnackLineRequest> raw, OrderOnline order) {
@@ -465,6 +670,147 @@ public class TicketCheckoutService {
     private record SnackTotals(int vndTotal, double doubleTotal, List<OrderDetailFood> rows) {
     }
 
+    private record VoucherDiscount(double discountAmount) {
+    }
+
+    private VoucherDiscount computeVoucherDiscountForQuote(Integer userId, Integer userVoucherId, double subtotal) {
+        if (userVoucherId == null) {
+            return new VoucherDiscount(0.0);
+        }
+        UserVoucher uv = userVoucherRepository.findById(userVoucherId).orElse(null);
+        if (uv == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher không tồn tại");
+        }
+        if (uv.getUser() == null || !uv.getUser().getUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Voucher không thuộc tài khoản của bạn");
+        }
+        if (uv.getStatus() == null || uv.getStatus() != 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher đã được sử dụng");
+        }
+        Voucher v = uv.getVoucher();
+        if (v == null || v.getStatus() == null || v.getStatus() != 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher không khả dụng");
+        }
+        LocalDate today = todayInAppZone();
+        if (v.getStartDate() != null && today.isBefore(v.getStartDate())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher chưa có hiệu lực");
+        }
+        if (v.getEndDate() != null && today.isAfter(v.getEndDate())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher đã hết hạn");
+        }
+        double minOrderValue = v.getMinOrderValue() != null ? v.getMinOrderValue() : 0.0;
+        if (subtotal < minOrderValue) {
+            return new VoucherDiscount(0.0);
+        }
+        double discount = Math.round(calculateDiscount(subtotal, v));
+        if (discount > subtotal) discount = subtotal;
+        return new VoucherDiscount(discount);
+    }
+
+    private record PricingContext(
+            double unitBase,
+            double promotionDiscountPercent,
+            double membershipDiscountPercent,
+            String rankName) {
+    }
+
+    private PricingContext buildPricingContext(User user, Showtime showtime, Integer cinemaId) {
+        double unitBase = computeUnitBasePrice(showtime);
+
+        Integer movieId = showtime.getMovie() != null ? showtime.getMovie().getMovieId() : null;
+        LocalDate today = todayInAppZone();
+        List<Promotion> promotions = promotionRepository.findActivePromotions(movieId, cinemaId, today);
+        double promotionDiscountPercent = 0.0;
+        if (!promotions.isEmpty()) {
+            Promotion promo = promotions.get(0);
+            promotionDiscountPercent = promo.getDiscountPercent() != null ? promo.getDiscountPercent() : 0.0;
+        }
+
+        double membershipDiscountPercent = 0.0;
+        String rankName = null;
+        MembershipRank effectiveRank = resolveEffectiveRank(user);
+        if (effectiveRank != null) {
+            membershipDiscountPercent = effectiveRank.getDiscountPercent() != null ? effectiveRank.getDiscountPercent() : 0.0;
+            rankName = effectiveRank.getRankName();
+        }
+
+        return new PricingContext(unitBase, promotionDiscountPercent, membershipDiscountPercent, rankName);
+    }
+
+    /**
+     * Dùng tổng chi năm hiện tại để xác định hạng hiệu lực khi checkout/quote.
+     * Tránh lệch trường hợp rank_id trong users chưa được cập nhật kịp.
+     */
+    private MembershipRank resolveEffectiveRank(User user) {
+        if (user == null || user.getUserId() == null) return null;
+        int currentYear = todayInAppZone().getYear();
+        double spending = orderOnlineRepository.sumCompletedRevenueByUserAndYear(user.getUserId(), currentYear);
+
+        List<MembershipRank> activeRanks = membershipRankRepository.findAll().stream()
+                .filter(r -> r.getStatus() == null || r.getStatus() == 1)
+                .toList();
+        if (activeRanks.isEmpty()) return null;
+
+        MembershipRank matched = activeRanks.stream()
+                .filter(r -> spending >= (r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .max(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .orElse(null);
+        if (matched != null) return matched;
+        return activeRanks.stream()
+                .min(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .orElse(null);
+    }
+
+    private record PricedSeatLine(
+            Integer seatId,
+            String seatLabel,
+            String seatTypeName,
+            double originalPrice,
+            double promotionDiscount,
+            double membershipDiscount,
+            double finalPrice) {
+    }
+
+    private List<PricedSeatLine> priceSeats(List<Seat> seats, PricingContext ctx) {
+        List<PricedSeatLine> out = new ArrayList<>();
+        for (Seat seat : seats) {
+            double seatSurcharge = 0.0;
+            boolean isCouple = false;
+            SeatType st = seat.getSeatType();
+            if (st != null) {
+                if (st.getSurcharge() != null) {
+                    seatSurcharge = st.getSurcharge();
+                }
+                isCouple = Boolean.TRUE.equals(st.getCoupleSeat());
+            }
+            int mult = isCouple ? 2 : 1;
+
+            double original = (ctx.unitBase() + seatSurcharge) * mult;
+            double promoDiscount = (ctx.unitBase() * (ctx.promotionDiscountPercent() / 100.0)) * mult;
+            double afterPromo = original - promoDiscount;
+            double memberDiscount = afterPromo * (ctx.membershipDiscountPercent() / 100.0);
+            double finalPrice = afterPromo - memberDiscount;
+
+            long originalRounded = Math.round(original);
+            long promoRounded = Math.round(promoDiscount);
+            long memberRounded = Math.round(memberDiscount);
+            long finalRounded = Math.round(finalPrice);
+
+            String seatTypeName = st != null ? st.getName() : null;
+            String seatLabel = (seat.getRow() != null ? seat.getRow() : "") + (seat.getNumber() != null ? seat.getNumber() : "");
+
+            out.add(new PricedSeatLine(
+                    seat.getSeatId(),
+                    seatLabel != null && !seatLabel.isBlank() ? seatLabel : null,
+                    seatTypeName,
+                    (double) originalRounded,
+                    (double) promoRounded,
+                    (double) memberRounded,
+                    (double) finalRounded));
+        }
+        return out;
+    }
+
     /**
      * Xác nhận thanh toán từ webhook PayOS (chữ ký đã được kiểm tra trước khi gọi).
      */
@@ -478,18 +824,23 @@ public class TicketCheckoutService {
         if (paidAmount < 0) {
             paidAmount = (int) dataJson.optLong("amount", -1L);
         }
+        log.debug("PayOS webhook received: orderCode={}, paidAmount={}", orderCode, paidAmount);
 
         Optional<OrderOnline> opt = orderOnlineRepository.findByOrderCode(String.valueOf(orderCode));
         if (opt.isEmpty()) {
+            log.debug("PayOS webhook ignored because order was not found: orderCode={}", orderCode);
             /* Đơn đã bị xóa khi user hủy thanh toán — PayOS vẫn có thể gọi webhook muộn */
             return;
         }
         OrderOnline order = opt.get();
 
         if (order.getStatus() != null && order.getStatus() == ORDER_STATUS_PAID) {
+            rewardPaidOrder(order);
             return;
         }
-        if (order.getStatus() == null || order.getStatus() != ORDER_STATUS_PENDING) {
+        boolean isPending = order.getStatus() != null && order.getStatus() == ORDER_STATUS_PENDING;
+        boolean isCancelled = order.getStatus() != null && order.getStatus() == ORDER_STATUS_CANCELLED;
+        if (!isPending && !isCancelled) {
             /* Đã hủy / trạng thái lạ — không kích hoạt thanh toán */
             return;
         }
@@ -499,8 +850,70 @@ public class TicketCheckoutService {
             throw new IllegalArgumentException("Số tiền webhook không khớp đơn (expected " + expected + ", got " + paidAmount + ")");
         }
 
+        if (isCancelled) {
+            assertCanRestoreCancelledPaidOrder(order);
+        }
+
+        finalizePaidOrder(order);
+        rewardPaidOrder(order);
+    }
+
+    private void assertCanRestoreCancelledPaidOrder(OrderOnline order) {
+        List<Ticket> tickets = ticketRepository.findByOrderOnline_OrderOnlineId(order.getOrderOnlineId());
+        Map<Integer, Set<Integer>> seatIdsByShowtime = tickets.stream()
+                .filter(t -> t.getShowtime() != null
+                        && t.getShowtime().getShowtimeId() != null
+                        && t.getSeat() != null
+                        && t.getSeat().getSeatId() != null)
+                .collect(Collectors.groupingBy(
+                        t -> t.getShowtime().getShowtimeId(),
+                        Collectors.mapping(t -> t.getSeat().getSeatId(), Collectors.toSet())));
+
+        for (Map.Entry<Integer, Set<Integer>> entry : seatIdsByShowtime.entrySet()) {
+            if (!entry.getValue().isEmpty()
+                    && ticketRepository.countPaidTicketsForSeats(entry.getKey(), entry.getValue()) > 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Ghế trong đơn đã bị bán cho đơn khác sau khi đơn quá hạn. Vui lòng liên hệ quầy để xử lý.");
+            }
+        }
+    }
+
+    private void assertPayosAmountMatches(PayOSCheckoutData payos, int expected) {
+        Long paidAmount = payos != null ? payos.getAmount() : null;
+        if (paidAmount != null && Math.abs(paidAmount - expected) > 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Số tiền PayOS không khớp đơn (expected " + expected + ", got " + paidAmount + ")");
+        }
+    }
+
+    private static Long parsePositiveLong(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (!trimmed.matches("\\d+")) {
+            return null;
+        }
+        try {
+            long parsed = Long.parseLong(trimmed);
+            return parsed > 0 ? parsed : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private void finalizePaidOrder(OrderOnline order) {
         order.setStatus(ORDER_STATUS_PAID);
+        if (order.getPaymentMethod() == null || order.getPaymentMethod().isBlank()) {
+            order.setPaymentMethod("PAYOS");
+        }
         orderOnlineRepository.save(order);
+
+        UserVoucher userVoucher = order.getUserVoucher();
+        if (userVoucher != null && userVoucher.getStatus() != null && userVoucher.getStatus() == 1) {
+            userVoucher.setStatus(0);
+            userVoucherRepository.save(userVoucher);
+        }
 
         List<Ticket> tickets = ticketRepository.findByOrderOnline_OrderOnlineId(order.getOrderOnlineId());
         for (Ticket t : tickets) {
@@ -513,14 +926,91 @@ public class TicketCheckoutService {
             f.setStatus(FOOD_STATUS_PAID);
         }
         orderDetailFoodRepository.saveAll(foods);
+    }
 
+    private void rewardPaidOrder(OrderOnline order) {
         if (order.getUser() != null) {
-            recalculateUserRankFromPaidOrders(order.getUser());
+            try {
+                recalculateUserRankFromPaidOrders(order.getUser());
+                addPointsForOrder(order);
+            } catch (Exception e) {
+                log.error("Error adding points for PayOS order {}", order.getOrderCode(), e);
+            }
+        } else {
+            log.warn("Cannot add points for PayOS order {} because user is null", order.getOrderCode());
+        }
+    }
+
+    /**
+     * Cộng điểm cho user sau khi thanh toán thành công
+     * Quy tắc: 1k = 1 điểm + điểm bonus theo rank
+     */
+    private void addPointsForOrder(OrderOnline order) {
+        try {
+            // Load user từ repository để đảm bảo có dữ liệu
+            User user = order.getUser();
+            if (user != null && user.getUserId() != null) {
+                user = userRepository.findById(user.getUserId()).orElse(null);
+            }
+            
+            if (user == null) {
+                log.debug("Skip adding points because order {} has no user", order.getOrderCode());
+                return;
+            }
+
+            String orderCode = order.getOrderCode() != null
+                    ? order.getOrderCode()
+                    : String.valueOf(order.getOrderOnlineId());
+            String descriptionPrefix = "Tích điểm từ đơn " + orderCode;
+            boolean alreadyRewarded = pointsHistoryRepository
+                    .findByUser_UserIdOrderByDateDescPointHistoryIdDesc(user.getUserId())
+                    .stream()
+                    .anyMatch(h -> h.getDescription() != null
+                            && h.getDescription().startsWith(descriptionPrefix));
+            if (alreadyRewarded) {
+                log.debug("Skip adding duplicate points for order {} and user {}", orderCode, user.getUserId());
+                return;
+            }
+
+            double finalAmount = order.getFinalAmount() != null ? order.getFinalAmount() : 0.0;
+            
+            // Tính điểm từ số tiền: 1k = 1 điểm (làm tròn)
+            int pointsFromAmount = (int) Math.round(finalAmount / 1000);
+            
+            // Lấy điểm bonus từ rank
+            MembershipRank rank = resolveEffectiveRank(user);
+            int bonusPoints = (rank != null && rank.getBonusPoint() != null) ? rank.getBonusPoint() : 0;
+            
+            // Tổng điểm
+            int totalPoints = pointsFromAmount + bonusPoints;
+            
+            if (totalPoints <= 0) {
+                log.debug("Skip adding non-positive points for order {}", order.getOrderCode());
+                return;
+            }
+            
+            // Cộng điểm vào user
+            int currentPoints = user.getPoints() != null ? user.getPoints() : 0;
+            user.setPoints(currentPoints + totalPoints);
+            userRepository.save(user);
+            
+            // Lưu lịch sử điểm
+            PointsHistory pointsHistory = new PointsHistory();
+            pointsHistory.setUser(user);
+            pointsHistory.setDate(todayInAppZone());
+            pointsHistory.setDescription(descriptionPrefix +
+                                       " (" + pointsFromAmount + " điểm từ số tiền" + 
+                                       (bonusPoints > 0 ? " + " + bonusPoints + " điểm bonus" : "") + ")");
+            pointsHistory.setPoints(totalPoints);
+            pointsHistoryRepository.save(pointsHistory);
+            log.debug("Added {} points for order {} and user {}", totalPoints, orderCode, user.getUserId());
+        } catch (Exception e) {
+            log.error("Error adding points for order {}", order.getOrderCode(), e);
         }
     }
 
     private void recalculateUserRankFromPaidOrders(User user) {
-        int currentYear = LocalDate.now().getYear();
+        int currentYear = todayInAppZone().getYear();
         double completedRevenue = orderOnlineRepository
                 .sumCompletedRevenueByUserAndYear(user.getUserId(), currentYear);
 
@@ -549,7 +1039,7 @@ public class TicketCheckoutService {
     }
 
     private static void assertShowtimeBookable(Showtime s) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = nowInAppZone();
         Movie movie = s.getMovie();
         if (s.getStartTime() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Suất chiếu chưa có thời gian");
@@ -567,6 +1057,14 @@ public class TicketCheckoutService {
         double basePrice = movie != null && movie.getBasePrice() != null ? movie.getBasePrice() : 0.0;
         double surcharge = s.getSurcharge() != null ? s.getSurcharge() : 0.0;
         return basePrice + surcharge;
+    }
+
+    private static LocalDateTime nowInAppZone() {
+        return LocalDateTime.now(APP_ZONE);
+    }
+
+    private static LocalDate todayInAppZone() {
+        return LocalDate.now(APP_ZONE);
     }
 
     private static String truncate(String s, int max) {

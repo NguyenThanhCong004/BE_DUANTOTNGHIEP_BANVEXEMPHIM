@@ -9,20 +9,26 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.me.FavoriteMovieIdRequest;
 import com.fpoly.duan.dto.me.MeFavoriteMovieDto;
+import com.fpoly.duan.dto.me.MeMovieReviewDto;
+import com.fpoly.duan.dto.me.MeMovieReviewStatusDto;
 import com.fpoly.duan.dto.me.MePointsHistoryDto;
 import com.fpoly.duan.dto.me.MeTransactionDto;
 import com.fpoly.duan.dto.me.MeUserVoucherRowDto;
+import com.fpoly.duan.dto.me.MovieReviewRequest;
 import com.fpoly.duan.dto.me.VoucherRedeemRequest;
 import com.fpoly.duan.security.CustomUserDetails;
 import com.fpoly.duan.service.CustomerMeService;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -38,6 +44,7 @@ import lombok.RequiredArgsConstructor;
 public class CustomerMeController {
 
     private final CustomerMeService customerMeService;
+    private final com.fpoly.duan.service.TicketCheckoutService ticketCheckoutService;
 
     private Integer requireCustomerUserId(Authentication authentication) {
         if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
@@ -48,14 +55,34 @@ public class CustomerMeController {
             throw new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Chỉ tài khoản khách hàng được dùng API này");
         }
-        return details.getUser().getUserId();
+        Integer userId = details.getUser().getUserId();
+        // Reload hạng rank mỗi khi truy cập web
+        try {
+            java.lang.reflect.Method method = ticketCheckoutService.getClass().getDeclaredMethod("recalculateUserRankFromPaidOrders", com.fpoly.duan.entity.User.class);
+            method.setAccessible(true);
+            method.invoke(ticketCheckoutService, details.getUser());
+        } catch (Exception e) {
+            System.err.println("Error reloading rank: " + e.getMessage());
+        }
+        return userId;
     }
 
     @GetMapping("/transactions")
     @Operation(summary = "Lịch sử giao dịch (đơn + điểm)")
-    public ResponseEntity<ApiResponse<List<MeTransactionDto>>> transactions(Authentication authentication) {
+    public ResponseEntity<ApiResponse<List<MeTransactionDto>>> transactions(
+            Authentication authentication,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
         Integer uid = requireCustomerUserId(authentication);
-        List<MeTransactionDto> data = customerMeService.listTransactions(uid);
+        String term = SearchUtils.pick(search, keyword, q);
+        List<MeTransactionDto> data = customerMeService.listTransactions(uid).stream()
+                .filter(tx -> SearchUtils.matches(term,
+                        tx.getId(), tx.getOrderCode(), tx.getType(), tx.getStatus(), tx.getFinalAmount(),
+                        tx.getVoucherCode(), tx.getItems() != null ? tx.getItems().stream()
+                                .map(i -> String.join(" ", String.valueOf(i.getLabel()), String.valueOf(i.getSub())))
+                                .toList() : null))
+                .toList();
         return ResponseEntity.ok(ApiResponse.<List<MeTransactionDto>>builder()
                 .status(HttpStatus.OK.value())
                 .message("OK")
@@ -65,12 +92,19 @@ public class CustomerMeController {
 
     @GetMapping("/favorites")
     @Operation(summary = "Phim yêu thích")
-    public ResponseEntity<ApiResponse<List<MeFavoriteMovieDto>>> favorites(Authentication authentication) {
+    public ResponseEntity<ApiResponse<List<MeFavoriteMovieDto>>> favorites(
+            Authentication authentication,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
         Integer uid = requireCustomerUserId(authentication);
+        String term = SearchUtils.pick(search, keyword, q);
         return ResponseEntity.ok(ApiResponse.<List<MeFavoriteMovieDto>>builder()
                 .status(HttpStatus.OK.value())
                 .message("OK")
-                .data(customerMeService.listFavorites(uid))
+                .data(customerMeService.listFavorites(uid).stream()
+                        .filter(f -> SearchUtils.matches(term, f.getFavoriteId(), f.getMovieId(), f.getTitle(), f.getStatus()))
+                        .toList())
                 .build());
     }
 
@@ -98,14 +132,52 @@ public class CustomerMeController {
                 .build());
     }
 
+    @PutMapping("/movie-reviews/{movieId}")
+    @Operation(summary = "Bình luận / đánh giá phim đã mua vé")
+    public ResponseEntity<ApiResponse<MeMovieReviewDto>> saveMovieReview(Authentication authentication,
+            @PathVariable Integer movieId,
+            @Valid @RequestBody MovieReviewRequest body) {
+        Integer uid = requireCustomerUserId(authentication);
+        MeMovieReviewDto data = customerMeService.saveMovieReview(uid, movieId, body);
+        return ResponseEntity.ok(ApiResponse.<MeMovieReviewDto>builder()
+                .status(HttpStatus.OK.value())
+                .message("Đã lưu đánh giá phim")
+                .data(data)
+                .build());
+    }
+
+    @GetMapping("/movie-reviews/{movieId}")
+    @Operation(summary = "Trạng thái đánh giá phim của khách hiện tại")
+    public ResponseEntity<ApiResponse<MeMovieReviewStatusDto>> getMovieReviewStatus(Authentication authentication,
+            @PathVariable Integer movieId) {
+        Integer uid = requireCustomerUserId(authentication);
+        MeMovieReviewStatusDto data = customerMeService.getMovieReviewStatus(uid, movieId);
+        return ResponseEntity.ok(ApiResponse.<MeMovieReviewStatusDto>builder()
+                .status(HttpStatus.OK.value())
+                .message("OK")
+                .data(data)
+                .build());
+    }
+
     @GetMapping("/vouchers")
     @Operation(summary = "Voucher trong ví")
-    public ResponseEntity<ApiResponse<List<MeUserVoucherRowDto>>> myVouchers(Authentication authentication) {
+    public ResponseEntity<ApiResponse<List<MeUserVoucherRowDto>>> myVouchers(
+            Authentication authentication,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
         Integer uid = requireCustomerUserId(authentication);
+        String term = SearchUtils.pick(search, keyword, q);
         return ResponseEntity.ok(ApiResponse.<List<MeUserVoucherRowDto>>builder()
                 .status(HttpStatus.OK.value())
                 .message("OK")
-                .data(customerMeService.listUserVouchers(uid))
+                .data(customerMeService.listUserVouchers(uid).stream()
+                        .filter(v -> SearchUtils.matches(term,
+                                v.getUserVoucherId(), v.getStatus(),
+                                v.getVoucher() != null ? v.getVoucher().getCode() : null,
+                                v.getVoucher() != null ? v.getVoucher().getValue() : null,
+                                v.getVoucher() != null ? v.getVoucher().getPointVoucher() : null))
+                        .toList())
                 .build());
     }
 

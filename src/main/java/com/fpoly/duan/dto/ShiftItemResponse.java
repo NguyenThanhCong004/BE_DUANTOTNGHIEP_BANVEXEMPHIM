@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ShiftItemResponse {
     private Integer id; // staffShiftId
+    private Integer staffId;
     private String staffName;
     private String role; // Bán vé / Soát vé / Phục vụ
     private String phone;
@@ -18,6 +19,8 @@ public class ShiftItemResponse {
     private String shiftType; // Ca 1 / Ca 2 / Ca 3
     private String startTime; // HH:mm
     private String endTime; // HH:mm
+    private String rawStartTime; // ISO LocalDateTime string
+    private String rawEndTime; // ISO LocalDateTime string
     private String status; // Đang làm / Sắp tới / Đã xong
     private String cinemaName;
 }

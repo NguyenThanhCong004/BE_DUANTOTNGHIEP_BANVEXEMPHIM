@@ -13,13 +13,18 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+import jakarta.validation.Valid;
 
 import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.NewsDTO;
 import com.fpoly.duan.entity.News;
 import com.fpoly.duan.repository.NewsRepository;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -32,6 +37,7 @@ import lombok.RequiredArgsConstructor;
 @CrossOrigin(origins = "*", maxAge = 3600)
 @Tag(name = "8c. Tin tức", description = "CRUD tin tức — Super Admin.")
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
+@SuppressWarnings("null")
 // [SUPER ADMIN ONLY] - This section belongs to Super Admin. Do not modify without authorization.
 public class NewsController {
 
@@ -39,8 +45,13 @@ public class NewsController {
 
     @GetMapping
     @Operation(summary = "Danh sách tin tức")
-    public ResponseEntity<ApiResponse<List<NewsDTO>>> list() {
+    public ResponseEntity<ApiResponse<List<NewsDTO>>> list(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
         List<NewsDTO> data = newsRepository.findAll().stream()
+                .filter(n -> SearchUtils.matches(term, n.getNewsId(), n.getTitle(), n.getContent(), n.getStatus()))
                 .map(this::toDTO)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.<List<NewsDTO>>builder()
@@ -54,7 +65,7 @@ public class NewsController {
     @Operation(summary = "Chi tiết tin")
     public ResponseEntity<ApiResponse<NewsDTO>> getById(@PathVariable Integer id) {
         News n = newsRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy tin với id: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy tin với id: " + id));
         return ResponseEntity.ok(ApiResponse.<NewsDTO>builder()
                 .status(HttpStatus.OK.value())
                 .message("OK")
@@ -64,7 +75,7 @@ public class NewsController {
 
     @PostMapping
     @Operation(summary = "Tạo tin")
-    public ResponseEntity<ApiResponse<NewsDTO>> create(@RequestBody NewsDTO dto) {
+    public ResponseEntity<ApiResponse<NewsDTO>> create(@Valid @RequestBody NewsDTO dto) {
         validate(dto, true);
         News n = fromDTO(new News(), dto);
         News saved = newsRepository.save(n);
@@ -79,7 +90,7 @@ public class NewsController {
     @Operation(summary = "Cập nhật tin")
     public ResponseEntity<ApiResponse<NewsDTO>> update(@PathVariable Integer id, @RequestBody NewsDTO dto) {
         News n = newsRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy tin với id: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy tin với id: " + id));
         validate(dto, false);
 
         boolean hasChanges = false;
@@ -108,7 +119,7 @@ public class NewsController {
     @Operation(summary = "Xóa tin")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
         if (!newsRepository.existsById(id)) {
-            throw new RuntimeException("Không tìm thấy tin với id: " + id);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy tin với id: " + id);
         }
         newsRepository.deleteById(id);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
@@ -119,16 +130,16 @@ public class NewsController {
 
     private void validate(NewsDTO dto, boolean isCreate) {
         if (dto == null) {
-            throw new RuntimeException("Dữ liệu không hợp lệ");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Dữ liệu không hợp lệ");
         }
         if (dto.getTitle() == null || dto.getTitle().trim().isEmpty()) {
-            throw new RuntimeException("Tiêu đề không được để trống");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tiêu đề không được để trống");
         }
         if (dto.getContent() == null || dto.getContent().trim().isEmpty()) {
-            throw new RuntimeException("Nội dung không được để trống");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Nội dung không được để trống");
         }
         if (isCreate && (dto.getImage() == null || dto.getImage().trim().isEmpty())) {
-            throw new RuntimeException("Ảnh minh họa không được để trống");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ảnh minh họa không được để trống");
         }
     }
 

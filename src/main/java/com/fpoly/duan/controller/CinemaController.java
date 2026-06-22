@@ -2,6 +2,7 @@ package com.fpoly.duan.controller;
 
 import java.util.List;
 import java.util.stream.Collectors;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -12,7 +13,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+import jakarta.validation.Valid;
 
 import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
@@ -21,6 +26,7 @@ import com.fpoly.duan.entity.Cinema;
 import com.fpoly.duan.entity.Room;
 import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.RoomRepository;
+import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -33,6 +39,7 @@ import lombok.RequiredArgsConstructor;
 @CrossOrigin(origins = "*", maxAge = 3600)
 @Tag(name = "1b. Rạp (Cinemas)", description = "Danh sách rạp — FE Super Admin chọn rạp.")
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
+@SuppressWarnings("null")
 // [SUPER ADMIN ONLY] - This section belongs to Super Admin. Do not modify without authorization.
 public class CinemaController {
 
@@ -41,8 +48,13 @@ public class CinemaController {
 
     @GetMapping
     @Operation(summary = "Danh sách rạp")
-    public ResponseEntity<ApiResponse<List<CinemaDTO>>> list() {
+    public ResponseEntity<ApiResponse<List<CinemaDTO>>> list(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String q) {
+        String term = SearchUtils.pick(search, keyword, q);
         List<CinemaDTO> data = cinemaRepository.findAll().stream()
+                .filter(c -> SearchUtils.matches(term, c.getCinemaId(), c.getName(), c.getAddress(), c.getStatus()))
                 .map(this::toDTO)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.<List<CinemaDTO>>builder()
@@ -56,7 +68,7 @@ public class CinemaController {
     @Operation(summary = "Chi tiết rạp")
     public ResponseEntity<ApiResponse<CinemaDTO>> getById(@PathVariable Integer id) {
         Cinema c = cinemaRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với id: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy rạp với id: " + id));
         return ResponseEntity.ok(ApiResponse.<CinemaDTO>builder()
                 .status(HttpStatus.OK.value())
                 .message("Lấy thông tin rạp thành công")
@@ -66,19 +78,19 @@ public class CinemaController {
 
     @PostMapping
     @Operation(summary = "Tạo rạp")
-    public ResponseEntity<ApiResponse<CinemaDTO>> create(@RequestBody CinemaDTO dto) {
-        if (dto == null || dto.getName() == null || dto.getName().trim().isEmpty()) {
-            throw new RuntimeException("Tên rạp không được để trống");
+    public ResponseEntity<ApiResponse<CinemaDTO>> create(@Valid @RequestBody CinemaDTO dto) {
+        if (dto.getName() == null || dto.getName().trim().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tên rạp không được để trống");
         }
-        
+
         String name = dto.getName().trim();
         String address = dto.getAddress() != null ? dto.getAddress().trim() : "";
 
         if (cinemaRepository.existsByNameIgnoreCase(name)) {
-            throw new RuntimeException("Tên rạp '" + name + "' đã tồn tại");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tên rạp '" + name + "' đã tồn tại");
         }
         if (!address.isEmpty() && cinemaRepository.existsByAddressIgnoreCase(address)) {
-            throw new RuntimeException("Địa chỉ '" + address + "' đã được sử dụng bởi rạp khác");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Địa chỉ '" + address + "' đã được sử dụng bởi rạp khác");
         }
 
         Cinema c = new Cinema();
@@ -97,25 +109,26 @@ public class CinemaController {
     @Operation(summary = "Cập nhật rạp")
     public ResponseEntity<ApiResponse<CinemaDTO>> update(@PathVariable Integer id, @RequestBody CinemaDTO dto) {
         Cinema c = cinemaRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với id: " + id));
-        
-        // Kiểm tra xem có dữ liệu cập nhật không
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy rạp với id: " + id));
+
         boolean hasChanges = false;
-        
+
         if (dto.getName() != null) {
             String name = dto.getName().trim();
-            if (name.isEmpty()) throw new RuntimeException("Tên rạp không được để trống");
+            if (name.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tên rạp không được để trống");
+            }
             if (cinemaRepository.existsByNameIgnoreCaseAndCinemaIdNot(name, id)) {
-                throw new RuntimeException("Tên rạp '" + name + "' đã tồn tại ở chi nhánh khác");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tên rạp '" + name + "' đã tồn tại ở chi nhánh khác");
             }
             c.setName(name);
             hasChanges = true;
         }
-        
+
         if (dto.getAddress() != null) {
             String address = dto.getAddress().trim();
             if (!address.isEmpty() && cinemaRepository.existsByAddressIgnoreCaseAndCinemaIdNot(address, id)) {
-                throw new RuntimeException("Địa chỉ '" + address + "' đã được sử dụng bởi rạp khác");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Địa chỉ '" + address + "' đã được sử dụng bởi rạp khác");
             }
             c.setAddress(address);
             hasChanges = true;
@@ -125,8 +138,7 @@ public class CinemaController {
             c.setStatus(dto.getStatus());
             hasChanges = true;
         }
-        
-        // Nếu không có thay đổi nào, trả về thông báo phù hợp
+
         if (!hasChanges) {
             return ResponseEntity.ok(ApiResponse.<CinemaDTO>builder()
                     .status(HttpStatus.OK.value())
@@ -134,7 +146,7 @@ public class CinemaController {
                     .data(toDTO(c))
                     .build());
         }
-        
+
         Cinema saved = cinemaRepository.save(c);
         return ResponseEntity.ok(ApiResponse.<CinemaDTO>builder()
                 .status(HttpStatus.OK.value())
@@ -147,16 +159,16 @@ public class CinemaController {
     @Operation(summary = "Xóa rạp")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
         if (!cinemaRepository.existsById(id)) {
-            throw new RuntimeException("Không tìm thấy rạp với id: " + id);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy rạp với id: " + id);
         }
-        
-        // Kiểm tra xem có phòng chiếu nào đang sử dụng rạp này không
+
         List<Room> roomsInCinema = roomRepository.findByCinema_CinemaId(id);
         if (!roomsInCinema.isEmpty()) {
-            throw new RuntimeException("Không thể xóa rạp này vì đang có " + roomsInCinema.size() + 
-                " phòng chiếu sử dụng. Vui lòng xóa hoặc chuyển phòng chiếu sang rạp khác trước.");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Không thể xóa rạp này vì đang có " + roomsInCinema.size()
+                    + " phòng chiếu sử dụng. Vui lòng xóa hoặc chuyển phòng chiếu sang rạp khác trước.");
         }
-        
+
         cinemaRepository.deleteById(id);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
