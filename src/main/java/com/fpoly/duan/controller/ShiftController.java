@@ -469,6 +469,11 @@ public class ShiftController {
             return;
         }
         cinemaScopeService.requireCinemaAccess(cinemaId);
+        if (shift != null && shift.getCinema() != null) {
+            cinemaScopeService.requireCinemaOperational(shift.getCinema());
+        } else if (shift != null && shift.getStaff() != null) {
+            cinemaScopeService.requireCinemaOperational(shift.getStaff().getCinema());
+        }
     }
 
     private Integer requireStaffCinemaAccess(Staff staff) {
@@ -477,6 +482,7 @@ public class ShiftController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Nhân viên chưa được gán rạp");
         }
         cinemaScopeService.requireCinemaAccess(cinemaId);
+        cinemaScopeService.requireCinemaOperational(staff.getCinema());
         return cinemaId;
     }
 

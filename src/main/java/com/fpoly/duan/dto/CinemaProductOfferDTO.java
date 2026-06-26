@@ -22,6 +22,8 @@ public class CinemaProductOfferDTO {
     private String image;
     /** Trạng thái catalog toàn hệ thống (products.status), mặc định 1 = hoạt động */
     private Integer globalStatus;
+    /** Trạng thái còn hàng tại rạp trong ngày (cinema_products.is_active). Null nếu chưa gắn menu rạp. */
+    private Boolean isActive;
     private Integer categoryId;
     private String categoryName;
 }

@@ -5,7 +5,9 @@ import lombok.Data;
 
 @Data
 @Entity
-@Table(name = "tickets")
+@Table(name = "tickets", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_tickets_ticket_code", columnNames = "ticket_code")
+})
 public class Ticket {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -20,6 +22,14 @@ public class Ticket {
 
     @Column(name = "promotion_discount")
     private Double promotionDiscount;
+
+    /** Mã vé ngắn, được ký HMAC từ thông tin rạp/phim/suất chiếu và ID vé. */
+    @Column(name = "ticket_code", length = 40, unique = true)
+    private String ticketCode;
+
+    /** QR AES-GCM; chỉ BE mới giải mã và xác thực được. */
+    @Column(name = "qr_token", length = 1500)
+    private String qrToken;
 
     @ManyToOne
     @JoinColumn(name = "showtime_id")

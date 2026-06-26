@@ -41,6 +41,7 @@ import com.fpoly.duan.repository.GenreRepository;
 import com.fpoly.duan.repository.MovieRepository;
 import com.fpoly.duan.repository.ShowtimeRepository;
 import com.fpoly.duan.repository.TicketRepository;
+import com.fpoly.duan.service.CinemaScopeService;
 import com.fpoly.duan.service.CustomerMeService;
 import com.fpoly.duan.util.SearchUtils;
 
@@ -62,18 +63,21 @@ public class MovieController {
     private final TicketRepository ticketRepository;
     private final ShowtimeRepository showtimeRepository;
     private final CustomerMeService customerMeService;
+    private final CinemaScopeService cinemaScopeService;
 
     public MovieController(
             MovieRepository movieRepository,
             GenreRepository genreRepository,
             TicketRepository ticketRepository,
             ShowtimeRepository showtimeRepository,
-            CustomerMeService customerMeService) {
+            CustomerMeService customerMeService,
+            CinemaScopeService cinemaScopeService) {
         this.movieRepository = movieRepository;
         this.genreRepository = genreRepository;
         this.ticketRepository = ticketRepository;
         this.showtimeRepository = showtimeRepository;
         this.customerMeService = customerMeService;
+        this.cinemaScopeService = cinemaScopeService;
     }
 
     @GetMapping
@@ -173,6 +177,8 @@ public class MovieController {
             @org.springframework.web.bind.annotation.RequestParam Integer cinemaId,
             @org.springframework.web.bind.annotation.RequestParam String startDate,
             @org.springframework.web.bind.annotation.RequestParam String endDate) {
+        cinemaScopeService.requireCinemaAccess(cinemaId);
+
         LocalDate start;
         LocalDate end;
         try {

@@ -77,6 +77,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/payments/payos/webhook").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/counter-orders/receipt-barcode/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/ticket-orders/qr/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
                         // API công khai cho khách xem nội dung và chọn ghế.
@@ -109,12 +111,19 @@ public class SecurityConfig {
 
                         // Nhân viên quầy và quản trị rạp.
                         .requestMatchers("/api/v1/counter-orders/**")
-                        .hasAnyAuthority("ROLE_STAFF", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
+                        .hasAuthority("ROLE_STAFF")
                         .requestMatchers("/api/v1/counter-orders/export-pdf/**")
-                        .hasAnyAuthority("ROLE_STAFF", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
+                        .hasAuthority("ROLE_STAFF")
                         .requestMatchers("/api/v1/staff/dashboard-stats", "/api/v1/staff/dashboard-stats/**")
-                        .hasAnyAuthority("ROLE_STAFF", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
+                        .hasAuthority("ROLE_STAFF")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/staff/verify-ticket")
+                        // Controller bắt buộc principal là Staff; không khóa nhầm các role staff cũ như EMPLOYEE/NHANVIEN.
+                        .authenticated()
                         .requestMatchers("/api/v1/shifts/me", "/api/v1/shifts/active")
+                        .hasAnyAuthority("ROLE_STAFF", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/staff/me")
+                        .hasAnyAuthority("ROLE_STAFF", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/staff/me", "/api/v1/staff/me/password")
                         .hasAnyAuthority("ROLE_STAFF", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/v1/staff/super-admin-view")
                         .hasAuthority("ROLE_SUPER_ADMIN")

@@ -15,6 +15,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.text.Normalizer;
+import java.util.Locale;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -27,13 +30,7 @@ public class CustomUserDetails implements UserDetails {
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         if (staff != null) {
-            // Staff roles (ADMIN, STAFF, etc.) from database
-            String role = staff.getRole();
-            if (role == null) role = "STAFF";
-            if (!role.startsWith("ROLE_")) {
-                role = "ROLE_" + role.toUpperCase();
-            }
-            return List.of(new SimpleGrantedAuthority(role));
+            return List.of(new SimpleGrantedAuthority(normalizeStaffRole(staff.getRole())));
         }
         // Customers are always ROLE_USER
         return List.of(new SimpleGrantedAuthority("ROLE_USER"));
@@ -81,5 +78,23 @@ public class CustomUserDetails implements UserDetails {
 
     public String getAccountType() {
         return staff != null ? "STAFF" : "USER";
+    }
+
+    /** Tương thích dữ liệu role cũ trước khi hệ thống thống nhất STAFF/ADMIN/SUPER_ADMIN. */
+    private static String normalizeStaffRole(String role) {
+        if (role == null || role.isBlank()) return "ROLE_STAFF";
+        String normalized = Normalizer.normalize(role, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .trim()
+                .toUpperCase(Locale.ROOT)
+                .replace('-', '_')
+                .replace(' ', '_');
+        if (normalized.startsWith("ROLE_")) normalized = normalized.substring(5);
+        return switch (normalized) {
+            case "EMPLOYEE", "NHANVIEN", "NHAN_VIEN", "STAFF" -> "ROLE_STAFF";
+            case "MANAGER", "QUANLY", "QUAN_LY", "ADMIN" -> "ROLE_ADMIN";
+            case "SUPERADMIN", "SUPER_ADMIN" -> "ROLE_SUPER_ADMIN";
+            default -> "ROLE_" + normalized;
+        };
     }
 }

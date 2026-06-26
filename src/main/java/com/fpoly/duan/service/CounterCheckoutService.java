@@ -43,6 +43,8 @@ public class CounterCheckoutService {
     private final PayOSService payOSService;
     private final MembershipRankRepository membershipRankRepository;
     private final PointsHistoryRepository pointsHistoryRepository;
+    private final TicketQrService ticketQrService;
+    private final TicketEmailService ticketEmailService;
 
     public CounterCheckoutService(
             OrderOnlineRepository orderOnlineRepository,
@@ -56,7 +58,9 @@ public class CounterCheckoutService {
             CinemaProductRepository cinemaProductRepository,
             PayOSService payOSService,
             MembershipRankRepository membershipRankRepository,
-            PointsHistoryRepository pointsHistoryRepository) {
+            PointsHistoryRepository pointsHistoryRepository,
+            TicketQrService ticketQrService,
+            TicketEmailService ticketEmailService) {
         this.orderOnlineRepository = orderOnlineRepository;
         this.ticketRepository = ticketRepository;
         this.orderDetailFoodRepository = orderDetailFoodRepository;
@@ -69,6 +73,8 @@ public class CounterCheckoutService {
         this.payOSService = payOSService;
         this.membershipRankRepository = membershipRankRepository;
         this.pointsHistoryRepository = pointsHistoryRepository;
+        this.ticketQrService = ticketQrService;
+        this.ticketEmailService = ticketEmailService;
     }
 
     @Transactional
@@ -197,11 +203,17 @@ public class CounterCheckoutService {
             ticketsToSave.add(ticket);
         }
         ticketRepository.saveAll(ticketsToSave);
+        ticketQrService.assignSecureCodes(ticketsToSave);
+        ticketRepository.saveAll(ticketsToSave);
 
         for (OrderDetailFood detail : foodDetails) {
             detail.setOrderOnline(savedOrder);
         }
         orderDetailFoodRepository.saveAll(foodDetails);
+
+        if (!isTransfer) {
+            ticketEmailService.sendPaidTicketEmailIfNeeded(savedOrder);
+        }
 
         if (isTransfer) {
             try {
@@ -285,10 +297,14 @@ public class CounterCheckoutService {
     private OrderOnline markPaid(OrderOnline order) {
         order.setStatus(1);
         OrderOnline savedOrder = orderOnlineRepository.save(order);
+        ticketQrService.assignReceiptToken(savedOrder);
+        savedOrder = orderOnlineRepository.save(savedOrder);
 
         List<Ticket> tickets = ticketRepository.findByOrderOnline_OrderOnlineId(order.getOrderOnlineId());
         tickets.forEach(t -> t.setStatus(1));
         ticketRepository.saveAll(tickets);
+
+        ticketEmailService.sendPaidTicketEmailIfNeeded(savedOrder);
 
         // Cộng điểm cho user
         if (order.getUser() != null) {
@@ -296,6 +312,31 @@ public class CounterCheckoutService {
         }
 
         return savedOrder;
+    }
+
+    /** Chỉ sinh barcode cho token hóa đơn đang được lưu, tránh mã tự nhập/giả. */
+    @Transactional(readOnly = true)
+    public byte[] getReceiptBarcode(String receiptToken) {
+        if (receiptToken == null || receiptToken.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mã vạch hóa đơn không hợp lệ");
+        }
+        OrderOnline order = orderOnlineRepository.findByReceiptToken(receiptToken)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy hóa đơn hợp lệ"));
+        if (order.getStatus() == null || order.getStatus() == 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Hóa đơn đã hủy, mã vạch không còn hiệu lực");
+        }
+        return ticketQrService.toBarcodePng(order.getReceiptToken());
+    }
+
+    /** QR thanh toán PayOS tại quầy: BE sinh ảnh để FE không phụ thuộc dịch vụ QR bên ngoài. */
+    public byte[] getPaymentQr(String qrCode) {
+        if (qrCode == null || qrCode.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thiếu dữ liệu QR thanh toán");
+        }
+        if (qrCode.length() > 1200) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Dữ liệu QR thanh toán quá dài");
+        }
+        return ticketQrService.toPaymentQrPng(qrCode);
     }
 
     /**

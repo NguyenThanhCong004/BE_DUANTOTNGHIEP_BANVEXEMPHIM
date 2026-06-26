@@ -65,6 +65,7 @@ public class CustomerMeService {
     private final UserVoucherRepository userVoucherRepository;
     private final VoucherRepository voucherRepository;
     private final UserRepository userRepository;
+    private final TicketQrService ticketQrService;
 
     public List<MeTransactionDto> listTransactions(Integer userId) {
         List<MeTransactionDto> out = new ArrayList<>();
@@ -84,12 +85,29 @@ public class CustomerMeService {
         List<OrderDetailFood> foods = orderDetailFoodRepository.findByOrderOnline_OrderOnlineId(o.getOrderOnlineId());
         List<MeTransactionItemDto> items = new ArrayList<>();
 
+        List<Ticket> ticketsMissingQr = tickets.stream()
+                .filter(t -> t.getTicketCode() == null || t.getTicketCode().isBlank()
+                        || t.getQrToken() == null || t.getQrToken().isBlank())
+                .collect(Collectors.toList());
+        if (!ticketsMissingQr.isEmpty()) {
+            ticketQrService.assignSecureCodes(ticketsMissingQr);
+            ticketRepository.saveAll(ticketsMissingQr);
+        }
+
         for (Ticket t : tickets) {
             Showtime st = t.getShowtime();
             String movieTitle = st != null && st.getMovie() != null ? st.getMovie().getTitle() : "Vé xem phim";
+            String moviePoster = st != null && st.getMovie() != null ? st.getMovie().getPoster() : null;
             String when = formatShowtime(st);
             Seat seat = t.getSeat();
             String seatLabel = seat != null ? (String.valueOf(seat.getRow()) + String.valueOf(seat.getNumber())) : "";
+            String showDate = st != null && st.getStartTime() != null ? st.getStartTime().toLocalDate().toString() : null;
+            String showTime = st != null && st.getStartTime() != null ? st.getStartTime().toLocalTime().format(TIME_FMT) : null;
+            String roomName = st != null && st.getRoom() != null ? st.getRoom().getName() : null;
+            String cinemaName = st != null && st.getRoom() != null && st.getRoom().getCinema() != null
+                    ? st.getRoom().getCinema().getName()
+                    : null;
+            String qrToken = t.getQrToken();
             double price = t.getPrice() != null ? t.getPrice() : 0;
             items.add(MeTransactionItemDto.builder()
                     .label(movieTitle)
@@ -97,6 +115,18 @@ public class CustomerMeService {
                     .price(price)
                     .qty(1)
                     .icon("🎫")
+                    .ticketId(t.getTicketId())
+                    .ticketCode(t.getTicketCode())
+                    .qrToken(qrToken)
+                    .qrImagePath(qrToken != null && !qrToken.isBlank()
+                            ? "/ticket-orders/qr/" + qrToken
+                            : null)
+                    .moviePoster(moviePoster)
+                    .showDate(showDate)
+                    .showTime(showTime)
+                    .seatLabel(seatLabel)
+                    .roomName(roomName)
+                    .cinemaName(cinemaName)
                     .build());
         }
         for (OrderDetailFood f : foods) {
@@ -356,14 +386,23 @@ public class CustomerMeService {
         return VoucherDTO.builder()
                 .id(v.getVouchersId())
                 .code(v.getCode())
-                .discountType(v.getDiscountType())
+                .discountType(normalizeDiscountType(v.getDiscountType()))
                 .value(v.getValue())
                 .minOrderValue(v.getMinOrderValue())
+                .maxDiscountAmount(v.getMaxDiscountAmount())
                 .startDate(v.getStartDate())
                 .endDate(v.getEndDate())
                 .pointVoucher(java.math.BigDecimal.valueOf(v.getPointVoucher() != null ? v.getPointVoucher() : 0))
                 .status(v.getStatus() != null ? v.getStatus() : 1)
                 .build();
+    }
+
+    private String normalizeDiscountType(String type) {
+        String normalized = type == null ? "" : type.trim().toUpperCase();
+        if (normalized.equals("FIXED") || normalized.equals("AMOUNT") || normalized.equals("MONEY")) {
+            return "FIXED";
+        }
+        return "PERCENT";
     }
 
     public List<MePointsHistoryDto> listPointsHistory(Integer userId) {
@@ -396,11 +435,8 @@ public class CustomerMeService {
         }
 
         int cost = v.getPointVoucher() != null ? v.getPointVoucher() : 0;
-        if (cost <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher này không đổi bằng điểm");
-        }
         int balance = user.getPoints() != null ? user.getPoints() : 0;
-        if (balance < cost) {
+        if (cost > 0 && balance < cost) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không đủ điểm để đổi voucher");
         }
 
@@ -408,8 +444,10 @@ public class CustomerMeService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Bạn đã có voucher này trong ví (chưa dùng)");
         }
 
-        user.setPoints(balance - cost);
-        userRepository.save(user);
+        if (cost > 0) {
+            user.setPoints(balance - cost);
+            userRepository.save(user);
+        }
 
         UserVoucher uv = new UserVoucher();
         uv.setUser(user);
@@ -417,11 +455,13 @@ public class CustomerMeService {
         uv.setStatus(1);
         userVoucherRepository.save(uv);
 
-        PointsHistory ph = new PointsHistory();
-        ph.setUser(user);
-        ph.setDate(today);
-        ph.setDescription("Đổi voucher " + (v.getCode() != null ? v.getCode() : ""));
-        ph.setPoints(-cost);
-        pointsHistoryRepository.save(ph);
+        if (cost > 0) {
+            PointsHistory ph = new PointsHistory();
+            ph.setUser(user);
+            ph.setDate(today);
+            ph.setDescription("Đổi voucher " + (v.getCode() != null ? v.getCode() : ""));
+            ph.setPoints(-cost);
+            pointsHistoryRepository.save(ph);
+        }
     }
 }
