@@ -19,10 +19,10 @@ public class CinemaProductResetTask {
 
     /**
      * Tự động reset tất cả sản phẩm tại rạp về trạng thái "Còn hàng" (isActive = true)
-     * Chạy vào lúc 07:00:00 sáng mỗi ngày.
+     * Chạy vào lúc 07:00:00 sáng mỗi ngày theo giờ Việt Nam.
      * Cron expression: "0 0 7 * * *" (giây phút giờ ngày tháng thứ)
      */
-    @Scheduled(cron = "0 0 7 * * *")
+    @Scheduled(cron = "0 0 7 * * *", zone = "Asia/Ho_Chi_Minh")
     @Transactional
     public void resetCinemaProductsStock() {
         log.info("Bắt đầu tự động reset trạng thái còn hàng cho tất cả sản phẩm tại rạp...");

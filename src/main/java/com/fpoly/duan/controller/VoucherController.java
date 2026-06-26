@@ -214,6 +214,7 @@ public class VoucherController {
         return VoucherDTO.builder()
                 .id(v.getVouchersId())
                 .code(v.getCode())
+                .discountType(normalizeDiscountType(v.getDiscountType()))
                 .value(v.getValue() != null ? v.getValue() : 0.0)
                 .minOrderValue(v.getMinOrderValue() != null ? v.getMinOrderValue() : 0.0)
                 .maxDiscountAmount(v.getMaxDiscountAmount() != null ? v.getMaxDiscountAmount() : 0.0)
@@ -228,6 +229,7 @@ public class VoucherController {
         if (dto.getCode() != null) {
             v.setCode(dto.getCode().trim());
         }
+        v.setDiscountType(normalizeDiscountType(dto.getDiscountType()));
         v.setValue(dto.getValue());
         v.setMinOrderValue(dto.getMinOrderValue());
         v.setMaxDiscountAmount(dto.getMaxDiscountAmount());
@@ -250,6 +252,14 @@ public class VoucherController {
             }
         }
         return v;
+    }
+
+    private String normalizeDiscountType(String type) {
+        String normalized = type == null ? "" : type.trim().toUpperCase();
+        if (normalized.equals("FIXED") || normalized.equals("AMOUNT") || normalized.equals("MONEY")) {
+            return "FIXED";
+        }
+        return "PERCENT";
     }
 
     private int toPointVoucherInt(BigDecimal value) {

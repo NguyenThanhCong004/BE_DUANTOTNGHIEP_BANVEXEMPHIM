@@ -7,6 +7,7 @@ import com.fpoly.duan.dto.StaffDashboardStats;
 import com.fpoly.duan.entity.OrderOnline;
 import com.fpoly.duan.entity.OrderDetailFood;
 import com.fpoly.duan.entity.Ticket;
+import com.fpoly.duan.entity.Cinema;
 import com.fpoly.duan.entity.Staff;
 import com.fpoly.duan.entity.StaffShift;
 import com.fpoly.duan.repository.OrderOnlineRepository;
@@ -95,17 +96,23 @@ public class StaffDashboardService {
         List<Ticket> tickets = ticketRepository.findByOrderOnline_OrderOnlineId(order.getOrderOnlineId());
         List<OrderDetailFood> foods = orderDetailFoodRepository.findByOrderOnline_OrderOnlineId(order.getOrderOnlineId());
 
-        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
-
         List<OrderDetailDTO.TicketInfo> ticketInfos = tickets.stream().map(t -> {
             String row = (t.getSeat().getRow() != null) ? t.getSeat().getRow() : "";
             String num = (t.getSeat().getNumber() != null) ? t.getSeat().getNumber() : "";
+            String qrToken = t.getQrToken();
             return OrderDetailDTO.TicketInfo.builder()
+                .ticketId(t.getTicketId())
+                .ticketCode(t.getTicketCode())
+                .qrToken(qrToken)
+                .qrImagePath(qrToken != null && !qrToken.isBlank() ? "/ticket-orders/qr/" + qrToken : null)
                 .movieTitle(t.getShowtime().getMovie().getTitle())
-                .showtime(t.getShowtime().getStartTime().format(DateTimeFormatter.ofPattern("HH:mm")))
+                .showtime(t.getShowtime().getStartTime())
+                .showtimeStart(t.getShowtime().getStartTime())
                 .roomName(t.getShowtime().getRoom().getName())
                 .seatNumber(row + num)
                 .seatTypeName(t.getSeat().getSeatType() != null ? t.getSeat().getSeatType().getName() : "Ghế thường")
+                .originalPrice(t.getOriginalPrice() != null ? t.getOriginalPrice() : t.getPrice())
+                .promotionDiscount(t.getPromotionDiscount() != null ? t.getPromotionDiscount() : 0.0)
                 .price(t.getPrice())
                 .build();
         }).collect(Collectors.toList());
@@ -118,16 +125,48 @@ public class StaffDashboardService {
                 .build()
         ).collect(Collectors.toList());
 
+        Staff staff = order.getStaff();
+        Cinema cinema = resolveCinema(order, tickets, staff);
+        String voucherCode = order.getUserVoucher() != null && order.getUserVoucher().getVoucher() != null
+                ? order.getUserVoucher().getVoucher().getCode()
+                : null;
+
         return OrderDetailDTO.builder()
+                .id(order.getOrderOnlineId())
                 .orderCode(order.getOrderCode())
-                .createdAt(order.getCreatedAt().format(fmt))
+                .createdAt(order.getCreatedAt())
+                .originalAmount(order.getOriginalAmount())
+                .discountAmount(order.getDiscountAmount())
                 .finalAmount(order.getFinalAmount())
                 .paymentMethod(order.getPaymentMethod())
+                .voucherCode(voucherCode)
                 .status(order.getStatus())
                 .customerName(order.getUser() != null ? order.getUser().getFullname() : "Khách vãng lai")
+                .customerEmail(order.getUser() != null ? order.getUser().getEmail() : null)
+                .customerPhone(order.getUser() != null ? order.getUser().getPhone() : null)
+                .staffName(staff != null ? staff.getFullname() : "Đặt Online")
+                .cinemaId(cinema != null ? cinema.getCinemaId() : null)
+                .cinemaName(cinema != null ? cinema.getName() : null)
+                .cinemaAddress(cinema != null ? cinema.getAddress() : null)
                 .tickets(ticketInfos)
                 .foods(foodInfos)
                 .build();
+    }
+
+    private Cinema resolveCinema(OrderOnline order, List<Ticket> tickets, Staff staff) {
+        if (order != null && order.getCinema() != null) {
+            return order.getCinema();
+        }
+        if (staff != null && staff.getCinema() != null) {
+            return staff.getCinema();
+        }
+        return tickets.stream()
+                .filter(t -> t.getShowtime() != null
+                        && t.getShowtime().getRoom() != null
+                        && t.getShowtime().getRoom().getCinema() != null)
+                .map(t -> t.getShowtime().getRoom().getCinema())
+                .findFirst()
+                .orElse(null);
     }
 
     public StaffDashboardStats getDashboardStats(Integer staffId) {

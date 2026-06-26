@@ -93,6 +93,8 @@ public class TicketCheckoutService {
     private final EphemeralSeatHoldService ephemeralSeatHoldService;
     private final PromotionRepository promotionRepository;
     private final PointsHistoryRepository pointsHistoryRepository;
+    private final TicketQrService ticketQrService;
+    private final TicketEmailService ticketEmailService;
 
     @Transactional
     public TicketCheckoutResponse checkout(Integer userId, TicketCheckoutRequest req) {
@@ -113,7 +115,7 @@ public class TicketCheckoutService {
         }
         Integer roomId = showtime.getRoom().getRoomId();
         Integer cinemaId = showtime.getRoom().getCinema() != null ? showtime.getRoom().getCinema().getCinemaId() : null;
-        Cinema cinema = loadCinema(cinemaId);
+        Cinema cinema = requireCustomerCinemaAvailable(cinemaId);
 
         List<Seat> seats = seatRepository.findAllByIdWithType(seatIdSet);
         if (seats.size() != seatIdSet.size()) {
@@ -188,6 +190,8 @@ public class TicketCheckoutService {
             t.setStatus(TICKET_STATUS_PENDING);
             tickets.add(t);
         }
+        ticketRepository.saveAll(tickets);
+        ticketQrService.assignSecureCodes(tickets);
         ticketRepository.saveAll(tickets);
 
         List<OrderDetailFood> foodRows = new ArrayList<>();
@@ -267,6 +271,18 @@ public class TicketCheckoutService {
 
         // Use final amount after discount for PayOS
         int finalAmountVnd = (int) Math.round(finalAmount);
+        if (finalAmountVnd <= 0) {
+            order.setPaymentMethod(discountAmount > 0 ? "VOUCHER" : "FREE");
+            orderOnlineRepository.save(order);
+            finalizePaidOrder(order);
+            rewardPaidOrder(order);
+            return TicketCheckoutResponse.builder()
+                    .orderOnlineId(order.getOrderOnlineId())
+                    .payosOrderCode(payosOrderCode)
+                    .amountVnd(0)
+                    .payos(null)
+                    .build();
+        }
         return finalizePayos(user, payosOrderCode, finalAmountVnd, description, req.getReturnUrl(), req.getCancelUrl(), order);
     }
 
@@ -288,7 +304,7 @@ public class TicketCheckoutService {
         Integer cinemaId = showtime.getRoom() != null && showtime.getRoom().getCinema() != null
                 ? showtime.getRoom().getCinema().getCinemaId()
                 : null;
-        loadCinema(cinemaId);
+        requireCustomerCinemaAvailable(cinemaId);
 
         List<Seat> seats = seatRepository.findAllByIdWithType(seatIdSet);
         if (seats.size() != seatIdSet.size()) {
@@ -605,12 +621,8 @@ public class TicketCheckoutService {
     private Cinema requireCustomerCinemaAvailable(Integer cinemaId) {
         Cinema cinema = loadCinema(cinemaId);
         if (cinema.getStatus() != null && cinema.getStatus() != 1) {
-            boolean hasRemainingShowtimes = showtimeRepository.existsByRoom_Cinema_CinemaIdAndStartTimeGreaterThanEqual(
-                    cinema.getCinemaId(), todayInAppZone().atStartOfDay());
-            if (!hasRemainingShowtimes) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Rạp đã tạm ngừng và không còn suất chiếu đang mở");
-            }
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Rạp đang tạm khóa, không thể đặt vé hoặc bắp nước");
         }
         return cinema;
     }
@@ -812,6 +824,24 @@ public class TicketCheckoutService {
     }
 
     /**
+     * Ảnh QR đúng định dạng để app khách hiển thị và nhân viên quét.
+     * QR chứa qrToken đã mã hóa, không phải orderCode hay chuỗi tự tạo ở FE/app.
+     */
+    @Transactional(readOnly = true)
+    public byte[] getTicketQrPng(String qrToken) {
+        if (qrToken == null || qrToken.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thiếu mã QR vé");
+        }
+        Ticket ticket = ticketRepository.findByQrToken(qrToken.trim())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy mã QR vé"));
+        if (ticket.getOrderOnline() == null || ticket.getOrderOnline().getStatus() == null
+                || ticket.getOrderOnline().getStatus() == ORDER_STATUS_CANCELLED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vé không hợp lệ");
+        }
+        return ticketQrService.toPng(ticket.getQrToken());
+    }
+
+    /**
      * Xác nhận thanh toán từ webhook PayOS (chữ ký đã được kiểm tra trước khi gọi).
      */
     @Transactional
@@ -920,6 +950,9 @@ public class TicketCheckoutService {
             t.setStatus(TICKET_STATUS_PAID);
         }
         ticketRepository.saveAll(tickets);
+
+        // Chỉ gửi sau khi các vé đã có trạng thái PAID và QR hợp lệ.
+        ticketEmailService.sendPaidTicketEmailIfNeeded(order);
 
         List<OrderDetailFood> foods = orderDetailFoodRepository.findByOrderOnline_OrderOnlineId(order.getOrderOnlineId());
         for (OrderDetailFood f : foods) {
@@ -1080,14 +1113,17 @@ public class TicketCheckoutService {
         }
         String type = voucher.getDiscountType();
         double value = voucher.getValue();
-        double maxDiscount = voucher.getMaxDiscountAmount() != null ? voucher.getMaxDiscountAmount() : Double.MAX_VALUE;
+        double maxDiscount = voucher.getMaxDiscountAmount() != null && voucher.getMaxDiscountAmount() > 0
+                ? voucher.getMaxDiscountAmount()
+                : Double.MAX_VALUE;
 
         double discount = 0.0;
-        if ("PERCENT".equalsIgnoreCase(type) || "%".equals(type)) {
-            discount = orderTotal * (value / 100.0);
-        } else {
+        if (isFixedDiscount(type)) {
             // FIXED amount
             discount = value;
+        } else {
+            // Default của hệ thống voucher hiện tại là phần trăm.
+            discount = orderTotal * (value / 100.0);
         }
         // Apply max discount limit
         if (discount > maxDiscount) {
@@ -1098,5 +1134,10 @@ public class TicketCheckoutService {
             discount = orderTotal;
         }
         return discount;
+    }
+
+    private boolean isFixedDiscount(String type) {
+        String normalized = type == null ? "" : type.trim().toUpperCase();
+        return normalized.equals("FIXED") || normalized.equals("AMOUNT") || normalized.equals("MONEY");
     }
 }
