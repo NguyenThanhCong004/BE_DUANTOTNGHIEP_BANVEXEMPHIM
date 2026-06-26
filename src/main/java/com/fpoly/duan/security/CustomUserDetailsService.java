@@ -39,9 +39,9 @@ public class CustomUserDetailsService implements UserDetailsService {
     public CustomUserDetails loadStaffAccount(String usernameOrEmail) throws UsernameNotFoundException {
         String key = usernameOrEmail != null ? usernameOrEmail.trim() : "";
         // Staff: tránh NonUniqueResult khi trùng email/username trong DB
-        Staff staff = staffRepository.findFirstByEmailOrderByStaffIdAsc(key).orElse(null);
+        Staff staff = staffRepository.findFirstByEmailIgnoreCaseOrderByStaffIdAsc(key).orElse(null);
         if (staff == null) {
-            staff = staffRepository.findFirstByUsernameOrderByStaffIdAsc(key).orElse(null);
+            staff = staffRepository.findFirstByUsernameIgnoreCaseOrderByStaffIdAsc(key).orElse(null);
         }
         if (staff != null) {
             return CustomUserDetails.builder().staff(staff).build();
@@ -62,9 +62,9 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     private CustomUserDetails loadAnyAccount(String username) throws UsernameNotFoundException {
         String key = username != null ? username.trim() : "";
-        Staff staff = staffRepository.findFirstByEmailOrderByStaffIdAsc(key).orElse(null);
+        Staff staff = staffRepository.findFirstByEmailIgnoreCaseOrderByStaffIdAsc(key).orElse(null);
         if (staff == null) {
-            staff = staffRepository.findFirstByUsernameOrderByStaffIdAsc(key).orElse(null);
+            staff = staffRepository.findFirstByUsernameIgnoreCaseOrderByStaffIdAsc(key).orElse(null);
         }
         if (staff != null) {
             return CustomUserDetails.builder().staff(staff).build();

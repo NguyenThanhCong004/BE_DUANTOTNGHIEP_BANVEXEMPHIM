@@ -48,6 +48,7 @@ public class AuthServiceImpl implements AuthService {
             throw new BadCredentialsException("Sai tài khoản hoặc mật khẩu");
         }
         authenticatePassword(loginRequest.getPassword(), userDetails);
+        assertStaffCinemaOperational(userDetails);
 
         String token = jwtService.generateToken(userDetails);
         String refreshToken = jwtService.generateRefreshToken(userDetails);
@@ -156,6 +157,7 @@ public class AuthServiceImpl implements AuthService {
         if (!userDetails.isEnabled() || !userDetails.isAccountNonLocked()) {
             throw new DisabledException("Tài khoản đã bị khóa");
         }
+        assertStaffCinemaOperational(userDetails);
         if (!jwtService.isRefreshTokenValid(refreshToken, userDetails)) {
             throw new RuntimeException("Refresh token không hợp lệ");
         }
@@ -201,6 +203,19 @@ public class AuthServiceImpl implements AuthService {
         }
         if (!userDetails.isEnabled() || !userDetails.isAccountNonLocked()) {
             throw new DisabledException("Tài khoản đã bị khóa");
+        }
+    }
+
+    private void assertStaffCinemaOperational(CustomUserDetails userDetails) {
+        if (userDetails == null || userDetails.getStaff() == null) {
+            return;
+        }
+        Staff staff = userDetails.getStaff();
+        if ("SUPER_ADMIN".equalsIgnoreCase(staff.getRole())) {
+            return;
+        }
+        if (staff.getCinema() != null && staff.getCinema().getStatus() != null && staff.getCinema().getStatus() != 1) {
+            throw new DisabledException("Rạp của tài khoản đang bị khóa. Vui lòng liên hệ Super Admin.");
         }
     }
 

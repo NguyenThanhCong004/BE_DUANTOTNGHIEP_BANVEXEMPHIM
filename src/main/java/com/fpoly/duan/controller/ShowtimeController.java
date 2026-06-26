@@ -9,6 +9,8 @@ import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -81,6 +83,7 @@ public class ShowtimeController {
     @GetMapping
     @Operation(summary = "Danh sách suất chiếu")
     public ResponseEntity<ApiResponse<List<ShowtimeSlotResponse>>> getShowtimes(
+            Authentication authentication,
             @Parameter(description = "Lọc theo rạp") @RequestParam(required = false) Integer cinemaId,
             @Parameter(description = "Lọc theo phim") @RequestParam(required = false) Integer movieId,
             @RequestParam(required = false) String search,
@@ -101,8 +104,10 @@ public class ShowtimeController {
         LocalDate maxDate = now.toLocalDate().plusDays(7);
 
         String needle = SearchUtils.pick(search, keyword, q);
+        boolean canSeeLockedCinema = isSuperAdmin(authentication);
 
         List<ShowtimeSlotResponse> slotList = showtimes.stream()
+                .filter(s -> canSeeLockedCinema || isShowtimeCinemaOperational(s))
                 .filter(s -> s.getStartTime() != null)
                 .filter(s -> !s.getStartTime().toLocalDate().isBefore(now.toLocalDate()))
                 .filter(s -> !s.getStartTime().toLocalDate().isAfter(maxDate))
@@ -127,9 +132,12 @@ public class ShowtimeController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Chi tiết suất chiếu")
-    public ResponseEntity<ApiResponse<ShowtimeSlotResponse>> getShowtimeById(@PathVariable Integer id) {
+    public ResponseEntity<ApiResponse<ShowtimeSlotResponse>> getShowtimeById(Authentication authentication, @PathVariable Integer id) {
         Showtime s = showtimeRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy suất chiếu với id: " + id));
+        if (!isSuperAdmin(authentication) && !isShowtimeCinemaOperational(s)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy suất chiếu với id: " + id);
+        }
 
         LocalDateTime now = nowInAppZone();
         List<Integer> bookedSeatIds = ticketRepository.findHeldSeatIdsByShowtime(
@@ -338,5 +346,19 @@ public class ShowtimeController {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Trùng lịch trong phòng này — chọn giờ khác hoặc phòng khác.");
             }
         }
+    }
+
+    private boolean isShowtimeCinemaOperational(Showtime showtime) {
+        return showtime != null
+                && showtime.getRoom() != null
+                && cinemaScopeService.isCinemaOperational(showtime.getRoom().getCinema());
+    }
+
+    private boolean isSuperAdmin(Authentication authentication) {
+        return authentication != null
+                && authentication.getAuthorities() != null
+                && authentication.getAuthorities().stream()
+                        .map(GrantedAuthority::getAuthority)
+                        .anyMatch("ROLE_SUPER_ADMIN"::equals);
     }
 }

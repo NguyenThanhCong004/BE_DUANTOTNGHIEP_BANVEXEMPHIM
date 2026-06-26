@@ -64,7 +64,7 @@ public class CinemaScopeService {
     }
 
     public boolean isCinemaPubliclyAvailable(Cinema cinema) {
-        return isCinemaOperational(cinema) || hasRemainingShowtimes(cinema);
+        return isCinemaOperational(cinema);
     }
 
     public void requireCinemaOperational(Cinema cinema) {

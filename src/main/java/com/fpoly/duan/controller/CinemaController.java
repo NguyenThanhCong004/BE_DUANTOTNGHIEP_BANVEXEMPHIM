@@ -5,6 +5,8 @@ import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -49,11 +51,14 @@ public class CinemaController {
     @GetMapping
     @Operation(summary = "Danh sách rạp")
     public ResponseEntity<ApiResponse<List<CinemaDTO>>> list(
+            Authentication authentication,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String q) {
         String term = SearchUtils.pick(search, keyword, q);
+        boolean canSeeLocked = isSuperAdmin(authentication);
         List<CinemaDTO> data = cinemaRepository.findAll().stream()
+                .filter(c -> canSeeLocked || isOperational(c))
                 .filter(c -> SearchUtils.matches(term, c.getCinemaId(), c.getName(), c.getAddress(), c.getStatus()))
                 .map(this::toDTO)
                 .collect(Collectors.toList());
@@ -66,9 +71,12 @@ public class CinemaController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Chi tiết rạp")
-    public ResponseEntity<ApiResponse<CinemaDTO>> getById(@PathVariable Integer id) {
+    public ResponseEntity<ApiResponse<CinemaDTO>> getById(Authentication authentication, @PathVariable Integer id) {
         Cinema c = cinemaRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy rạp với id: " + id));
+        if (!isSuperAdmin(authentication) && !isOperational(c)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy rạp với id: " + id);
+        }
         return ResponseEntity.ok(ApiResponse.<CinemaDTO>builder()
                 .status(HttpStatus.OK.value())
                 .message("Lấy thông tin rạp thành công")
@@ -183,5 +191,17 @@ public class CinemaController {
                 .address(c.getAddress())
                 .status(c.getStatus())
                 .build();
+    }
+
+    private boolean isOperational(Cinema c) {
+        return c != null && (c.getStatus() == null || c.getStatus() == 1);
+    }
+
+    private boolean isSuperAdmin(Authentication authentication) {
+        return authentication != null
+                && authentication.getAuthorities() != null
+                && authentication.getAuthorities().stream()
+                        .map(GrantedAuthority::getAuthority)
+                        .anyMatch("ROLE_SUPER_ADMIN"::equals);
     }
 }

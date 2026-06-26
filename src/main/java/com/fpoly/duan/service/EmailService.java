@@ -10,6 +10,8 @@ import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 
+import java.util.Map;
+
 /**
  * Gửi email qua cấu hình {@code spring.mail.*} (Gmail SMTP trong application.properties).
  */
@@ -59,6 +61,21 @@ public class EmailService {
         helper.setTo(to);
         helper.setSubject(subject);
         helper.setText(htmlBody, true);
+        mailSender.send(mime);
+    }
+
+    /** Email HTML có ảnh nhúng (CID), dùng để gửi QR mà không lộ payload ra dịch vụ bên thứ ba. */
+    public void sendHtmlWithInlineImages(String to, String subject, String htmlBody, Map<String, byte[]> images)
+            throws MessagingException {
+        MimeMessage mime = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(mime, true, "UTF-8");
+        helper.setFrom(requireFromAddress());
+        helper.setTo(to);
+        helper.setSubject(subject);
+        helper.setText(htmlBody, true);
+        for (Map.Entry<String, byte[]> image : images.entrySet()) {
+            helper.addInline(image.getKey(), new org.springframework.core.io.ByteArrayResource(image.getValue()), "image/png");
+        }
         mailSender.send(mime);
     }
 }

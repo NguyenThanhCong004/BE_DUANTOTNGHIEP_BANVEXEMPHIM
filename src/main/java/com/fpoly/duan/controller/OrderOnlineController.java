@@ -127,24 +127,31 @@ public class OrderOnlineController {
 
         // Lấy thông tin vé
         List<OrderOnlineDTO.TicketInfoDTO> tickets = ticketRepository.findByOrderOnline_OrderOnlineId(o.getOrderOnlineId())
-                .stream().map(t -> OrderOnlineDTO.TicketInfoDTO.builder()
-                        .movieTitle(t.getShowtime() != null && t.getShowtime().getMovie() != null
-                                ? t.getShowtime().getMovie().getTitle()
-                                : "N/A")
-                        .showtime(t.getShowtime() != null ? t.getShowtime().getStartTime() : null)
-                        .roomName(t.getShowtime() != null && t.getShowtime().getRoom() != null
-                                ? t.getShowtime().getRoom().getName()
-                                : "N/A")
-                        .seatNumber(t.getSeat() != null
-                                ? (t.getSeat().getRow() + t.getSeat().getNumber())
-                                : "N/A")
-                        .seatTypeName(t.getSeat() != null && t.getSeat().getSeatType() != null
-                                ? t.getSeat().getSeatType().getName()
-                                : "N/A")
-                        .originalPrice(t.getOriginalPrice() != null ? t.getOriginalPrice() : t.getPrice())
-                        .promotionDiscount(t.getPromotionDiscount() != null ? t.getPromotionDiscount() : 0.0)
-                        .price(t.getPrice())
-                        .build())
+                .stream().map(t -> {
+                    String qrToken = t.getQrToken();
+                    return OrderOnlineDTO.TicketInfoDTO.builder()
+                            .ticketId(t.getTicketId())
+                            .ticketCode(t.getTicketCode())
+                            .qrToken(qrToken)
+                            .qrImagePath(qrToken != null && !qrToken.isBlank() ? "/ticket-orders/qr/" + qrToken : null)
+                            .movieTitle(t.getShowtime() != null && t.getShowtime().getMovie() != null
+                                    ? t.getShowtime().getMovie().getTitle()
+                                    : "N/A")
+                            .showtime(t.getShowtime() != null ? t.getShowtime().getStartTime() : null)
+                            .roomName(t.getShowtime() != null && t.getShowtime().getRoom() != null
+                                    ? t.getShowtime().getRoom().getName()
+                                    : "N/A")
+                            .seatNumber(t.getSeat() != null
+                                    ? (t.getSeat().getRow() + t.getSeat().getNumber())
+                                    : "N/A")
+                            .seatTypeName(t.getSeat() != null && t.getSeat().getSeatType() != null
+                                    ? t.getSeat().getSeatType().getName()
+                                    : "N/A")
+                            .originalPrice(t.getOriginalPrice() != null ? t.getOriginalPrice() : t.getPrice())
+                            .promotionDiscount(t.getPromotionDiscount() != null ? t.getPromotionDiscount() : 0.0)
+                            .price(t.getPrice())
+                            .build();
+                })
                 .collect(Collectors.toList());
 
         // Lấy thông tin đồ ăn

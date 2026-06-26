@@ -182,14 +182,14 @@ public class CustomerMeController {
     }
 
     @PostMapping("/vouchers/redeem")
-    @Operation(summary = "Đổi voucher bằng điểm")
+    @Operation(summary = "Đổi/nhận voucher — voucher 0 điểm sẽ không trừ điểm")
     public ResponseEntity<ApiResponse<Void>> redeem(Authentication authentication,
             @Valid @RequestBody VoucherRedeemRequest body) {
         Integer uid = requireCustomerUserId(authentication);
         customerMeService.redeemVoucher(uid, body.voucherId());
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
-                .message("Đổi voucher thành công")
+                .message("Nhận voucher thành công")
                 .build());
     }
 

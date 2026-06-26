@@ -80,15 +80,15 @@ public class CinemaProductMenuController {
                 continue;
             }
             CinemaProduct cp = byProductId.get(p.getProductId());
-            boolean selling = cinemaScopeService.isCinemaPubliclyAvailable(cinema) && cp != null && Boolean.TRUE.equals(cp.getIsActive());
-            String groupTerm = selling ? onSaleTerm : notOnSaleTerm;
+            boolean inCinemaMenu = cinemaScopeService.isCinemaPubliclyAvailable(cinema) && cp != null;
+            String groupTerm = inCinemaMenu ? onSaleTerm : notOnSaleTerm;
             if (!SearchUtils.matches(groupTerm,
                     p.getProductId(), p.getName(), p.getDescription(), p.getPrice(),
                     p.getCategory() != null ? p.getCategory().getName() : null)) {
                 continue;
             }
             CinemaProductOfferDTO row = toOffer(p, cp);
-            if (selling) {
+            if (inCinemaMenu) {
                 onSale.add(row);
             } else {
                 notOnSale.add(row);
@@ -174,6 +174,7 @@ public class CinemaProductMenuController {
                 .price(p.getPrice())
                 .image(p.getImage())
                 .globalStatus(p.getStatus() != null ? p.getStatus() : 1)
+                .isActive(cp != null ? Boolean.TRUE.equals(cp.getIsActive()) : null)
                 .categoryId(c != null ? c.getCategoryProductId() : null)
                 .categoryName(c != null ? c.getName() : null)
                 .build();

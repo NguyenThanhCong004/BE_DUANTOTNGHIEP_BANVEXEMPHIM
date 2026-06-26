@@ -12,6 +12,8 @@ import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.StaffDTO;
 import com.fpoly.duan.dto.UserPasswordChangeRequest;
+import com.fpoly.duan.entity.Cinema;
+import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.security.CustomUserDetails;
 import com.fpoly.duan.service.CinemaScopeService;
 import com.fpoly.duan.service.StaffService;
@@ -32,6 +34,55 @@ public class StaffController {
 
     private final StaffService staffService;
     private final CinemaScopeService cinemaScopeService;
+    private final CinemaRepository cinemaRepository;
+
+    @GetMapping("/me")
+    @Operation(summary = "Hồ sơ nhân viên đang đăng nhập")
+    public ResponseEntity<ApiResponse<StaffDTO>> getMyStaffProfile() {
+        StaffDTO staff = staffService.getStaffById(currentStaffId());
+        return ResponseEntity.ok(ApiResponse.<StaffDTO>builder()
+                .status(HttpStatus.OK.value())
+                .message("Thành công")
+                .data(staff)
+                .build());
+    }
+
+    @PutMapping("/me")
+    @Operation(summary = "Cập nhật hồ sơ nhân viên đang đăng nhập")
+    public ResponseEntity<ApiResponse<StaffDTO>> updateMyStaffProfile(@RequestBody StaffDTO staffDTO) {
+        Integer staffId = currentStaffId();
+        StaffDTO current = staffService.getStaffById(staffId);
+
+        StaffDTO safePayload = StaffDTO.builder()
+                .fullname(staffDTO != null ? staffDTO.getFullname() : null)
+                .email(staffDTO != null ? staffDTO.getEmail() : null)
+                .username(staffDTO != null ? staffDTO.getUsername() : null)
+                .phone(staffDTO != null ? staffDTO.getPhone() : null)
+                .birthday(staffDTO != null ? staffDTO.getBirthday() : null)
+                .avatar(staffDTO != null ? staffDTO.getAvatar() : null)
+                // Không cho tự đổi vai trò, trạng thái hoặc rạp qua hồ sơ cá nhân.
+                .role(current.getRole())
+                .status(current.getStatus())
+                .cinemaId(current.getCinemaId())
+                .build();
+
+        StaffDTO updated = staffService.updateStaff(staffId, safePayload);
+        return ResponseEntity.ok(ApiResponse.<StaffDTO>builder()
+                .status(HttpStatus.OK.value())
+                .message("Cập nhật thành công")
+                .data(updated)
+                .build());
+    }
+
+    @PutMapping("/me/password")
+    @Operation(summary = "Đổi mật khẩu nhân viên đang đăng nhập")
+    public ResponseEntity<ApiResponse<Void>> changeMyPassword(@Valid @RequestBody UserPasswordChangeRequest body) {
+        staffService.changePassword(currentStaffId(), body.getCurrentPassword(), body.getNewPassword());
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .status(HttpStatus.OK.value())
+                .message("Đổi mật khẩu thành công")
+                .build());
+    }
 
     @GetMapping
     @Operation(summary = "Danh sách nhân viên (Admin dùng)")
@@ -86,6 +137,7 @@ public class StaffController {
     public ResponseEntity<ApiResponse<StaffDTO>> createStaff(@Valid @RequestBody StaffDTO staffDTO) {
         requireWritableRole(staffDTO.getRole());
         cinemaScopeService.requireCinemaAccess(staffDTO.getCinemaId());
+        requireWritableCinemaOperational(staffDTO.getCinemaId());
         StaffDTO created = staffService.createStaff(staffDTO);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<StaffDTO>builder()
                 .status(HttpStatus.CREATED.value())
@@ -105,6 +157,9 @@ public class StaffController {
         }
         if (staffDTO.getCinemaId() != null) {
             cinemaScopeService.requireCinemaAccess(staffDTO.getCinemaId());
+            requireWritableCinemaOperational(staffDTO.getCinemaId());
+        } else if (!selfProfileUpdate) {
+            requireWritableCinemaOperational(current.getCinemaId());
         }
 
         boolean hasChanges = false;
@@ -177,6 +232,16 @@ public class StaffController {
         }
     }
 
+    private void requireWritableCinemaOperational(Integer cinemaId) {
+        if (cinemaScopeService.isSuperAdmin() || cinemaId == null) {
+            return;
+        }
+        Cinema cinema = cinemaRepository.findById(cinemaId)
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Không tìm thấy rạp với mã: " + cinemaId));
+        cinemaScopeService.requireCinemaOperational(cinema);
+    }
+
     private boolean isSelfProfileUpdate(Integer id, StaffDTO current, StaffDTO requested) {
         if (id == null || current == null || requested == null || cinemaScopeService.isSuperAdmin()) {
             return false;
@@ -209,5 +274,17 @@ public class StaffController {
         return SearchUtils.matches(term,
                 staff.getStaffId(), staff.getFullname(), staff.getUsername(), staff.getEmail(),
                 staff.getPhone(), staff.getRole(), staff.getStatus(), staff.getCinemaId(), staff.getCinemaName());
+    }
+
+    private Integer currentStaffId() {
+        org.springframework.security.core.Authentication auth =
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !(auth.getPrincipal() instanceof CustomUserDetails details)
+                || details.getStaff() == null
+                || details.getStaff().getStaffId() == null) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                    "Chưa đăng nhập nhân sự");
+        }
+        return details.getStaff().getStaffId();
     }
 }
