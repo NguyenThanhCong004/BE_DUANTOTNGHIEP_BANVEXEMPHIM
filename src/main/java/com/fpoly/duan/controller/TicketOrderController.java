@@ -1,8 +1,12 @@
 package com.fpoly.duan.controller;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,6 +36,15 @@ import lombok.RequiredArgsConstructor;
 public class TicketOrderController {
 
     private final TicketCheckoutService ticketCheckoutService;
+
+    @GetMapping(value = "/qr/{qrToken}", produces = MediaType.IMAGE_PNG_VALUE)
+    @Operation(summary = "Ảnh QR vé", description = "Trả ảnh QR PNG chứa qrToken bảo mật để app/web hiển thị cho nhân viên quét.")
+    public ResponseEntity<byte[]> ticketQr(@PathVariable String qrToken) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .contentType(MediaType.IMAGE_PNG)
+                .body(ticketCheckoutService.getTicketQrPng(qrToken));
+    }
 
     @PostMapping("/quote")
     @Operation(summary = "Báo giá vé (không tạo đơn)", description = """

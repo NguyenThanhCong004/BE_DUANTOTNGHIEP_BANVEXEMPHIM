@@ -2,6 +2,7 @@ package com.fpoly.duan.repository;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -66,6 +67,8 @@ public interface TicketRepository extends JpaRepository<Ticket, Integer> {
     Long countTicketsByStaffBetweenJPQL(@Param("staffId") Integer staffId, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
     List<Ticket> findByOrderOnline_OrderOnlineId(Integer orderOnlineId);
+
+    Optional<Ticket> findByQrToken(String qrToken);
 
     @Query("SELECT t FROM Ticket t " +
            "JOIN t.orderOnline o " +

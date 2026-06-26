@@ -48,4 +48,12 @@ public class OrderOnline {
 
     @Column(name = "payment_method")
     private String paymentMethod; // CASH, TRANSFER, PAYOS
+
+    /** Mốc gửi email vé; tránh gửi lặp khi PayOS webhook được gọi lại. */
+    @Column(name = "ticket_email_sent_at")
+    private LocalDateTime ticketEmailSentAt;
+
+    /** Mã HMAC bất đối xứng dùng để sinh mã vạch hóa đơn tại quầy, không lộ mã đơn hoặc thông tin rạp. */
+    @Column(name = "receipt_token", length = 1500, unique = true)
+    private String receiptToken;
 }

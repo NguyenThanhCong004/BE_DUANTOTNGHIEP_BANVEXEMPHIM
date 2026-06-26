@@ -37,6 +37,10 @@ public class OrderOnlineDTO {
     @Data
     @Builder
     public static class TicketInfoDTO {
+        private Integer ticketId;
+        private String ticketCode;
+        private String qrToken;
+        private String qrImagePath;
         private String movieTitle;
         private LocalDateTime showtime;
         private String roomName;

@@ -18,6 +18,8 @@ public interface OrderOnlineRepository extends JpaRepository<OrderOnline, Intege
 
        Optional<OrderOnline> findByOrderCode(String orderCode);
 
+       Optional<OrderOnline> findByReceiptToken(String receiptToken);
+
        boolean existsByOrderCode(String orderCode);
 
        @Query("SELECT COALESCE(SUM(o.finalAmount), 0.0) FROM OrderOnline o WHERE o.status = 1")
