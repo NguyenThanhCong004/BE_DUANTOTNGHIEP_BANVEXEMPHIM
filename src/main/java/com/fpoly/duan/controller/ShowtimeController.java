@@ -277,6 +277,7 @@ public class ShowtimeController {
         if (room != null && room.getCinema() != null) {
             dto.setCinemaId(room.getCinema().getCinemaId());
             dto.setCinemaName(room.getCinema().getName());
+            dto.setCinemaAddress(room.getCinema().getAddress());
         }
         dto.setSurcharge(surcharge);
         dto.setBasePrice(basePrice);

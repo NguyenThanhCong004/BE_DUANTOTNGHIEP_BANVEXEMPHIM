@@ -25,4 +25,5 @@ public class MeTransactionItemDto {
     private String seatLabel;
     private String roomName;
     private String cinemaName;
+    private String cinemaAddress;
 }

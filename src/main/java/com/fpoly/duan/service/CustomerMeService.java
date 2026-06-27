@@ -107,6 +107,9 @@ public class CustomerMeService {
             String cinemaName = st != null && st.getRoom() != null && st.getRoom().getCinema() != null
                     ? st.getRoom().getCinema().getName()
                     : null;
+            String cinemaAddress = st != null && st.getRoom() != null && st.getRoom().getCinema() != null
+                    ? st.getRoom().getCinema().getAddress()
+                    : null;
             String qrToken = t.getQrToken();
             double price = t.getPrice() != null ? t.getPrice() : 0;
             items.add(MeTransactionItemDto.builder()
@@ -127,6 +130,7 @@ public class CustomerMeService {
                     .seatLabel(seatLabel)
                     .roomName(roomName)
                     .cinemaName(cinemaName)
+                    .cinemaAddress(cinemaAddress)
                     .build());
         }
         for (OrderDetailFood f : foods) {
