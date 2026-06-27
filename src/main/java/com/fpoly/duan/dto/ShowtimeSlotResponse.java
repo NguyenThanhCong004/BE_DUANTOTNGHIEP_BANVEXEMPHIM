@@ -38,6 +38,9 @@ public class ShowtimeSlotResponse {
     @JsonProperty("cinema_name")
     private String cinemaName;
 
+    @JsonProperty("cinema_address")
+    private String cinemaAddress;
+
     private Double surcharge;
 
     @JsonProperty("base_price")
