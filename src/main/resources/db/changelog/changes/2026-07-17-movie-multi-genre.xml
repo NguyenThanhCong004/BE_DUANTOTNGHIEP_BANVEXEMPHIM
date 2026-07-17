@@ -1,0 +1,66 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Phim chọn nhiều thể loại: chuyển movie.genre_id (1-1) sang bảng nối
+         movie_genres (n-n), giữ lại dữ liệu thể loại đã gán cho phim cũ. -->
+
+    <changeSet id="2026-07-17-movie-multi-genre-1" author="claude">
+        <createTable tableName="movie_genres">
+            <column name="movie_id" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column name="genre_id" type="int">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="2026-07-17-movie-multi-genre-2" author="claude">
+        <addPrimaryKey tableName="movie_genres" columnNames="movie_id, genre_id" constraintName="PK_movie_genres"/>
+    </changeSet>
+
+    <changeSet id="2026-07-17-movie-multi-genre-3" author="claude">
+        <addForeignKeyConstraint baseTableName="movie_genres" baseColumnNames="movie_id"
+            constraintName="FK_movie_genres_movie" referencedTableName="movie" referencedColumnNames="movie_id"
+            onDelete="CASCADE"/>
+    </changeSet>
+
+    <changeSet id="2026-07-17-movie-multi-genre-4" author="claude">
+        <addForeignKeyConstraint baseTableName="movie_genres" baseColumnNames="genre_id"
+            constraintName="FK_movie_genres_genre" referencedTableName="genres" referencedColumnNames="genre_id"/>
+    </changeSet>
+
+    <changeSet id="2026-07-17-movie-multi-genre-5" author="claude">
+        <sql>
+            INSERT INTO movie_genres (movie_id, genre_id)
+            SELECT movie_id, genre_id FROM movie WHERE genre_id IS NOT NULL;
+        </sql>
+        <rollback>
+            <sql>DELETE FROM movie_genres;</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="2026-07-17-movie-multi-genre-6" author="claude">
+        <createIndex indexName="ix_movie_genres_genre_id" tableName="movie_genres">
+            <column name="genre_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="2026-07-17-movie-multi-genre-7" author="claude">
+        <preConditions onFail="MARK_RAN">
+            <indexExists indexName="ix_movie_genre_id" tableName="movie"/>
+        </preConditions>
+        <dropIndex indexName="ix_movie_genre_id" tableName="movie"/>
+    </changeSet>
+
+    <changeSet id="2026-07-17-movie-multi-genre-8" author="claude">
+        <dropForeignKeyConstraint baseTableName="movie" constraintName="FK2o9bb7ni7w8br9vtpkgx9xufw"/>
+    </changeSet>
+
+    <changeSet id="2026-07-17-movie-multi-genre-9" author="claude">
+        <dropColumn tableName="movie" columnName="genre_id"/>
+    </changeSet>
+
+</databaseChangeLog>

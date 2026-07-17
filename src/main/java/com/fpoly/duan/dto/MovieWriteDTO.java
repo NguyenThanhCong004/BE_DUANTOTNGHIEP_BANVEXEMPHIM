@@ -1,6 +1,7 @@
 package com.fpoly.duan.dto;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -17,7 +18,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class MovieWriteDTO {
 
-    private Integer genreId;
+    private List<Integer> genreIds;
 
     @NotBlank(message = "Tên phim không được để trống")
     @Size(max = 255, message = "Tên phim không được vượt quá 255 ký tự")

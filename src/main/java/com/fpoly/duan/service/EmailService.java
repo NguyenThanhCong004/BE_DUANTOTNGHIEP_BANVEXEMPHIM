@@ -9,7 +9,9 @@ import org.springframework.stereotype.Service;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+import java.io.UnsupportedEncodingException;
 import java.util.Map;
 
 /**
@@ -17,7 +19,10 @@ import java.util.Map;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class EmailService {
+
+    private static final String FROM_DISPLAY_NAME = "MovieZone";
 
     private final JavaMailSender mailSender;
 
@@ -39,12 +44,22 @@ public class EmailService {
         return fromAddress.trim();
     }
 
+    /** Set From kèm tên hiển thị "MovieZone"; lỗi encode tên hiển thị (thực tế không xảy ra với ASCII) chỉ log rồi dùng địa chỉ trần. */
+    private void setBrandedFrom(MimeMessageHelper helper) throws MessagingException {
+        try {
+            helper.setFrom(requireFromAddress(), FROM_DISPLAY_NAME);
+        } catch (UnsupportedEncodingException e) {
+            log.warn("Không set được tên hiển thị người gửi, dùng địa chỉ trần: {}", e.getMessage());
+            helper.setFrom(requireFromAddress());
+        }
+    }
+
     /**
      * Email dạng text thuần.
      */
     public void sendSimple(String to, String subject, String text) {
         SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(requireFromAddress());
+        message.setFrom(FROM_DISPLAY_NAME + " <" + requireFromAddress() + ">");
         message.setTo(to);
         message.setSubject(subject);
         message.setText(text);
@@ -57,7 +72,7 @@ public class EmailService {
     public void sendHtml(String to, String subject, String htmlBody) throws MessagingException {
         MimeMessage mime = mailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(mime, true, "UTF-8");
-        helper.setFrom(requireFromAddress());
+        setBrandedFrom(helper);
         helper.setTo(to);
         helper.setSubject(subject);
         helper.setText(htmlBody, true);
@@ -69,7 +84,7 @@ public class EmailService {
             throws MessagingException {
         MimeMessage mime = mailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(mime, true, "UTF-8");
-        helper.setFrom(requireFromAddress());
+        setBrandedFrom(helper);
         helper.setTo(to);
         helper.setSubject(subject);
         helper.setText(htmlBody, true);

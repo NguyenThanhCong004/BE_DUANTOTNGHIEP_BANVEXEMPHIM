@@ -21,6 +21,9 @@ public interface StaffService {
 
     void changePassword(Integer staffId, String currentPassword, String newPassword);
 
+    /** Đặt lại mật khẩu không cần mật khẩu hiện tại (dùng cho luồng quên mật khẩu qua OTP). */
+    void resetPasswordByStaffId(Integer staffId, String newPassword);
+
     void deleteStaff(Integer id);
 }
 

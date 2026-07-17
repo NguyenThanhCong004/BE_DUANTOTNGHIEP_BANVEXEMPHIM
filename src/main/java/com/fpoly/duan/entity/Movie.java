@@ -3,6 +3,8 @@ package com.fpoly.duan.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
 @Entity
@@ -42,7 +44,11 @@ public class Movie {
     @Column(name = "base_price")
     private Double basePrice;
 
-    @ManyToOne
-    @JoinColumn(name = "genre_id")
-    private Genre genre;
+    @ManyToMany
+    @JoinTable(
+            name = "movie_genres",
+            joinColumns = @JoinColumn(name = "movie_id"),
+            inverseJoinColumns = @JoinColumn(name = "genre_id")
+    )
+    private List<Genre> genres = new ArrayList<>();
 }

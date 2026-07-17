@@ -1,0 +1,671 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog" xmlns:ext="http://www.liquibase.org/xml/ns/dbchangelog-ext" xmlns:pro="http://www.liquibase.org/xml/ns/pro" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog-ext http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-ext.xsd http://www.liquibase.org/xml/ns/pro http://www.liquibase.org/xml/ns/pro/liquibase-pro-latest.xsd http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <changeSet author="liquibase (generated)" id="1784255108331-1">
+        <createTable tableName="revoked_tokens">
+            <column autoIncrement="true" computed="false" name="id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__revoked___3213E83FED4E4B49"/>
+            </column>
+            <column computed="false" name="expires_at" type="datetime2(6)">
+                <constraints nullable="false"/>
+            </column>
+            <column computed="false" name="revoked_at" type="datetime2(6)">
+                <constraints nullable="false"/>
+            </column>
+            <column computed="false" name="token" type="nvarchar(1000)">
+                <constraints nullable="false"/>
+            </column>
+            <column computed="false" name="token_type" type="nvarchar(20)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-2">
+        <createTable tableName="products">
+            <column autoIncrement="true" computed="false" name="product_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__products__47027DF56AC32FB0"/>
+            </column>
+            <column computed="false" name="description" type="nvarchar(MAX)"/>
+            <column computed="false" name="image" type="nvarchar(MAX)"/>
+            <column computed="false" name="name" type="nvarchar(300)"/>
+            <column computed="false" name="price" type="float(53)"/>
+            <column computed="false" name="status" type="int"/>
+            <column computed="false" name="categories_products_id" type="int"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-3">
+        <createTable tableName="tickets">
+            <column autoIncrement="true" computed="false" name="ticket_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__tickets__D596F96B9E0331E2"/>
+            </column>
+            <column computed="false" name="original_price" type="float(53)"/>
+            <column computed="false" name="price" type="float(53)"/>
+            <column computed="false" name="promotion_discount" type="float(53)"/>
+            <column computed="false" name="status" type="int"/>
+            <column computed="false" name="order_online_id" type="int"/>
+            <column computed="false" name="seat_id" type="int"/>
+            <column computed="false" name="showtime_id" type="int"/>
+            <column computed="false" name="qr_token" type="nvarchar(1500)"/>
+            <column computed="false" name="ticket_code" type="nvarchar(40)"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-4">
+        <createTable tableName="orders_online">
+            <column autoIncrement="true" computed="false" name="order_online_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__orders_o__70F92859C5FE1884"/>
+            </column>
+            <column computed="false" name="created_at" type="datetime2(6)"/>
+            <column computed="false" name="discount_amount" type="float(53)"/>
+            <column computed="false" name="final_amount" type="float(53)"/>
+            <column computed="false" name="order_code" type="nvarchar(255)"/>
+            <column computed="false" name="original_amount" type="float(53)"/>
+            <column computed="false" name="payment_method" type="nvarchar(255)"/>
+            <column computed="false" name="status" type="int"/>
+            <column computed="false" name="cinema_id" type="int"/>
+            <column computed="false" name="staff_id" type="int"/>
+            <column computed="false" name="user_id" type="int"/>
+            <column computed="false" name="user_vouchers_id" type="int"/>
+            <column computed="false" name="ticket_email_sent_at" type="datetime2(6)"/>
+            <column computed="false" name="receipt_token" type="nvarchar(1500)"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-5">
+        <createTable tableName="movie">
+            <column autoIncrement="true" computed="false" name="movie_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__movie__83CDF7490666A13D"/>
+            </column>
+            <column computed="false" name="age_limit" type="int"/>
+            <column computed="false" name="author" type="nvarchar(255)"/>
+            <column computed="false" name="banner" type="nvarchar(MAX)"/>
+            <column computed="false" name="base_price" type="float(53)"/>
+            <column computed="false" name="content" type="nvarchar(MAX)"/>
+            <column computed="false" name="description" type="nvarchar(MAX)"/>
+            <column computed="false" name="duration" type="int"/>
+            <column computed="false" name="nation" type="nvarchar(255)"/>
+            <column computed="false" name="poster" type="nvarchar(MAX)"/>
+            <column computed="false" name="release_date" type="date"/>
+            <column computed="false" name="status" type="int"/>
+            <column computed="false" name="title" type="nvarchar(255)"/>
+            <column computed="false" name="genre_id" type="int"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-6">
+        <createTable tableName="showtimes">
+            <column autoIncrement="true" computed="false" name="showtime_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__showtime__A406B518E100DEA7"/>
+            </column>
+            <column computed="false" name="start_time" type="datetime2(6)"/>
+            <column computed="false" name="surcharge" type="float(53)"/>
+            <column computed="false" name="movie_id" type="int"/>
+            <column computed="false" name="room_id" type="int"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-7">
+        <createTable tableName="user_vouchers">
+            <column autoIncrement="true" computed="false" name="user_voucher_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__user_vou__6A698A7979B666D2"/>
+            </column>
+            <column computed="false" name="status" type="int"/>
+            <column computed="false" name="user_id" type="int"/>
+            <column computed="false" name="voucher_id" type="int"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-8">
+        <createTable tableName="promotions">
+            <column autoIncrement="true" computed="false" name="promotion_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__promotio__2CB9556B608A1951"/>
+            </column>
+            <column computed="false" name="discount_percent" type="float(53)"/>
+            <column computed="false" name="end_date" type="date"/>
+            <column computed="false" name="promotion_name" type="nvarchar(300)"/>
+            <column computed="false" name="start_date" type="date"/>
+            <column computed="false" name="status" type="int"/>
+            <column computed="false" name="cinema_id" type="int"/>
+            <column computed="false" name="movie_id" type="int"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-9">
+        <createTable tableName="seats">
+            <column autoIncrement="true" computed="false" name="seat_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__seats__906DED9C1E30418A"/>
+            </column>
+            <column computed="false" name="number" type="nvarchar(255)"/>
+            <column computed="false" name="row" type="nvarchar(255)"/>
+            <column computed="false" name="status" type="nvarchar(255)"/>
+            <column computed="false" name="x" type="int"/>
+            <column computed="false" name="y" type="int"/>
+            <column computed="false" name="room_id" type="int"/>
+            <column computed="false" name="seat_type_id" type="int"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-10">
+        <createTable tableName="staff_shifts">
+            <column autoIncrement="true" computed="false" name="staff_shifts_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__staff_sh__751DC4CDDE4D5511"/>
+            </column>
+            <column computed="false" name="date" type="date"/>
+            <column computed="false" name="end_time" type="datetime2(6)"/>
+            <column computed="false" name="role" type="nvarchar(255)"/>
+            <column computed="false" name="start_time" type="datetime2(6)"/>
+            <column computed="false" name="cinema_id" type="int"/>
+            <column computed="false" name="staff_id" type="int"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-11">
+        <createTable tableName="oder_details_food">
+            <column autoIncrement="true" computed="false" name="oder_details_food_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__oder_det__2279D6498FC7108D"/>
+            </column>
+            <column computed="false" name="price" type="float(53)"/>
+            <column computed="false" name="quantity" type="int"/>
+            <column computed="false" name="status" type="int"/>
+            <column computed="false" name="order_online_id" type="int"/>
+            <column computed="false" name="product_id" type="int"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-12">
+        <createTable tableName="cinema_products">
+            <column autoIncrement="true" computed="false" name="cinema_products_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__cinema_p__C4C2E8191829D91F"/>
+            </column>
+            <column computed="false" name="is_active" type="bit"/>
+            <column computed="false" name="cinema_id" type="int"/>
+            <column computed="false" name="product_id" type="int"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-13">
+        <createTable tableName="rooms">
+            <column autoIncrement="true" computed="false" name="room_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__rooms__19675A8AFFAAF05C"/>
+            </column>
+            <column computed="false" name="name" type="nvarchar(255)"/>
+            <column computed="false" name="status" type="int"/>
+            <column computed="false" name="cinema_id" type="int"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-14">
+        <createTable tableName="reviews">
+            <column autoIncrement="true" computed="false" name="review_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__reviews__60883D90C1EA1539"/>
+            </column>
+            <column computed="false" name="comment" type="nvarchar(MAX)"/>
+            <column computed="false" name="rating" type="int"/>
+            <column computed="false" name="ticket_id" type="int"/>
+            <column computed="false" name="created_at" type="datetime2(6)"/>
+            <column computed="false" name="updated_at" type="datetime2(6)"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-15">
+        <createTable tableName="password_reset_tokens">
+            <column autoIncrement="true" computed="false" name="id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__password__3213E83FE1722F98"/>
+            </column>
+            <column computed="false" name="expires_at" type="datetimeoffset(6)">
+                <constraints nullable="false"/>
+            </column>
+            <column computed="false" name="otp_hash" type="nvarchar(255)"/>
+            <column computed="false" name="otp_verified_at" type="datetimeoffset(6)"/>
+            <column computed="false" name="token" type="nvarchar(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column computed="false" name="used_at" type="datetimeoffset(6)"/>
+            <column computed="false" name="user_id" type="int">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-16">
+        <createTable tableName="favorites">
+            <column autoIncrement="true" computed="false" name="favorite_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__favorite__46ACF4CBA11FA6E1"/>
+            </column>
+            <column computed="false" name="movie_id" type="int"/>
+            <column computed="false" name="user_id" type="int"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-17">
+        <createTable tableName="staff">
+            <column autoIncrement="true" computed="false" name="staff_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__staff__1963DD9C780B5C9F"/>
+            </column>
+            <column computed="false" name="avatar" type="nvarchar(MAX)"/>
+            <column computed="false" name="birthday" type="date">
+                <constraints nullable="false"/>
+            </column>
+            <column computed="false" name="email" type="nvarchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column computed="false" name="fullname" type="nvarchar(200)"/>
+            <column computed="false" name="password" type="nvarchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column computed="false" name="phone" type="nvarchar(20)"/>
+            <column computed="false" name="role" type="nvarchar(50)"/>
+            <column computed="false" name="status" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column computed="false" name="username" type="nvarchar(100)"/>
+            <column computed="false" name="cinema_id" type="int"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-18">
+        <createTable tableName="points_histories">
+            <column autoIncrement="true" computed="false" name="point_history_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__points_h__AA5FF33CD9F00064"/>
+            </column>
+            <column computed="false" name="date" type="date"/>
+            <column computed="false" name="description" type="nvarchar(MAX)"/>
+            <column computed="false" name="points" type="int"/>
+            <column computed="false" name="user_id" type="int"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-19">
+        <createTable tableName="authors">
+            <column autoIncrement="true" computed="false" name="author_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__authors__86516BCFF30AD41E"/>
+            </column>
+            <column computed="false" name="name" type="nvarchar(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column computed="false" name="status" type="int">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-20">
+        <createTable tableName="categories_products">
+            <column autoIncrement="true" computed="false" name="categories_products_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__categori__B0DFC62E26794F3E"/>
+            </column>
+            <column computed="false" name="name" type="nvarchar(255)"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-21">
+        <createTable tableName="cinemas">
+            <column autoIncrement="true" computed="false" name="cinema_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__cinemas__56628778E8001760"/>
+            </column>
+            <column computed="false" name="address" type="nvarchar(255)"/>
+            <column computed="false" name="name" type="nvarchar(255)"/>
+            <column computed="false" name="status" type="int"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-22">
+        <createTable tableName="genres">
+            <column autoIncrement="true" computed="false" name="genre_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__genres__18428D42D7ABD3AA"/>
+            </column>
+            <column computed="false" name="name" type="nvarchar(255)"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-23">
+        <createTable tableName="membership_ranks">
+            <column autoIncrement="true" computed="false" name="rank_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__membersh__14ADF0B269B61593"/>
+            </column>
+            <column computed="false" name="bonus_point" type="int"/>
+            <column computed="false" name="description" type="nvarchar(MAX)"/>
+            <column computed="false" name="discount_percent" type="float(53)"/>
+            <column computed="false" name="min_spending" type="float(53)"/>
+            <column computed="false" name="rank_name" type="nvarchar(255)"/>
+            <column computed="false" name="status" type="int"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-24">
+        <createTable tableName="nations">
+            <column autoIncrement="true" computed="false" name="nation_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__nations__327F7693A9F0ACF9"/>
+            </column>
+            <column computed="false" name="name" type="nvarchar(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column computed="false" name="status" type="int">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-25">
+        <createTable tableName="news">
+            <column autoIncrement="true" computed="false" name="news_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__news__4C27CCD8F5F2FE79"/>
+            </column>
+            <column computed="false" name="content" type="nvarchar(MAX)"/>
+            <column computed="false" name="created_at" type="datetime2(6)"/>
+            <column computed="false" name="image" type="nvarchar(MAX)"/>
+            <column computed="false" name="status" type="int"/>
+            <column computed="false" name="title" type="nvarchar(500)"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-26">
+        <createTable tableName="seatype">
+            <column autoIncrement="true" computed="false" name="seat_type_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__seatype__5C2EB197C6245A8E"/>
+            </column>
+            <column computed="false" name="color" type="nvarchar(16)"/>
+            <column computed="false" name="couple_seat" type="bit"/>
+            <column computed="false" name="name" type="nvarchar(255)"/>
+            <column computed="false" name="surcharge" type="float(53)"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-27">
+        <createTable tableName="users">
+            <column autoIncrement="true" computed="false" name="user_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__users__B9BE370F28EFCFD2"/>
+            </column>
+            <column computed="false" name="avatar" type="nvarchar(MAX)"/>
+            <column computed="false" name="birthday" type="date"/>
+            <column computed="false" name="email" type="nvarchar(255)"/>
+            <column computed="false" name="fullname" type="nvarchar(200)"/>
+            <column computed="false" name="password" type="nvarchar(255)"/>
+            <column computed="false" name="phone" type="nvarchar(20)"/>
+            <column computed="false" name="points" type="int"/>
+            <column computed="false" name="rank_id" type="int"/>
+            <column computed="false" name="status" type="int"/>
+            <column computed="false" name="total_spending" type="float(53)"/>
+            <column computed="false" name="username" type="nvarchar(100)"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-28">
+        <createTable tableName="vouchers">
+            <column autoIncrement="true" computed="false" name="vouchers_id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK__vouchers__7CDDDAFC485B328A"/>
+            </column>
+            <column computed="false" name="code" type="nvarchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column computed="false" name="discount_type" type="nvarchar(255)"/>
+            <column computed="false" name="end_date" type="date"/>
+            <column computed="false" name="max_discount_amount" type="float(53)"/>
+            <column computed="false" name="min_order_value" type="float(53)"/>
+            <column computed="false" name="point_voucher" type="int"/>
+            <column computed="false" name="start_date" type="date"/>
+            <column computed="false" name="status" type="int"/>
+            <column computed="false" name="value" type="float(53)"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-29">
+        <addUniqueConstraint columnNames="token" constraintName="UKo7nu95tpd50oqhacdvs5qk1bf" tableName="revoked_tokens"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-30">
+        <createIndex indexName="ix_products_categories_products_id" tableName="products">
+            <column name="categories_products_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-31">
+        <createIndex indexName="ix_tickets_order_online_id" tableName="tickets">
+            <column name="order_online_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-32">
+        <createIndex indexName="ix_tickets_seat_id" tableName="tickets">
+            <column name="seat_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-33">
+        <createIndex indexName="ix_tickets_showtime_id" tableName="tickets">
+            <column name="showtime_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-34">
+        <createIndex indexName="uk_tickets_active_seat" tableName="tickets" unique="true">
+            <column name="showtime_id"/>
+            <column name="seat_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-35">
+        <createIndex indexName="uk_tickets_ticket_code" tableName="tickets" unique="true">
+            <column name="ticket_code"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-36">
+        <createIndex indexName="ix_orders_online_cinema_id" tableName="orders_online">
+            <column name="cinema_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-37">
+        <createIndex indexName="ix_orders_online_staff_id" tableName="orders_online">
+            <column name="staff_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-38">
+        <createIndex indexName="ix_orders_online_user_id" tableName="orders_online">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-39">
+        <createIndex indexName="ix_orders_online_user_vouchers_id" tableName="orders_online">
+            <column name="user_vouchers_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-40">
+        <createIndex indexName="UKj98tlmei5cncvshk5tyy1qc60" tableName="orders_online" unique="true">
+            <column name="receipt_token"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-41">
+        <createIndex indexName="ix_movie_genre_id" tableName="movie">
+            <column name="genre_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-42">
+        <addForeignKeyConstraint baseColumnNames="movie_id" baseTableName="showtimes" constraintName="FK3kavinyogq0atj1gv3ky05ea9" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="movie_id" referencedTableName="movie" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-43">
+        <createIndex indexName="ix_showtimes_movie_id" tableName="showtimes">
+            <column name="movie_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-44">
+        <createIndex indexName="ix_showtimes_room_id" tableName="showtimes">
+            <column name="room_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-45">
+        <createIndex indexName="ix_user_vouchers_user_id" tableName="user_vouchers">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-46">
+        <createIndex indexName="ix_user_vouchers_voucher_id" tableName="user_vouchers">
+            <column name="voucher_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-47">
+        <addForeignKeyConstraint baseColumnNames="movie_id" baseTableName="promotions" constraintName="FK496kcq9e7avlbp5o0lbldnhyw" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="movie_id" referencedTableName="movie" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-48">
+        <createIndex indexName="ix_promotions_cinema_id" tableName="promotions">
+            <column name="cinema_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-49">
+        <createIndex indexName="ix_promotions_movie_id" tableName="promotions">
+            <column name="movie_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-50">
+        <createIndex indexName="ix_seats_room_id" tableName="seats">
+            <column name="room_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-51">
+        <createIndex indexName="ix_seats_seat_type_id" tableName="seats">
+            <column name="seat_type_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-52">
+        <createIndex indexName="ix_staff_shifts_cinema_id" tableName="staff_shifts">
+            <column name="cinema_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-53">
+        <createIndex indexName="ix_staff_shifts_staff_id" tableName="staff_shifts">
+            <column name="staff_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-54">
+        <addForeignKeyConstraint baseColumnNames="product_id" baseTableName="oder_details_food" constraintName="FKi6p6erdqhttbc1d9b1tlsnl8f" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="product_id" referencedTableName="products" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-55">
+        <addForeignKeyConstraint baseColumnNames="order_online_id" baseTableName="oder_details_food" constraintName="FKoae4yry0tfslvb5gxa5unt5yx" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="order_online_id" referencedTableName="orders_online" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-56">
+        <createIndex indexName="ix_oder_details_food_order_online_id" tableName="oder_details_food">
+            <column name="order_online_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-57">
+        <createIndex indexName="ix_oder_details_food_product_id" tableName="oder_details_food">
+            <column name="product_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-58">
+        <addForeignKeyConstraint baseColumnNames="product_id" baseTableName="cinema_products" constraintName="FKrp2c1ku4w2vtk8f07kjhnq1hb" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="product_id" referencedTableName="products" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-59">
+        <createIndex indexName="ix_cinema_products_cinema_id" tableName="cinema_products">
+            <column name="cinema_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-60">
+        <createIndex indexName="ix_cinema_products_product_id" tableName="cinema_products">
+            <column name="product_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-61">
+        <createIndex indexName="ix_rooms_cinema_id" tableName="rooms">
+            <column name="cinema_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-62">
+        <addForeignKeyConstraint baseColumnNames="ticket_id" baseTableName="reviews" constraintName="FKjv16f8yru0t0l0wkvx2hew28t" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="ticket_id" referencedTableName="tickets" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-63">
+        <createIndex indexName="ix_reviews_ticket_id" tableName="reviews">
+            <column name="ticket_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-64">
+        <createIndex indexName="ix_password_reset_tokens_user_id" tableName="password_reset_tokens">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-65">
+        <addUniqueConstraint columnNames="token" constraintName="UK71lqwbwtklmljk3qlsugr1mig" tableName="password_reset_tokens"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-66">
+        <addForeignKeyConstraint baseColumnNames="movie_id" baseTableName="favorites" constraintName="FKl944ug7vfy2vybv4uqd7mosux" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="movie_id" referencedTableName="movie" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-67">
+        <createIndex indexName="ix_favorites_movie_id" tableName="favorites">
+            <column name="movie_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-68">
+        <createIndex indexName="ix_favorites_user_id" tableName="favorites">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-69">
+        <createIndex indexName="ix_staff_cinema_id" tableName="staff">
+            <column name="cinema_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-70">
+        <addUniqueConstraint columnNames="email" constraintName="uk_staff_email" tableName="staff"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-71">
+        <addUniqueConstraint columnNames="phone" constraintName="uk_staff_phone" tableName="staff"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-72">
+        <addUniqueConstraint columnNames="username" constraintName="uk_staff_username" tableName="staff"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-73">
+        <createIndex indexName="ix_points_histories_user_id" tableName="points_histories">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-74">
+        <addUniqueConstraint columnNames="name" constraintName="uk_authors_name" tableName="authors"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-75">
+        <addUniqueConstraint columnNames="name" constraintName="uk_nations_name" tableName="nations"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-76">
+        <addUniqueConstraint columnNames="email" constraintName="uk_users_email" tableName="users"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-77">
+        <addUniqueConstraint columnNames="username" constraintName="uk_users_username" tableName="users"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-78">
+        <addUniqueConstraint columnNames="code" constraintName="UK30ftp2biebbvpik8e49wlmady" tableName="vouchers"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-79">
+        <addForeignKeyConstraint baseColumnNames="categories_products_id" baseTableName="products" constraintName="FK1aonrhywqapo0t81j82p8wrvv" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="categories_products_id" referencedTableName="categories_products" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-80">
+        <addForeignKeyConstraint baseColumnNames="seat_id" baseTableName="tickets" constraintName="FK1f6n3pv4b80wl6gj4ra32ctxk" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="seat_id" referencedTableName="seats" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-81">
+        <addForeignKeyConstraint baseColumnNames="showtime_id" baseTableName="tickets" constraintName="FKo0u22315eoxdv59tn6wsdn8b1" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="showtime_id" referencedTableName="showtimes" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-82">
+        <addForeignKeyConstraint baseColumnNames="order_online_id" baseTableName="tickets" constraintName="FKs7r3fupmbu86j1y9lhxauc4ip" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="order_online_id" referencedTableName="orders_online" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-83">
+        <addForeignKeyConstraint baseColumnNames="user_vouchers_id" baseTableName="orders_online" constraintName="FK2b3agfxq7a3cg4jljejfwjvov" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="user_voucher_id" referencedTableName="user_vouchers" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-84">
+        <addForeignKeyConstraint baseColumnNames="user_id" baseTableName="orders_online" constraintName="FK55mnqdllrc0qeyo35wc571jir" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="user_id" referencedTableName="users" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-85">
+        <addForeignKeyConstraint baseColumnNames="cinema_id" baseTableName="orders_online" constraintName="FKhdkja41234gg8o640k71w5o6x" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="cinema_id" referencedTableName="cinemas" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-86">
+        <addForeignKeyConstraint baseColumnNames="staff_id" baseTableName="orders_online" constraintName="FKp8rvy7p375idl0h4x5x11vgqp" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="staff_id" referencedTableName="staff" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-87">
+        <addForeignKeyConstraint baseColumnNames="genre_id" baseTableName="movie" constraintName="FK2o9bb7ni7w8br9vtpkgx9xufw" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="genre_id" referencedTableName="genres" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-88">
+        <addForeignKeyConstraint baseColumnNames="room_id" baseTableName="showtimes" constraintName="FKrumrrbei9jppryk4teoyoetit" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="room_id" referencedTableName="rooms" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-89">
+        <addForeignKeyConstraint baseColumnNames="voucher_id" baseTableName="user_vouchers" constraintName="FK40ig7khk2v79rbqaj98mf1g2q" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="vouchers_id" referencedTableName="vouchers" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-90">
+        <addForeignKeyConstraint baseColumnNames="user_id" baseTableName="user_vouchers" constraintName="FK90ahc2var0yrghyxr9tapdokg" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="user_id" referencedTableName="users" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-91">
+        <addForeignKeyConstraint baseColumnNames="cinema_id" baseTableName="promotions" constraintName="FKmrj5xi3opwgwi0clehbj0u79y" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="cinema_id" referencedTableName="cinemas" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-92">
+        <addForeignKeyConstraint baseColumnNames="seat_type_id" baseTableName="seats" constraintName="FK7bgt40hhrm7249uqronyugkup" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="seat_type_id" referencedTableName="seatype" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-93">
+        <addForeignKeyConstraint baseColumnNames="room_id" baseTableName="seats" constraintName="FKg993pi7ucgy616icmddq8u335" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="room_id" referencedTableName="rooms" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-94">
+        <addForeignKeyConstraint baseColumnNames="staff_id" baseTableName="staff_shifts" constraintName="FKc9wn5fsc1m9vjawrgaorhimf8" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="staff_id" referencedTableName="staff" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-95">
+        <addForeignKeyConstraint baseColumnNames="cinema_id" baseTableName="staff_shifts" constraintName="FKnainiuyvr4nkgyrrfvi2m8mu2" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="cinema_id" referencedTableName="cinemas" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-96">
+        <addForeignKeyConstraint baseColumnNames="cinema_id" baseTableName="cinema_products" constraintName="FKi8hebydx5ul5sib7lij62ns6y" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="cinema_id" referencedTableName="cinemas" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-97">
+        <addForeignKeyConstraint baseColumnNames="cinema_id" baseTableName="rooms" constraintName="FKjp9bjtvlojbw581bpq23cpw4j" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="cinema_id" referencedTableName="cinemas" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-98">
+        <addForeignKeyConstraint baseColumnNames="user_id" baseTableName="password_reset_tokens" constraintName="FKk3ndxg5xp6v7wd4gjyusp15gq" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="user_id" referencedTableName="users" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-99">
+        <addForeignKeyConstraint baseColumnNames="user_id" baseTableName="favorites" constraintName="FKk7du8b8ewipawnnpg76d55fus" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="user_id" referencedTableName="users" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-100">
+        <addForeignKeyConstraint baseColumnNames="cinema_id" baseTableName="staff" constraintName="FKn9e53oxcncet5hxi6qqjgvkgf" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="cinema_id" referencedTableName="cinemas" validate="true"/>
+    </changeSet>
+    <changeSet author="liquibase (generated)" id="1784255108331-101">
+        <addForeignKeyConstraint baseColumnNames="user_id" baseTableName="points_histories" constraintName="FKohiwghuh0x9gps6d7augr19s9" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="user_id" referencedTableName="users" validate="true"/>
+    </changeSet>
+</databaseChangeLog>

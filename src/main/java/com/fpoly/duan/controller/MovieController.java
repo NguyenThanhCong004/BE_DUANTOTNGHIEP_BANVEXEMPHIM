@@ -91,7 +91,7 @@ public class MovieController {
                 .stream()
                 .filter(m -> SearchUtils.matches(term,
                         m.getMovieId(), m.getTitle(), m.getAuthor(), m.getNation(), m.getDescription(),
-                        m.getContent(), m.getStatus(), m.getGenre() != null ? m.getGenre().getName() : null))
+                        m.getContent(), m.getStatus(), genreNames(m)))
                 .map(this::toDTO)
                 .collect(Collectors.toList());
 
@@ -238,7 +238,7 @@ public class MovieController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phim với id: " + id));
 
         boolean hasChanges = false;
-        if (req.getGenreId() != null) hasChanges = true;
+        if (req.getGenreIds() != null) hasChanges = true;
         if (req.getTitle() != null && !req.getTitle().trim().isEmpty()) hasChanges = true;
         if (req.getDescription() != null) hasChanges = true;
         if (req.getDuration() != null) hasChanges = true;
@@ -288,16 +288,18 @@ public class MovieController {
         if (req.getTitle() == null || req.getTitle().trim().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tên phim không được để trống");
         }
-        if (req.getGenreId() == null) {
+        if (req.getGenreIds() == null || req.getGenreIds().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng chọn thể loại phim");
         }
     }
 
     private Movie applyWrite(Movie m, MovieWriteDTO req) {
-        if (req.getGenreId() != null) {
-            Genre g = genreRepository.findById(req.getGenreId())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thể loại với id: " + req.getGenreId()));
-            m.setGenre(g);
+        if (req.getGenreIds() != null) {
+            List<Genre> genres = req.getGenreIds().stream()
+                    .map(id -> genreRepository.findById(id)
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thể loại với id: " + id)))
+                    .collect(Collectors.toList());
+            m.setGenres(genres);
         }
         if (req.getTitle() != null) m.setTitle(req.getTitle().trim());
         if (req.getDescription() != null) m.setDescription(req.getDescription());
@@ -314,12 +316,18 @@ public class MovieController {
         return m;
     }
 
+    private String genreNames(Movie m) {
+        if (m.getGenres() == null || m.getGenres().isEmpty()) return null;
+        return m.getGenres().stream().map(Genre::getName).collect(Collectors.joining(" "));
+    }
+
     private MovieDTO toDTO(Movie m) {
-        Genre g = m.getGenre();
+        List<String> genreNames = m.getGenres() == null ? List.of()
+                : m.getGenres().stream().map(Genre::getName).collect(Collectors.toList());
         return MovieDTO.builder()
                 .id(m.getMovieId())
                 .title(m.getTitle())
-                .genre(g != null ? g.getName() : null)
+                .genres(genreNames)
                 .posterUrl(m.getPoster())
                 .duration(m.getDuration())
                 .ageLimit(m.getAgeLimit())
