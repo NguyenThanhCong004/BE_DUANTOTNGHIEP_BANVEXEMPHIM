@@ -1,0 +1,24 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- generateChangeLog không lưu được mệnh đề WHERE của filtered index trên SQL Server,
+         nên changeset uk_tickets_active_seat trong baseline bị thiếu điều kiện
+         "WHERE status IN (0,1)" (chỉ áp dụng cho vé pending/paid, KHÔNG áp dụng cho vé đã hủy).
+         Nếu để nguyên, môi trường mới build từ baseline sẽ tạo unique index KHÔNG lọc,
+         chặn nhầm việc đặt lại ghế sau khi vé cũ bị hủy. Changeset này sửa lại cho đúng. -->
+    <changeSet id="2026-07-17-fix-tickets-active-seat-index-1" author="claude">
+        <dropIndex tableName="tickets" indexName="uk_tickets_active_seat"/>
+    </changeSet>
+
+    <changeSet id="2026-07-17-fix-tickets-active-seat-index-2" author="claude">
+        <sql dbms="mssql">
+            CREATE UNIQUE INDEX uk_tickets_active_seat ON tickets(showtime_id, seat_id) WHERE status IN (0, 1);
+        </sql>
+        <rollback>
+            <sql dbms="mssql">DROP INDEX uk_tickets_active_seat ON tickets;</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

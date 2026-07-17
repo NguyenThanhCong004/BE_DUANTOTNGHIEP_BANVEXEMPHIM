@@ -4,6 +4,7 @@ import java.security.SecureRandom;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -18,6 +19,7 @@ import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.StaffRepository;
 import com.fpoly.duan.repository.StaffShiftRepository;
 import com.fpoly.duan.repository.UserRepository;
+import com.fpoly.duan.service.EmailBrandKit;
 import com.fpoly.duan.service.EmailService;
 import com.fpoly.duan.service.StaffService;
 
@@ -30,7 +32,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class StaffServiceImpl implements StaffService {
 
-    private static final String NEW_STAFF_EMAIL_SUBJECT = "[ERROR404] Tài khoản nhân viên mới";
+    private static final String NEW_STAFF_EMAIL_SUBJECT = "[MovieZone] Tài khoản nhân viên mới";
     private static final String PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
 
     private final StaffRepository staffRepository;
@@ -39,6 +41,9 @@ public class StaffServiceImpl implements StaffService {
     private final StaffShiftRepository staffShiftRepository;
     private final EmailService emailService;
     private final UserRepository userRepository;
+
+    @Value("${app.frontend-base-url:http://localhost:3000}")
+    private String frontendBaseUrl;
 
     @Override
     @Transactional(readOnly = true)
@@ -219,21 +224,31 @@ public class StaffServiceImpl implements StaffService {
         return sb.toString();
     }
 
-    private static String buildNewStaffCredentialsHtml(
+    private String buildNewStaffCredentialsHtml(
             String fullname, String email, String username, String plainPassword) {
         String name = fullname != null && !fullname.isBlank() ? fullname : "bạn";
-        return """
-                <!DOCTYPE html>
-                <html><head><meta charset="UTF-8"></head><body style="font-family:sans-serif;line-height:1.6;color:#111;">
-                <p>Xin chào %s,</p>
-                <p>Tài khoản nhân viên của bạn đã được tạo trên hệ thống ERROR404.</p>
-                <p><strong>Đăng nhập bằng email:</strong> %s</p>
-                <p><strong>Username:</strong> %s</p>
-                <p><strong>Mật khẩu tạm:</strong> <span style="font-size:18px;font-weight:bold;letter-spacing:1px;">%s</span></p>
-                <p style="color:#555;font-size:14px;">Vui lòng đăng nhập và đổi mật khẩu trong phần hồ sơ nếu cần.</p>
-                </body></html>
-                """
-                .formatted(name, email, username, plainPassword);
+        String body = """
+                <p style="margin:0 0 16px;">Xin chào <strong>%s</strong>,</p>
+                <p style="margin:0 0 20px;">Tài khoản nhân viên của bạn đã được tạo trên hệ thống <strong style="color:#d4ff00;">MovieZone</strong>. Thông tin đăng nhập:</p>
+                <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;">
+                  <tr>
+                    <td style="padding:14px 18px;font-size:13px;color:rgba(240,240,255,0.5);">Email đăng nhập</td>
+                    <td style="padding:14px 18px;font-size:14px;font-weight:700;text-align:right;">%s</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:14px 18px;font-size:13px;color:rgba(240,240,255,0.5);border-top:1px solid rgba(255,255,255,0.08);">Username</td>
+                    <td style="padding:14px 18px;font-size:14px;font-weight:700;text-align:right;border-top:1px solid rgba(255,255,255,0.08);">%s</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:14px 18px;font-size:13px;color:rgba(240,240,255,0.5);border-top:1px solid rgba(255,255,255,0.08);">Mật khẩu tạm</td>
+                    <td style="padding:14px 18px;font-size:18px;font-weight:800;letter-spacing:1px;text-align:right;color:#d4ff00;border-top:1px solid rgba(255,255,255,0.08);">%s</td>
+                  </tr>
+                </table>
+                %s
+                <p style="margin:20px 0 0;color:rgba(240,240,255,0.5);font-size:12px;">Vui lòng đổi mật khẩu ngay sau khi đăng nhập lần đầu.</p>
+                """.formatted(name, email, username, plainPassword,
+                EmailBrandKit.button(frontendBaseUrl + "/staff/login", "Đăng nhập ngay"));
+        return EmailBrandKit.wrap("Tài khoản nhân viên MovieZone của bạn đã sẵn sàng", body);
     }
 
     @Override
@@ -362,6 +377,14 @@ public class StaffServiceImpl implements StaffService {
         if (currentPassword == null || !passwordEncoder.matches(currentPassword, staff.getPassword())) {
             throw new RuntimeException("Mật khẩu hiện tại không đúng");
         }
+        staff.setPassword(passwordEncoder.encode(newPassword));
+        staffRepository.save(staff);
+    }
+
+    @Override
+    public void resetPasswordByStaffId(Integer staffId, String newPassword) {
+        Staff staff = staffRepository.findById(staffId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân viên"));
         staff.setPassword(passwordEncoder.encode(newPassword));
         staffRepository.save(staff);
     }

@@ -1,6 +1,7 @@
 package com.fpoly.duan.dto;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -14,7 +15,7 @@ import lombok.NoArgsConstructor;
 public class MovieDTO {
     private Integer id;
     private String title;
-    private String genre;
+    private List<String> genres;
     private String posterUrl;
     private Integer duration;
     private Integer ageLimit;

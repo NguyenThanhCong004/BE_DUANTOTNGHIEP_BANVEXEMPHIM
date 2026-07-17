@@ -18,11 +18,15 @@ import com.fpoly.duan.dto.ResendForgotOtpRequest;
 import com.fpoly.duan.dto.ResetPasswordRequest;
 import com.fpoly.duan.dto.VerifyForgotOtpRequest;
 import com.fpoly.duan.entity.PasswordResetToken;
+import com.fpoly.duan.entity.Staff;
 import com.fpoly.duan.entity.User;
 import com.fpoly.duan.repository.PasswordResetTokenRepository;
+import com.fpoly.duan.repository.StaffRepository;
 import com.fpoly.duan.repository.UserRepository;
+import com.fpoly.duan.service.EmailBrandKit;
 import com.fpoly.duan.service.EmailService;
 import com.fpoly.duan.service.PasswordResetService;
+import com.fpoly.duan.service.StaffService;
 import com.fpoly.duan.service.UserService;
 
 import jakarta.mail.MessagingException;
@@ -34,12 +38,14 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class PasswordResetServiceImpl implements PasswordResetService {
 
-    private static final String OTP_SUBJECT = "Mã xác nhận đặt lại mật khẩu — vé xem phim";
+    private static final String OTP_SUBJECT = "[MovieZone] Mã xác nhận đặt lại mật khẩu";
 
     private final UserRepository userRepository;
+    private final StaffRepository staffRepository;
     private final PasswordResetTokenRepository tokenRepository;
     private final EmailService emailService;
     private final UserService userService;
+    private final StaffService staffService;
     private final PasswordEncoder passwordEncoder;
 
     private final SecureRandom secureRandom = new SecureRandom();
@@ -62,43 +68,41 @@ public class PasswordResetServiceImpl implements PasswordResetService {
                     .build();
         }
 
-        Optional<User> userOpt = resolveUser(raw);
-        if (userOpt.isEmpty()) {
+        ResolvedAccount account = resolveAccount(raw).orElse(null);
+        if (account == null || account.isLocked()) {
+            if (account != null) {
+                log.debug("Bỏ qua quên mật khẩu — tài khoản đã khóa: {}={}", account.idLabel(), account.id());
+            }
             return ForgotPasswordResponse.builder()
                     .resetSessionToken(sessionToken)
                     .maskedEmail(null)
                     .build();
         }
 
-        User user = userOpt.get();
-        if (user.getStatus() != null && user.getStatus() == 0) {
-            log.debug("Bỏ qua quên mật khẩu — tài khoản đã khóa: userId={}", user.getUserId());
-            return ForgotPasswordResponse.builder()
-                    .resetSessionToken(sessionToken)
-                    .maskedEmail(null)
-                    .build();
+        if (account.isUser()) {
+            tokenRepository.deleteUnusedByUserId(account.user().getUserId());
+        } else {
+            tokenRepository.deleteUnusedByStaffId(account.staff().getStaffId());
         }
 
-        tokenRepository.deleteUnusedByUserId(user.getUserId());
         String otp = generateOtp();
         Instant expiresAt = Instant.now().plusSeconds(otpValidityMinutes * 60);
-        tokenRepository.save(PasswordResetToken.builder()
+        PasswordResetToken.PasswordResetTokenBuilder tokenBuilder = PasswordResetToken.builder()
                 .token(sessionToken)
-                .user(user)
                 .expiresAt(expiresAt)
                 .otpHash(passwordEncoder.encode(otp))
-                .otpVerifiedAt(null)
-                .build());
+                .otpVerifiedAt(null);
+        tokenRepository.save(account.isUser() ? tokenBuilder.user(account.user()).build() : tokenBuilder.staff(account.staff()).build());
 
         try {
-            emailService.sendHtml(user.getEmail(), OTP_SUBJECT, buildOtpEmailHtml(user.getFullname(), otp));
+            emailService.sendHtml(account.email(), OTP_SUBJECT, buildOtpEmailHtml(account.fullname(), otp));
         } catch (MessagingException e) {
-            log.error("Không gửi được email OTP quên mật khẩu tới {}: {}", user.getEmail(), e.getMessage());
+            log.error("Không gửi được email OTP quên mật khẩu tới {}: {}", account.email(), e.getMessage());
         }
 
         return ForgotPasswordResponse.builder()
                 .resetSessionToken(sessionToken)
-                .maskedEmail(maskEmail(user.getEmail()))
+                .maskedEmail(maskEmail(account.email()))
                 .build();
     }
 
@@ -133,8 +137,8 @@ public class PasswordResetServiceImpl implements PasswordResetService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không thể gửi lại mã cho phiên này");
         }
 
-        User user = row.getUser();
-        if (user.getStatus() != null && user.getStatus() == 0) {
+        ResolvedAccount account = accountOf(row);
+        if (account.isLocked()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tài khoản đã bị khóa");
         }
 
@@ -145,9 +149,9 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         tokenRepository.save(row);
 
         try {
-            emailService.sendHtml(user.getEmail(), OTP_SUBJECT, buildOtpEmailHtml(user.getFullname(), otp));
+            emailService.sendHtml(account.email(), OTP_SUBJECT, buildOtpEmailHtml(account.fullname(), otp));
         } catch (MessagingException e) {
-            log.error("Không gửi được email OTP (gửi lại) tới {}: {}", user.getEmail(), e.getMessage());
+            log.error("Không gửi được email OTP (gửi lại) tới {}: {}", account.email(), e.getMessage());
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Không gửi được email. Vui lòng thử lại sau.");
         }
     }
@@ -171,8 +175,8 @@ public class PasswordResetServiceImpl implements PasswordResetService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Phiên đặt lại mật khẩu đã hết hạn");
         }
 
-        User user = row.getUser();
-        if (user.getStatus() != null && user.getStatus() == 0) {
+        ResolvedAccount account = accountOf(row);
+        if (account.isLocked()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tài khoản đã bị khóa");
         }
 
@@ -180,7 +184,11 @@ public class PasswordResetServiceImpl implements PasswordResetService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng xác minh mã OTP trước khi đặt lại mật khẩu");
         }
 
-        userService.resetPasswordByUserId(user.getUserId(), request.getNewPassword());
+        if (account.isUser()) {
+            userService.resetPasswordByUserId(account.user().getUserId(), request.getNewPassword());
+        } else {
+            staffService.resetPasswordByStaffId(account.staff().getStaffId(), request.getNewPassword());
+        }
         row.setUsedAt(Instant.now());
         tokenRepository.save(row);
     }
@@ -196,18 +204,60 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         if (row.getExpiresAt().isBefore(Instant.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mã xác nhận đã hết hạn");
         }
-        User user = row.getUser();
-        if (user.getStatus() != null && user.getStatus() == 0) {
+        if (accountOf(row).isLocked()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tài khoản đã bị khóa");
         }
         return row;
     }
 
-    private Optional<User> resolveUser(String raw) {
-        if (raw.contains("@")) {
-            return userRepository.findFirstByEmailIgnoreCaseOrderByUserIdAsc(raw);
+    /** Tài khoản có thể là khách hàng (User) hoặc nhân viên (Staff) — đúng 1 trong 2 được set trên mỗi token. */
+    private record ResolvedAccount(User user, Staff staff) {
+        boolean isUser() {
+            return user != null;
         }
-        return userRepository.findFirstByUsernameIgnoreCaseOrderByUserIdAsc(raw);
+
+        String idLabel() {
+            return isUser() ? "userId" : "staffId";
+        }
+
+        Object id() {
+            return isUser() ? user.getUserId() : staff.getStaffId();
+        }
+
+        String email() {
+            return isUser() ? user.getEmail() : staff.getEmail();
+        }
+
+        String fullname() {
+            return isUser() ? user.getFullname() : staff.getFullname();
+        }
+
+        boolean isLocked() {
+            Integer status = isUser() ? user.getStatus() : staff.getStatus();
+            return status != null && status == 0;
+        }
+    }
+
+    private ResolvedAccount accountOf(PasswordResetToken row) {
+        if (row.getUser() != null) {
+            return new ResolvedAccount(row.getUser(), null);
+        }
+        return new ResolvedAccount(null, row.getStaff());
+    }
+
+    private Optional<ResolvedAccount> resolveAccount(String raw) {
+        boolean isEmail = raw.contains("@");
+        Optional<User> userOpt = isEmail
+                ? userRepository.findFirstByEmailIgnoreCaseOrderByUserIdAsc(raw)
+                : userRepository.findFirstByUsernameIgnoreCaseOrderByUserIdAsc(raw);
+        if (userOpt.isPresent()) {
+            return Optional.of(new ResolvedAccount(userOpt.get(), null));
+        }
+
+        Optional<Staff> staffOpt = isEmail
+                ? staffRepository.findFirstByEmailIgnoreCaseOrderByStaffIdAsc(raw)
+                : staffRepository.findFirstByUsernameIgnoreCaseOrderByStaffIdAsc(raw);
+        return staffOpt.map(staff -> new ResolvedAccount(null, staff));
     }
 
     private static String newSessionToken() {
@@ -238,14 +288,14 @@ public class PasswordResetServiceImpl implements PasswordResetService {
 
     private String buildOtpEmailHtml(String fullname, String otp) {
         String name = fullname != null && !fullname.isBlank() ? fullname : "bạn";
-        return """
-                <!DOCTYPE html>
-                <html><head><meta charset="UTF-8"></head><body style="font-family:sans-serif;line-height:1.5;">
-                <p>Xin chào %s,</p>
-                <p>Mã xác nhận đặt lại mật khẩu của bạn là:</p>
-                <p style="font-size:28px;font-weight:bold;letter-spacing:6px;">%s</p>
-                <p>Mã có hiệu lực trong khoảng %d phút. Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>
-                </body></html>
+        String body = """
+                <p style="margin:0 0 16px;">Xin chào <strong>%s</strong>,</p>
+                <p style="margin:0 0 20px;">Có yêu cầu đặt lại mật khẩu cho tài khoản MovieZone của bạn. Nhập mã xác nhận bên dưới để tiếp tục:</p>
+                <div style="text-align:center;margin:0 0 20px;">
+                  <span style="display:inline-block;padding:14px 28px;background:rgba(212,255,0,0.1);border:1px solid rgba(212,255,0,0.4);border-radius:10px;font-size:30px;font-weight:800;letter-spacing:8px;color:#d4ff00;">%s</span>
+                </div>
+                <p style="margin:0;color:rgba(240,240,255,0.5);font-size:12px;">Mã có hiệu lực trong khoảng %d phút. Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>
                 """.formatted(name, otp, otpValidityMinutes);
+        return EmailBrandKit.wrap("Mã xác nhận đặt lại mật khẩu của bạn là " + otp, body);
     }
 }

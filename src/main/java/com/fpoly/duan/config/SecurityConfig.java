@@ -81,6 +81,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/ticket-orders/qr/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
+                        // API phục vụ form khuyến mãi cần principal nhân sự để kiểm tra phạm vi rạp.
+                        // Đặt trước /movies/** công khai để không bị permitAll bắt mất.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/movies/promotion-eligible")
+                        .hasAnyAuthority("ROLE_ADMIN", "ROLE_SUPER_ADMIN")
+
                         // API công khai cho khách xem nội dung và chọn ghế.
                         .requestMatchers(HttpMethod.GET,
                                 "/api/v1/cinemas/**",

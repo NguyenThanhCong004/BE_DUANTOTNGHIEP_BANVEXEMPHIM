@@ -51,20 +51,23 @@ public class TicketEmailService {
                         ? st.getRoom().getCinema().getAddress() : "";
                 String showtime = st != null && st.getStartTime() != null ? TIME_FORMAT.format(st.getStartTime()) : "";
                 String seat = ticket.getSeat() == null ? "" : safe(ticket.getSeat().getRow()) + safe(ticket.getSeat().getNumber());
-                rows.append("<section style='margin:24px 0;padding:18px;border:1px solid #e5e7eb;border-radius:12px'>")
-                        .append("<h3 style='margin:0 0 8px'>Vé ").append(index++).append(" — ").append(escape(movie)).append("</h3>")
-                        .append("<p><b>Mã vé:</b> ").append(escape(ticket.getTicketCode())).append("<br>")
+                rows.append("<table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='margin:0 0 18px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;'><tr>")
+                        .append("<td style='padding:18px;vertical-align:top;'>")
+                        .append("<p style='margin:0 0 10px;font-size:15px;font-weight:800;color:#d4ff00;'>Vé ").append(index++).append(" &middot; ").append(escape(movie)).append("</p>")
+                        .append("<p style='margin:0;font-size:13px;line-height:1.8;color:#f0f0ff;'>")
+                        .append("<b>Mã vé:</b> ").append(escape(ticket.getTicketCode())).append("<br>")
                         .append("<b>Rạp:</b> ").append(escape(cinema)).append("<br>")
                         .append("<b>Địa chỉ:</b> ").append(escape(address)).append("<br>")
-                        .append("<b>Suất chiếu:</b> ").append(escape(showtime)).append(" · <b>Ghế:</b> ").append(escape(seat)).append("</p>")
-                        .append("<img src='cid:").append(cid).append("' width='220' height='220' alt='QR vé'>")
-                        .append("</section>");
+                        .append("<b>Suất chiếu:</b> ").append(escape(showtime)).append(" &middot; <b>Ghế:</b> ").append(escape(seat)).append("</p>")
+                        .append("</td>")
+                        .append("<td style='padding:18px;width:120px;'><img src='cid:").append(cid).append("' width='110' height='110' alt='QR vé' style='background:#ffffff;border-radius:8px;padding:6px;display:block;'></td>")
+                        .append("</tr></table>");
             }
             if (images.isEmpty()) return;
-            String html = "<div style='font-family:Arial,sans-serif;color:#111827;max-width:640px;margin:auto'>"
-                    + "<h2>Vé xem phim điện tử</h2><p>Thanh toán đơn <b>" + escape(order.getOrderCode())
-                    + "</b> đã thành công. Vui lòng xuất trình đúng QR của từng vé tại rạp.</p>" + rows + "</div>";
-            emailService.sendHtmlWithInlineImages(order.getUser().getEmail(), "Vé xem phim — đơn " + order.getOrderCode(), html, images);
+            String body = "<p style=\"margin:0 0 20px;\">Thanh toán đơn <strong>" + escape(order.getOrderCode())
+                    + "</strong> đã thành công. Vui lòng xuất trình đúng mã QR của từng vé tại quầy soát vé.</p>" + rows;
+            String html = EmailBrandKit.wrap("Vé điện tử của bạn cho đơn " + order.getOrderCode(), body);
+            emailService.sendHtmlWithInlineImages(order.getUser().getEmail(), "[MovieZone] Vé xem phim — đơn " + order.getOrderCode(), html, images);
             order.setTicketEmailSentAt(LocalDateTime.now());
             orderOnlineRepository.save(order);
         } catch (Exception e) {

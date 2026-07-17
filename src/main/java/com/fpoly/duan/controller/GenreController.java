@@ -125,7 +125,7 @@ public class GenreController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy thể loại với id: " + id);
         }
 
-        List<Movie> moviesWithGenre = movieRepository.findByGenre_GenreId(id);
+        List<Movie> moviesWithGenre = movieRepository.findByGenres_GenreId(id);
         if (!moviesWithGenre.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Không thể xóa thể loại này vì đang có " + moviesWithGenre.size()

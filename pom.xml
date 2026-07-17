@@ -65,6 +65,12 @@
 			<scope>runtime</scope>
 		</dependency>
 
+		<!-- Liquibase: quản lý migration schema có versioning, thay cho ddl-auto=update -->
+		<dependency>
+			<groupId>org.liquibase</groupId>
+			<artifactId>liquibase-core</artifactId>
+		</dependency>
+
 		<!-- Lombok -->
 		<dependency>
 			<groupId>org.projectlombok</groupId>

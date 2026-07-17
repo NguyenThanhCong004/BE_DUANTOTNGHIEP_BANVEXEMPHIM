@@ -31,9 +31,14 @@ public class PasswordResetToken {
     @Column(nullable = false, unique = true, length = 64)
     private String token;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "user_id", nullable = true)
     private User user;
+
+    /** Đúng 1 trong 2: user (khách hàng) hoặc staff (nhân viên) được set trên mỗi dòng. */
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "staff_id", nullable = true)
+    private Staff staff;
 
     @Column(nullable = false)
     private Instant expiresAt;

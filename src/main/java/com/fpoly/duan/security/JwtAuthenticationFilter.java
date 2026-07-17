@@ -58,6 +58,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return true;
         }
 
+        // Endpoint này nằm dưới /movies/** nhưng cần token nhân sự để CinemaScopeService
+        // xác định Admin/Super Admin và phạm vi rạp.
+        if (HttpMethod.GET.matches(method) && "/api/v1/movies/promotion-eligible".equals(path)) {
+            return false;
+        }
+
         return HttpMethod.GET.matches(method) && PUBLIC_GET_PREFIXES.stream().anyMatch(prefix -> pathMatches(path, prefix));
     }
 
