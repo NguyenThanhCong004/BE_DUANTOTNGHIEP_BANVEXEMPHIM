@@ -17,7 +17,7 @@ public class ForgotPasswordRequest {
 
     @NotBlank(message = "Tài khoản không được để trống")
     @Size(max = 255, message = "Tài khoản quá dài")
-    /** Tên đăng nhập hoặc email đã đăng ký. */
+    /** Khách: email hoặc số điện thoại; staff: username, email hoặc số điện thoại. */
     @JsonAlias("email")
     private String usernameOrEmail;
 }
