@@ -40,7 +40,8 @@ public class AuthController {
 
     @PostMapping("/login")
     @Operation(summary = "Đăng nhập khách hàng", description = """
-            Chỉ đọc bảng `users`. Trả `data.token`, `data.refreshToken`, `data.user`.
+            Chỉ đọc bảng `users`. Khách đăng nhập bằng email hoặc số điện thoại.
+            Trả `data.token`, `data.refreshToken`, `data.user`.
             """)
     public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest loginRequest) {
         AuthResponse response = authService.login(loginRequest);
@@ -54,7 +55,7 @@ public class AuthController {
     @PostMapping("/staff-login")
     @Operation(summary = "Đăng nhập nhân viên/admin", description = """
             Chỉ đọc bảng `staff`. Trả `data.token`, `data.refreshToken`, `data.staff`.
-            Username nhận username hoặc email của nhân viên.
+            Username nhận username, email hoặc số điện thoại của nhân viên.
             """)
     public ResponseEntity<ApiResponse<AuthResponse>> staffLogin(@Valid @RequestBody LoginRequest loginRequest) {
         AuthResponse response = authService.staffLogin(loginRequest);
@@ -66,7 +67,7 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<ApiResponse<AuthResponse>> register(@Valid @RequestBody UserRequest userRequest) {
+    public ResponseEntity<ApiResponse<AuthResponse>> register(@RequestBody UserRequest userRequest) {
         AuthResponse response = authService.register(userRequest);
         return ResponseEntity.ok(ApiResponse.<AuthResponse>builder()
                 .status(200)
@@ -87,8 +88,9 @@ public class AuthController {
     }
 
     @PostMapping("/forgot-password")
-    @Operation(summary = "Quên mật khẩu (khách) — bước 1", description = """
-            Body: `usernameOrEmail`. Nếu tài khoản khách hợp lệ, gửi OTP 6 số qua email.
+    @Operation(summary = "Quên mật khẩu — bước 1", description = """
+            Body: `usernameOrEmail`. Khách nhập email hoặc số điện thoại; staff nhập username, email hoặc số điện thoại.
+            Nếu tài khoản hợp lệ, gửi OTP 6 số qua email đã đăng ký.
             Luôn trả `data.resetSessionToken` (và `maskedEmail` nếu có tài khoản) để FE tiếp tục bước 2–3.
             """)
     public ResponseEntity<ApiResponse<ForgotPasswordResponse>> forgotPassword(

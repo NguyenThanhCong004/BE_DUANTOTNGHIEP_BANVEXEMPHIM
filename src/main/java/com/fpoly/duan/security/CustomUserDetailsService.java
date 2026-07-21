@@ -36,6 +36,23 @@ public class CustomUserDetailsService implements UserDetailsService {
         return CustomUserDetails.builder().user(user).build();
     }
 
+    public CustomUserDetails loadCustomerLoginAccount(String emailOrPhone) throws UsernameNotFoundException {
+        String key = emailOrPhone != null ? emailOrPhone.trim() : "";
+        User user = null;
+        if (key.contains("@")) {
+            user = userRepository.findFirstByEmailIgnoreCaseOrderByUserIdAsc(key).orElse(null);
+        } else {
+            String phone = key.replaceAll("\\s+", "");
+            if (phone.matches("^[0-9]{10}$")) {
+                user = userRepository.findByPhone(phone).orElse(null);
+            }
+        }
+        if (user == null) {
+            throw new UsernameNotFoundException("User not found with email/phone: " + emailOrPhone);
+        }
+        return CustomUserDetails.builder().user(user).build();
+    }
+
     public CustomUserDetails loadStaffAccount(String usernameOrEmail) throws UsernameNotFoundException {
         String key = usernameOrEmail != null ? usernameOrEmail.trim() : "";
         // Staff: tránh NonUniqueResult khi trùng email/username trong DB
@@ -43,10 +60,16 @@ public class CustomUserDetailsService implements UserDetailsService {
         if (staff == null) {
             staff = staffRepository.findFirstByUsernameIgnoreCaseOrderByStaffIdAsc(key).orElse(null);
         }
+        if (staff == null) {
+            String phone = key.replaceAll("\\s+", "");
+            if (phone.matches("^[0-9]{10}$")) {
+                staff = staffRepository.findByPhone(phone).orElse(null);
+            }
+        }
         if (staff != null) {
             return CustomUserDetails.builder().staff(staff).build();
         }
-        throw new UsernameNotFoundException("Staff not found with username/email: " + usernameOrEmail);
+        throw new UsernameNotFoundException("Staff not found with username/email/phone: " + usernameOrEmail);
     }
 
     public CustomUserDetails loadByUsernameAndAccountType(String usernameOrEmail, String accountType)

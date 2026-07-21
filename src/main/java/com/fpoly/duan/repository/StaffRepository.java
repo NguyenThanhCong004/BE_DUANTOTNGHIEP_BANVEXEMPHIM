@@ -16,6 +16,7 @@ public interface StaffRepository extends JpaRepository<Staff, Integer> {
     
     Optional<Staff> findByEmail(String email);
     Optional<Staff> findByUsername(String username);
+    Optional<Staff> findByPhone(String phone);
 
     /** Tránh lỗi NonUniqueResult khi DB trùng email (luôn lấy 1 bản ghi cố định). */
     Optional<Staff> findFirstByEmailOrderByStaffIdAsc(String email);
