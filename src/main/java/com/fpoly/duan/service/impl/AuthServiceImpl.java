@@ -6,6 +6,8 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.Locale;
+
 import com.fpoly.duan.dto.AuthResponse;
 import com.fpoly.duan.dto.LoginRequest;
 import com.fpoly.duan.dto.RefreshRequest;
@@ -15,6 +17,7 @@ import com.fpoly.duan.dto.UserRequest;
 import com.fpoly.duan.entity.Staff;
 import com.fpoly.duan.entity.RevokedToken;
 import com.fpoly.duan.repository.RevokedTokenRepository;
+import com.fpoly.duan.repository.StaffRepository;
 import com.fpoly.duan.repository.UserRepository;
 import com.fpoly.duan.security.CustomUserDetails;
 import com.fpoly.duan.security.CustomUserDetailsService;
@@ -30,12 +33,15 @@ import lombok.RequiredArgsConstructor;
 public class AuthServiceImpl implements AuthService {
     private static final String STRONG_PASSWORD_REGEX =
             "^(?=.*[a-z])(?=.*[A-Z])(?=.*[^A-Za-z0-9]).{8,}$";
+    private static final String EMAIL_REGEX = "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$";
+    private static final String PHONE_REGEX = "^[0-9]{10}$";
 
     private final CustomUserDetailsService userDetailsService;
     private final JwtService jwtService;
     private final UserService userService;
     private final RevokedTokenRepository revokedTokenRepository;
     private final UserRepository userRepository;
+    private final StaffRepository staffRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
@@ -43,7 +49,7 @@ public class AuthServiceImpl implements AuthService {
         String loginKey = loginRequest.getUsername() != null ? loginRequest.getUsername().trim() : "";
         CustomUserDetails userDetails;
         try {
-            userDetails = userDetailsService.loadUserAccount(loginKey);
+            userDetails = userDetailsService.loadCustomerLoginAccount(loginKey);
         } catch (UsernameNotFoundException ex) {
             throw new BadCredentialsException("Sai tài khoản hoặc mật khẩu");
         }
@@ -83,18 +89,31 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResponse register(UserRequest userRequest) {
-        String username = userRequest.getUsername() != null ? userRequest.getUsername().trim() : "";
+        if (userRequest == null) {
+            throw new RuntimeException("Dữ liệu đăng ký không hợp lệ");
+        }
         String email = userRequest.getEmail() != null ? userRequest.getEmail().trim() : "";
-        String phone = userRequest.getPhone() != null ? userRequest.getPhone().trim() : "";
+        String phone = userRequest.getPhone() != null ? userRequest.getPhone().replaceAll("\\s+", "") : "";
         String password = userRequest.getPassword() != null ? userRequest.getPassword() : "";
+        String fullname = userRequest.getFullname() != null ? userRequest.getFullname().trim() : "";
+
+        if (fullname.isBlank()) {
+            throw new RuntimeException("Họ tên không được để trống");
+        }
+        if (email.isBlank()) {
+            throw new RuntimeException("Email không được để trống");
+        }
+        if (!email.matches(EMAIL_REGEX)) {
+            throw new RuntimeException("Email không đúng định dạng");
+        }
+        if (!phone.matches(PHONE_REGEX)) {
+            throw new RuntimeException("Số điện thoại không hợp lệ");
+        }
 
         if (!password.matches(STRONG_PASSWORD_REGEX)) {
             throw new RuntimeException("Mật khẩu phải có ít nhất 8 ký tự, gồm chữ thường, chữ hoa và ký tự đặc biệt");
         }
 
-        if (userRepository.existsByUsername(username)) {
-            throw new RuntimeException("Tên đăng nhập đã tồn tại");
-        }
         if (userRepository.existsByEmail(email)) {
             throw new RuntimeException("Email đã tồn tại");
         }
@@ -102,9 +121,11 @@ public class AuthServiceImpl implements AuthService {
             throw new RuntimeException("Số điện thoại đã tồn tại");
         }
 
+        String username = generateInternalUsername(email, phone);
+
         UserDTO userDTO = UserDTO.builder()
                 .username(username)
-                .fullname(userRequest.getFullname())
+                .fullname(fullname)
                 .email(email)
                 .phone(phone)
                 .birthday(userRequest.getBirthday())
@@ -217,6 +238,27 @@ public class AuthServiceImpl implements AuthService {
         if (staff.getCinema() != null && staff.getCinema().getStatus() != null && staff.getCinema().getStatus() != 1) {
             throw new DisabledException("Rạp của tài khoản đang bị khóa. Vui lòng liên hệ Super Admin.");
         }
+    }
+
+    private String generateInternalUsername(String email, String phone) {
+        String emailName = email.contains("@") ? email.substring(0, email.indexOf('@')) : "user";
+        String base = emailName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+        if (base.length() < 6) {
+            base = "user" + phone;
+        }
+        if (base.length() > 42) {
+            base = base.substring(0, 42);
+        }
+
+        String candidate = base;
+        int counter = 1;
+        while (Boolean.TRUE.equals(userRepository.existsByUsername(candidate))
+                || Boolean.TRUE.equals(staffRepository.existsByUsername(candidate))) {
+            String suffix = String.valueOf(counter++);
+            int maxBaseLength = Math.max(1, 50 - suffix.length());
+            candidate = base.substring(0, Math.min(base.length(), maxBaseLength)) + suffix;
+        }
+        return candidate;
     }
 
     private StaffDTO convertToStaffDTO(Staff staff) {
