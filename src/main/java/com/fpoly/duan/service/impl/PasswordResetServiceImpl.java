@@ -247,16 +247,23 @@ public class PasswordResetServiceImpl implements PasswordResetService {
 
     private Optional<ResolvedAccount> resolveAccount(String raw) {
         boolean isEmail = raw.contains("@");
+        String phone = raw.replaceAll("\\s+", "");
+        boolean isPhone = phone.matches("^[0-9]{10}$");
+
         Optional<User> userOpt = isEmail
                 ? userRepository.findFirstByEmailIgnoreCaseOrderByUserIdAsc(raw)
-                : userRepository.findFirstByUsernameIgnoreCaseOrderByUserIdAsc(raw);
+                : isPhone
+                        ? userRepository.findByPhone(phone)
+                        : Optional.empty();
         if (userOpt.isPresent()) {
             return Optional.of(new ResolvedAccount(userOpt.get(), null));
         }
 
         Optional<Staff> staffOpt = isEmail
                 ? staffRepository.findFirstByEmailIgnoreCaseOrderByStaffIdAsc(raw)
-                : staffRepository.findFirstByUsernameIgnoreCaseOrderByStaffIdAsc(raw);
+                : isPhone
+                        ? staffRepository.findByPhone(phone)
+                        : staffRepository.findFirstByUsernameIgnoreCaseOrderByStaffIdAsc(raw);
         return staffOpt.map(staff -> new ResolvedAccount(null, staff));
     }
 
