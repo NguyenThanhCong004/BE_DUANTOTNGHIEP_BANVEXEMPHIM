@@ -146,6 +146,7 @@ public class SecurityConfig {
                                 "/api/v1/promotions/**",
                                 "/api/v1/users/**",
                                 "/api/v1/orders-online/**",
+                                "/api/v1/vouchers/**",
                                 "/api/v1/cinemas/*/product-menu/**")
                         .hasAnyAuthority("ROLE_ADMIN", "ROLE_SUPER_ADMIN")
 
@@ -157,7 +158,6 @@ public class SecurityConfig {
                                 "/api/v1/news/**",
                                 "/api/v1/product-categories/**",
                                 "/api/v1/products/**",
-                                "/api/v1/vouchers/**",
                                 "/api/v1/super-admin/**")
                         .hasAuthority("ROLE_SUPER_ADMIN")
 

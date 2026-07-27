@@ -36,10 +36,9 @@ import lombok.RequiredArgsConstructor;
 @RequestMapping("/api/v1/vouchers")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*", maxAge = 3600)
-@Tag(name = "8b. Voucher", description = "CRUD mã giảm giá — Super Admin.")
+@Tag(name = "8b. Voucher", description = "CRUD mã giảm giá — Admin, Super Admin.")
 @SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
 @SuppressWarnings("null")
-// [SUPER ADMIN ONLY] - This section belongs to Super Admin. Do not modify without authorization.
 public class VoucherController {
 
     private static final BigDecimal MAX_POINT_VOUCHER = BigDecimal.valueOf(10_000_000L);
