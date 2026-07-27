@@ -156,23 +156,37 @@ WHERE ISNULL(c.status, 1) = 1
   );
 
 IF NOT EXISTS (SELECT 1 FROM movie WHERE title = N'Đêm Cuối Ở Sài Gòn')
-    INSERT INTO movie(title, description, content, duration, author, nation, release_date, age_limit, poster, banner, status, base_price, genre_id)
-    VALUES (N'Đêm Cuối Ở Sài Gòn', N'Phim hành động trinh thám nhịp nhanh.', N'Một điều tra viên lần theo vụ án cuối cùng trong đêm mưa Sài Gòn.', 125, N'Đạo diễn A', N'Việt Nam', DATEADD(day, -20, @today), 16, N'https://picsum.photos/seed/dem-cuoi-sai-gon/500/750', N'https://picsum.photos/seed/dem-cuoi-banner/1400/500', 1, 90000, (SELECT TOP 1 genre_id FROM genres WHERE name = N'Hành động'));
+    INSERT INTO movie(title, description, content, duration, author, nation, release_date, age_limit, poster, banner, status, base_price)
+    VALUES (N'Đêm Cuối Ở Sài Gòn', N'Phim hành động trinh thám nhịp nhanh.', N'Một điều tra viên lần theo vụ án cuối cùng trong đêm mưa Sài Gòn.', 125, N'Đạo diễn A', N'Việt Nam', DATEADD(day, -20, @today), 16, N'https://picsum.photos/seed/dem-cuoi-sai-gon/500/750', N'https://picsum.photos/seed/dem-cuoi-banner/1400/500', 1, 90000);
 IF NOT EXISTS (SELECT 1 FROM movie WHERE title = N'Nắng Sau Cơn Mưa')
-    INSERT INTO movie(title, description, content, duration, author, nation, release_date, age_limit, poster, banner, status, base_price, genre_id)
-    VALUES (N'Nắng Sau Cơn Mưa', N'Câu chuyện tình cảm nhẹ nhàng.', N'Hai người trẻ gặp lại nhau sau nhiều năm xa cách.', 110, N'Đạo diễn B', N'Việt Nam', DATEADD(day, -12, @today), 13, N'https://picsum.photos/seed/nang-sau-mua/500/750', N'https://picsum.photos/seed/nang-banner/1400/500', 1, 85000, (SELECT TOP 1 genre_id FROM genres WHERE name = N'Tình cảm'));
+    INSERT INTO movie(title, description, content, duration, author, nation, release_date, age_limit, poster, banner, status, base_price)
+    VALUES (N'Nắng Sau Cơn Mưa', N'Câu chuyện tình cảm nhẹ nhàng.', N'Hai người trẻ gặp lại nhau sau nhiều năm xa cách.', 110, N'Đạo diễn B', N'Việt Nam', DATEADD(day, -12, @today), 13, N'https://picsum.photos/seed/nang-sau-mua/500/750', N'https://picsum.photos/seed/nang-banner/1400/500', 1, 85000);
 IF NOT EXISTS (SELECT 1 FROM movie WHERE title = N'Căn Phòng Số 13')
-    INSERT INTO movie(title, description, content, duration, author, nation, release_date, age_limit, poster, banner, status, base_price, genre_id)
-    VALUES (N'Căn Phòng Số 13', N'Kinh dị tâm lý trong khách sạn cũ.', N'Mỗi đêm căn phòng lại hé lộ một bí mật khác.', 102, N'Đạo diễn C', N'Hàn Quốc', DATEADD(day, -8, @today), 18, N'https://picsum.photos/seed/room-13/500/750', N'https://picsum.photos/seed/room-13-banner/1400/500', 1, 88000, (SELECT TOP 1 genre_id FROM genres WHERE name = N'Kinh dị'));
+    INSERT INTO movie(title, description, content, duration, author, nation, release_date, age_limit, poster, banner, status, base_price)
+    VALUES (N'Căn Phòng Số 13', N'Kinh dị tâm lý trong khách sạn cũ.', N'Mỗi đêm căn phòng lại hé lộ một bí mật khác.', 102, N'Đạo diễn C', N'Hàn Quốc', DATEADD(day, -8, @today), 18, N'https://picsum.photos/seed/room-13/500/750', N'https://picsum.photos/seed/room-13-banner/1400/500', 1, 88000);
 IF NOT EXISTS (SELECT 1 FROM movie WHERE title = N'Robot Và Thành Phố Mây')
-    INSERT INTO movie(title, description, content, duration, author, nation, release_date, age_limit, poster, banner, status, base_price, genre_id)
-    VALUES (N'Robot Và Thành Phố Mây', N'Hoạt hình phiêu lưu cho gia đình.', N'Một robot nhỏ tìm đường trở về thành phố trên mây.', 98, N'Đạo diễn D', N'Nhật Bản', DATEADD(day, -5, @today), 6, N'https://picsum.photos/seed/robot-cloud/500/750', N'https://picsum.photos/seed/robot-cloud-banner/1400/500', 1, 80000, (SELECT TOP 1 genre_id FROM genres WHERE name = N'Hoạt hình'));
+    INSERT INTO movie(title, description, content, duration, author, nation, release_date, age_limit, poster, banner, status, base_price)
+    VALUES (N'Robot Và Thành Phố Mây', N'Hoạt hình phiêu lưu cho gia đình.', N'Một robot nhỏ tìm đường trở về thành phố trên mây.', 98, N'Đạo diễn D', N'Nhật Bản', DATEADD(day, -5, @today), 6, N'https://picsum.photos/seed/robot-cloud/500/750', N'https://picsum.photos/seed/robot-cloud-banner/1400/500', 1, 80000);
 IF NOT EXISTS (SELECT 1 FROM movie WHERE title = N'Phi Vụ Không Gian')
-    INSERT INTO movie(title, description, content, duration, author, nation, release_date, age_limit, poster, banner, status, base_price, genre_id)
-    VALUES (N'Phi Vụ Không Gian', N'Viễn tưởng hành động ngoài vũ trụ.', N'Một phi hành đoàn thực hiện nhiệm vụ cuối cùng để cứu trạm không gian.', 132, N'Đạo diễn E', N'Mỹ', DATEADD(day, -2, @today), 13, N'https://picsum.photos/seed/space-mission/500/750', N'https://picsum.photos/seed/space-mission-banner/1400/500', 1, 95000, (SELECT TOP 1 genre_id FROM genres WHERE name = N'Viễn tưởng'));
+    INSERT INTO movie(title, description, content, duration, author, nation, release_date, age_limit, poster, banner, status, base_price)
+    VALUES (N'Phi Vụ Không Gian', N'Viễn tưởng hành động ngoài vũ trụ.', N'Một phi hành đoàn thực hiện nhiệm vụ cuối cùng để cứu trạm không gian.', 132, N'Đạo diễn E', N'Mỹ', DATEADD(day, -2, @today), 13, N'https://picsum.photos/seed/space-mission/500/750', N'https://picsum.photos/seed/space-mission-banner/1400/500', 1, 95000);
 IF NOT EXISTS (SELECT 1 FROM movie WHERE title = N'Gia Đình Bá Đạo')
-    INSERT INTO movie(title, description, content, duration, author, nation, release_date, age_limit, poster, banner, status, base_price, genre_id)
-    VALUES (N'Gia Đình Bá Đạo', N'Hài gia đình vui nhộn.', N'Một chuyến du lịch gia đình biến thành chuỗi tình huống dở khóc dở cười.', 105, N'Đạo diễn F', N'Việt Nam', @today, 6, N'https://picsum.photos/seed/funny-family/500/750', N'https://picsum.photos/seed/funny-family-banner/1400/500', 1, 82000, (SELECT TOP 1 genre_id FROM genres WHERE name = N'Hài'));
+    INSERT INTO movie(title, description, content, duration, author, nation, release_date, age_limit, poster, banner, status, base_price)
+    VALUES (N'Gia Đình Bá Đạo', N'Hài gia đình vui nhộn.', N'Một chuyến du lịch gia đình biến thành chuỗi tình huống dở khóc dở cười.', 105, N'Đạo diễn F', N'Việt Nam', @today, 6, N'https://picsum.photos/seed/funny-family/500/750', N'https://picsum.photos/seed/funny-family-banner/1400/500', 1, 82000);
+
+INSERT INTO movie_genres(movie_id, genre_id)
+SELECT m.movie_id, g.genre_id
+FROM movie m
+JOIN genres g ON g.name = CASE m.title
+    WHEN N'Đêm Cuối Ở Sài Gòn' THEN N'Hành động'
+    WHEN N'Nắng Sau Cơn Mưa' THEN N'Tình cảm'
+    WHEN N'Căn Phòng Số 13' THEN N'Kinh dị'
+    WHEN N'Robot Và Thành Phố Mây' THEN N'Hoạt hình'
+    WHEN N'Phi Vụ Không Gian' THEN N'Viễn tưởng'
+    WHEN N'Gia Đình Bá Đạo' THEN N'Hài'
+END
+WHERE m.title IN (N'Đêm Cuối Ở Sài Gòn', N'Nắng Sau Cơn Mưa', N'Căn Phòng Số 13', N'Robot Và Thành Phố Mây', N'Phi Vụ Không Gian', N'Gia Đình Bá Đạo')
+  AND NOT EXISTS (SELECT 1 FROM movie_genres mg WHERE mg.movie_id = m.movie_id AND mg.genre_id = g.genre_id);
 
 IF NOT EXISTS (SELECT 1 FROM vouchers WHERE code = N'TEST10')
     INSERT INTO vouchers(code, discount_type, value, min_order_value, max_discount_amount, start_date, end_date, point_voucher, status)
