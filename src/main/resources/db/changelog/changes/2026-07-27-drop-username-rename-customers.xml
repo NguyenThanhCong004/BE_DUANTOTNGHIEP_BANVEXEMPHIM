@@ -1,0 +1,30 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Bỏ đăng nhập bằng username cho khách hàng và nhân viên (chỉ còn email/số điện thoại),
+         đồng thời đổi tên bảng "users" thành "customers" cho đúng nghiệp vụ (đây là khách hàng,
+         không phải user hệ thống nói chung). -->
+
+    <changeSet author="movizone" id="2026-07-27-1-drop-uk-users-username">
+        <dropUniqueConstraint tableName="users" constraintName="uk_users_username"/>
+    </changeSet>
+
+    <changeSet author="movizone" id="2026-07-27-2-drop-users-username-column">
+        <dropColumn tableName="users" columnName="username"/>
+    </changeSet>
+
+    <changeSet author="movizone" id="2026-07-27-3-rename-users-to-customers">
+        <renameTable oldTableName="users" newTableName="customers"/>
+    </changeSet>
+
+    <changeSet author="movizone" id="2026-07-27-4-drop-uk-staff-username">
+        <dropUniqueConstraint tableName="staff" constraintName="uk_staff_username"/>
+    </changeSet>
+
+    <changeSet author="movizone" id="2026-07-27-5-drop-staff-username-column">
+        <dropColumn tableName="staff" columnName="username"/>
+    </changeSet>
+
+</databaseChangeLog>

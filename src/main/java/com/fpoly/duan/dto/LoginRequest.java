@@ -14,8 +14,8 @@ import lombok.NoArgsConstructor;
 @Schema(name = "LoginRequest", description = "Đăng nhập theo từng luồng riêng: user dùng /login, staff dùng /staff-login")
 public class LoginRequest {
     @NotBlank(message = "Thông tin đăng nhập không được để trống")
-    @Schema(example = "customer@gmail.com", description = "Khách: email hoặc số điện thoại; staff: username, email hoặc số điện thoại")
-    private String username;
+    @Schema(example = "customer@gmail.com", description = "Email hoặc số điện thoại (khách và staff đều đăng nhập bằng email/SĐT)")
+    private String account;
 
     @NotBlank(message = "Mật khẩu không được để trống")
     @Schema(example = "Password123!")

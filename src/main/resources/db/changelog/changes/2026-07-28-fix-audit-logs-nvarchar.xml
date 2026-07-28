@@ -1,0 +1,32 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- audit_logs.actor_type/actor_role/action/target_type được tạo kiểu varchar (ASCII) trong
+         changelog trước, nhưng JDBC driver của dự án dùng sendStringParametersAsUnicode=true nên
+         Hibernate luôn đọc/ghi String bằng NVARCHAR — đọc cột varchar bị lỗi
+         "The conversion from varchar to NCHAR is unsupported." Đổi 4 cột này sang nvarchar cho
+         khớp với toàn bộ các cột String khác trong schema (đều là nvarchar). -->
+    <changeSet author="movizone" id="2026-07-28-4-fix-audit-logs-nvarchar">
+        <sql dbms="mssql">
+            DROP INDEX ix_audit_logs_actor_role ON audit_logs;
+            ALTER TABLE audit_logs ALTER COLUMN actor_type nvarchar(20) NOT NULL;
+            ALTER TABLE audit_logs ALTER COLUMN actor_role nvarchar(50) NULL;
+            ALTER TABLE audit_logs ALTER COLUMN action nvarchar(50) NOT NULL;
+            ALTER TABLE audit_logs ALTER COLUMN target_type nvarchar(50) NULL;
+            CREATE INDEX ix_audit_logs_actor_role ON audit_logs(actor_role);
+        </sql>
+        <rollback>
+            <sql dbms="mssql">
+                DROP INDEX ix_audit_logs_actor_role ON audit_logs;
+                ALTER TABLE audit_logs ALTER COLUMN actor_type varchar(20) NOT NULL;
+                ALTER TABLE audit_logs ALTER COLUMN actor_role varchar(50) NULL;
+                ALTER TABLE audit_logs ALTER COLUMN action varchar(50) NOT NULL;
+                ALTER TABLE audit_logs ALTER COLUMN target_type varchar(50) NULL;
+                CREATE INDEX ix_audit_logs_actor_role ON audit_logs(actor_role);
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

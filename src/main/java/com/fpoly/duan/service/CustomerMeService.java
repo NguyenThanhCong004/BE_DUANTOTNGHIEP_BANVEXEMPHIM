@@ -357,7 +357,7 @@ public class CustomerMeService {
         OrderOnline order = ticket != null ? ticket.getOrderOnline() : null;
         User user = order != null ? order.getUser() : null;
         String userName = user != null
-                ? (user.getFullname() != null && !user.getFullname().isBlank() ? user.getFullname() : user.getUsername())
+                ? (user.getFullname() != null && !user.getFullname().isBlank() ? user.getFullname() : user.getEmail())
                 : "Khách hàng";
 
         return MeMovieReviewDto.builder()
@@ -398,6 +398,8 @@ public class CustomerMeService {
                 .endDate(v.getEndDate())
                 .pointVoucher(java.math.BigDecimal.valueOf(v.getPointVoucher() != null ? v.getPointVoucher() : 0))
                 .status(v.getStatus() != null ? v.getStatus() : 1)
+                .cinemaId(v.getCinema() != null ? v.getCinema().getCinemaId() : null)
+                .cinemaName(v.getCinema() != null ? v.getCinema().getName() : null)
                 .build();
     }
 

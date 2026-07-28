@@ -54,6 +54,24 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, Integer> {
     @Query("SELECT s.movie.movieId, COUNT(s) FROM Showtime s GROUP BY s.movie.movieId")
     List<Object[]> countShowtimesGroupedByMovieId();
 
+    @Query("SELECT COUNT(DISTINCT s.movie.movieId) FROM Showtime s " +
+            "WHERE s.room.cinema.cinemaId = :cinemaId AND s.startTime >= :start AND s.startTime < :end")
+    Long countDistinctMoviesShowingBetween(@Param("cinemaId") Integer cinemaId,
+            @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    @Query("SELECT COUNT(s) FROM Showtime s " +
+            "WHERE s.room.cinema.cinemaId = :cinemaId AND s.startTime >= :start AND s.startTime < :end")
+    Long countShowtimesByCinemaBetween(@Param("cinemaId") Integer cinemaId,
+            @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    @Query("SELECT COUNT(DISTINCT r.roomId) FROM Showtime s JOIN s.room r " +
+            "WHERE s.startTime >= :start AND s.startTime < :end")
+    Long countDistinctRoomsWithShowtimeBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    @Query("SELECT DISTINCT s.room.roomId FROM Showtime s WHERE s.startTime >= :start AND s.startTime < :end")
+    List<Integer> findDistinctRoomIdsWithShowtimeBetween(@Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM Showtime s WHERE s.showtimeId = :id")
     Optional<Showtime> findByIdForUpdate(@Param("id") Integer id);

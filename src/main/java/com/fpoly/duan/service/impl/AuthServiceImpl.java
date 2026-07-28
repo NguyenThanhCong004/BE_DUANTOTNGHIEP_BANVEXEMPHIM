@@ -6,8 +6,6 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.util.Locale;
-
 import com.fpoly.duan.dto.AuthResponse;
 import com.fpoly.duan.dto.LoginRequest;
 import com.fpoly.duan.dto.RefreshRequest;
@@ -17,12 +15,12 @@ import com.fpoly.duan.dto.UserRequest;
 import com.fpoly.duan.entity.Staff;
 import com.fpoly.duan.entity.RevokedToken;
 import com.fpoly.duan.repository.RevokedTokenRepository;
-import com.fpoly.duan.repository.StaffRepository;
 import com.fpoly.duan.repository.UserRepository;
 import com.fpoly.duan.security.CustomUserDetails;
 import com.fpoly.duan.security.CustomUserDetailsService;
 import com.fpoly.duan.security.JwtService;
 import com.fpoly.duan.security.TokenType;
+import com.fpoly.duan.service.AuditLogService;
 import com.fpoly.duan.service.AuthService;
 import com.fpoly.duan.service.UserService;
 
@@ -41,12 +39,12 @@ public class AuthServiceImpl implements AuthService {
     private final UserService userService;
     private final RevokedTokenRepository revokedTokenRepository;
     private final UserRepository userRepository;
-    private final StaffRepository staffRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AuditLogService auditLogService;
 
     @Override
     public AuthResponse login(LoginRequest loginRequest) {
-        String loginKey = loginRequest.getUsername() != null ? loginRequest.getUsername().trim() : "";
+        String loginKey = loginRequest.getAccount() != null ? loginRequest.getAccount().trim() : "";
         CustomUserDetails userDetails;
         try {
             userDetails = userDetailsService.loadCustomerLoginAccount(loginKey);
@@ -68,7 +66,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResponse staffLogin(LoginRequest loginRequest) {
-        String loginKey = loginRequest.getUsername() != null ? loginRequest.getUsername().trim() : "";
+        String loginKey = loginRequest.getAccount() != null ? loginRequest.getAccount().trim() : "";
         CustomUserDetails userDetails;
         try {
             userDetails = userDetailsService.loadStaffAccount(loginKey);
@@ -79,6 +77,8 @@ public class AuthServiceImpl implements AuthService {
 
         String token = jwtService.generateToken(userDetails);
         String refreshToken = jwtService.generateRefreshToken(userDetails);
+        auditLogService.log(userDetails.getStaff(), "LOGIN", "STAFF", userDetails.getStaff().getStaffId(),
+                "Đăng nhập thành công");
 
         return AuthResponse.builder()
                 .token(token)
@@ -121,10 +121,7 @@ public class AuthServiceImpl implements AuthService {
             throw new RuntimeException("Số điện thoại đã tồn tại");
         }
 
-        String username = generateInternalUsername(email, phone);
-
         UserDTO userDTO = UserDTO.builder()
-                .username(username)
                 .fullname(fullname)
                 .email(email)
                 .phone(phone)
@@ -134,8 +131,8 @@ public class AuthServiceImpl implements AuthService {
                 .build();
         
         UserDTO createdUser = userService.createUser(userDTO, password);
-        
-        CustomUserDetails userDetails = userDetailsService.loadUserAccount(createdUser.getUsername());
+
+        CustomUserDetails userDetails = userDetailsService.loadUserAccount(createdUser.getEmail());
         String token = jwtService.generateToken(userDetails);
         String refreshToken = jwtService.generateRefreshToken(userDetails);
         
@@ -240,32 +237,10 @@ public class AuthServiceImpl implements AuthService {
         }
     }
 
-    private String generateInternalUsername(String email, String phone) {
-        String emailName = email.contains("@") ? email.substring(0, email.indexOf('@')) : "user";
-        String base = emailName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
-        if (base.length() < 6) {
-            base = "user" + phone;
-        }
-        if (base.length() > 42) {
-            base = base.substring(0, 42);
-        }
-
-        String candidate = base;
-        int counter = 1;
-        while (Boolean.TRUE.equals(userRepository.existsByUsername(candidate))
-                || Boolean.TRUE.equals(staffRepository.existsByUsername(candidate))) {
-            String suffix = String.valueOf(counter++);
-            int maxBaseLength = Math.max(1, 50 - suffix.length());
-            candidate = base.substring(0, Math.min(base.length(), maxBaseLength)) + suffix;
-        }
-        return candidate;
-    }
-
     private StaffDTO convertToStaffDTO(Staff staff) {
         return StaffDTO.builder()
                 .staffId(staff.getStaffId())
                 .email(staff.getEmail())
-                .username(staff.getUsername())
                 .fullname(staff.getFullname())
                 .status(staff.getStatus())
                 .phone(staff.getPhone())
