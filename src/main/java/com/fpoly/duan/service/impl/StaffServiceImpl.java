@@ -19,6 +19,7 @@ import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.StaffRepository;
 import com.fpoly.duan.repository.StaffShiftRepository;
 import com.fpoly.duan.repository.UserRepository;
+import com.fpoly.duan.service.AuditLogService;
 import com.fpoly.duan.service.EmailBrandKit;
 import com.fpoly.duan.service.EmailService;
 import com.fpoly.duan.service.StaffService;
@@ -41,6 +42,7 @@ public class StaffServiceImpl implements StaffService {
     private final StaffShiftRepository staffShiftRepository;
     private final EmailService emailService;
     private final UserRepository userRepository;
+    private final AuditLogService auditLogService;
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
@@ -90,7 +92,6 @@ public class StaffServiceImpl implements StaffService {
             throw new RuntimeException("Họ tên không được để trống");
         }
 
-        // Mặc định username = email nếu FE chưa gửi
         String email = staffDTO.getEmail() != null ? staffDTO.getEmail().trim() : null;
         if (email == null || email.isEmpty()) {
             throw new RuntimeException("Email không được để trống");
@@ -98,14 +99,6 @@ public class StaffServiceImpl implements StaffService {
 
         if (!email.matches("(?i)^[a-z0-9._%+-]+@gmail\\.com$")) {
             throw new RuntimeException("Email phải đúng định dạng Gmail (vd: abc@gmail.com)");
-        }
-
-        String username = staffDTO.getUsername() != null ? staffDTO.getUsername().trim() : null;
-        if (username == null || username.isEmpty()) {
-            username = email;
-        }
-        if (username.length() < 6 || username.length() > 50) {
-            throw new RuntimeException("Tên đăng nhập phải từ 6 đến 50 ký tự");
         }
 
         if (staffDTO.getPhone() == null || staffDTO.getPhone().trim().isEmpty()) {
@@ -141,9 +134,6 @@ public class StaffServiceImpl implements StaffService {
         if (staffRepository.existsByEmail(email) || userRepository.existsByEmail(email)) {
             throw new RuntimeException("Email đã tồn tại");
         }
-        if (staffRepository.existsByUsername(username) || userRepository.existsByUsername(username)) {
-            throw new RuntimeException("Username đã tồn tại");
-        }
         if (Boolean.TRUE.equals(staffRepository.existsByPhone(phone))
                 || Boolean.TRUE.equals(userRepository.existsByPhone(phone))) {
             throw new RuntimeException("Số điện thoại đã tồn tại");
@@ -165,7 +155,6 @@ public class StaffServiceImpl implements StaffService {
 
         Staff staff = new Staff();
         staff.setEmail(email);
-        staff.setUsername(username);
         staff.setFullname(staffDTO.getFullname().trim());
         staff.setPhone(phone);
         staff.setBirthday(staffDTO.getBirthday());
@@ -192,6 +181,8 @@ public class StaffServiceImpl implements StaffService {
         }
 
         Staff saved = staffRepository.save(staff);
+        auditLogService.log(currentActorStaff(), "CREATE_STAFF", "STAFF", saved.getStaffId(),
+                "Tạo nhân viên \"" + saved.getFullname() + "\" (" + saved.getRole() + ")");
 
         if (sendPasswordByEmail) {
             if (!emailService.isConfigured()) {
@@ -204,7 +195,6 @@ public class StaffServiceImpl implements StaffService {
                             buildNewStaffCredentialsHtml(
                                     staff.getFullname(),
                                     email,
-                                    username,
                                     plainPassword));
                 } catch (Exception e) {
                     log.error("Không gửi được email mật khẩu nhân viên tới {}: {}", email, e.getMessage(), e);
@@ -225,7 +215,7 @@ public class StaffServiceImpl implements StaffService {
     }
 
     private String buildNewStaffCredentialsHtml(
-            String fullname, String email, String username, String plainPassword) {
+            String fullname, String email, String plainPassword) {
         String name = fullname != null && !fullname.isBlank() ? fullname : "bạn";
         String body = """
                 <p style="margin:0 0 16px;">Xin chào <strong>%s</strong>,</p>
@@ -236,17 +226,13 @@ public class StaffServiceImpl implements StaffService {
                     <td style="padding:14px 18px;font-size:14px;font-weight:700;text-align:right;">%s</td>
                   </tr>
                   <tr>
-                    <td style="padding:14px 18px;font-size:13px;color:rgba(240,240,255,0.5);border-top:1px solid rgba(255,255,255,0.08);">Username</td>
-                    <td style="padding:14px 18px;font-size:14px;font-weight:700;text-align:right;border-top:1px solid rgba(255,255,255,0.08);">%s</td>
-                  </tr>
-                  <tr>
                     <td style="padding:14px 18px;font-size:13px;color:rgba(240,240,255,0.5);border-top:1px solid rgba(255,255,255,0.08);">Mật khẩu tạm</td>
                     <td style="padding:14px 18px;font-size:18px;font-weight:800;letter-spacing:1px;text-align:right;color:#d4ff00;border-top:1px solid rgba(255,255,255,0.08);">%s</td>
                   </tr>
                 </table>
                 %s
                 <p style="margin:20px 0 0;color:rgba(240,240,255,0.5);font-size:12px;">Vui lòng đổi mật khẩu ngay sau khi đăng nhập lần đầu.</p>
-                """.formatted(name, email, username, plainPassword,
+                """.formatted(name, email, plainPassword,
                 EmailBrandKit.button(frontendBaseUrl + "/staff/login", "Đăng nhập ngay"));
         return EmailBrandKit.wrap("Tài khoản nhân viên MovieZone của bạn đã sẵn sàng", body);
     }
@@ -354,7 +340,10 @@ public class StaffServiceImpl implements StaffService {
         }
 
         // Không thay đổi password ở update.
-        return convertToDTO(staffRepository.save(staff));
+        Staff saved = staffRepository.save(staff);
+        auditLogService.log(currentActorStaff(), "UPDATE_STAFF", "STAFF", saved.getStaffId(),
+                "Cập nhật nhân viên \"" + saved.getFullname() + "\"");
+        return convertToDTO(saved);
     }
 
     @Override
@@ -394,17 +383,25 @@ public class StaffServiceImpl implements StaffService {
         if (id == null) {
             throw new RuntimeException("Mã nhân viên không hợp lệ");
         }
-        if (!staffRepository.existsById(id)) {
-            throw new RuntimeException("Không tìm thấy nhân viên với mã: " + id);
-        }
+        Staff staff = staffRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân viên với mã: " + id));
         staffRepository.deleteById(id);
+        auditLogService.log(currentActorStaff(), "DELETE_STAFF", "STAFF", id,
+                "Xóa nhân viên \"" + staff.getFullname() + "\"");
+    }
+
+    private Staff currentActorStaff() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof CustomUserDetails details) {
+            return details.getStaff();
+        }
+        return null;
     }
 
     private StaffDTO convertToDTO(Staff staff) {
         return StaffDTO.builder()
                 .staffId(staff.getStaffId())
                 .email(staff.getEmail())
-                .username(staff.getUsername())
                 .fullname(staff.getFullname())
                 .status(staff.getStatus())
                 .phone(staff.getPhone())

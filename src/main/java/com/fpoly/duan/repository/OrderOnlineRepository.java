@@ -32,6 +32,47 @@ public interface OrderOnlineRepository extends JpaRepository<OrderOnline, Intege
        Double sumRevenueByStaffBetween(@Param("staffId") Integer staffId, @Param("start") LocalDateTime start,
                      @Param("end") LocalDateTime end);
 
+       @Query("SELECT COALESCE(SUM(o.finalAmount), 0.0) FROM OrderOnline o WHERE o.status = 1 AND o.cinema.cinemaId = :cinemaId AND o.createdAt BETWEEN :start AND :end")
+       Double sumRevenueByCinemaBetween(@Param("cinemaId") Integer cinemaId, @Param("start") LocalDateTime start,
+                     @Param("end") LocalDateTime end);
+
+       @Query("SELECT COUNT(DISTINCT o.user.userId) FROM OrderOnline o " +
+                     "WHERE o.status = 1 AND o.cinema.cinemaId = :cinemaId AND o.user IS NOT NULL " +
+                     "AND o.createdAt BETWEEN :start AND :end")
+       Long countDistinctCustomersByCinemaBetween(@Param("cinemaId") Integer cinemaId,
+                     @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+       @Query("SELECT o.paymentMethod, SUM(o.finalAmount) FROM OrderOnline o WHERE o.status = 1 GROUP BY o.paymentMethod")
+       List<Object[]> getRevenueBreakdownAll();
+
+       /** Doanh thu theo ngày (yyyy-MM-dd), toàn hệ thống, kể từ mốc thời gian cho trước. */
+       @Query(value = "SELECT CONVERT(varchar(10), o.created_at, 23) AS d, SUM(o.final_amount) " +
+                     "FROM orders_online o WHERE o.status = 1 AND o.created_at >= :start " +
+                     "GROUP BY CONVERT(varchar(10), o.created_at, 23) " +
+                     "ORDER BY d", nativeQuery = true)
+       List<Object[]> getDailyRevenueSince(@Param("start") LocalDateTime start);
+
+       /** Doanh thu theo ngày, toàn hệ thống, trong khoảng [start, end) cho trước (bộ lọc từ ngày - đến ngày). */
+       @Query(value = "SELECT CONVERT(varchar(10), o.created_at, 23) AS d, SUM(o.final_amount) " +
+                     "FROM orders_online o WHERE o.status = 1 AND o.created_at >= :start AND o.created_at < :end " +
+                     "GROUP BY CONVERT(varchar(10), o.created_at, 23) " +
+                     "ORDER BY d", nativeQuery = true)
+       List<Object[]> getDailyRevenueBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+       /** Doanh thu theo ngày cho một rạp, kể từ mốc thời gian cho trước. */
+       @Query(value = "SELECT CONVERT(varchar(10), o.created_at, 23) AS d, SUM(o.final_amount) " +
+                     "FROM orders_online o WHERE o.status = 1 AND o.cinema_id = :cinemaId AND o.created_at >= :start " +
+                     "GROUP BY CONVERT(varchar(10), o.created_at, 23) " +
+                     "ORDER BY d", nativeQuery = true)
+       List<Object[]> getDailyRevenueByCinemaSince(@Param("cinemaId") Integer cinemaId,
+                     @Param("start") LocalDateTime start);
+
+       /** Doanh thu theo năm, toàn hệ thống, kể từ năm cho trước. */
+       @Query("SELECT YEAR(o.createdAt), SUM(o.finalAmount) FROM OrderOnline o " +
+                     "WHERE o.status = 1 AND YEAR(o.createdAt) >= :sinceYear " +
+                     "GROUP BY YEAR(o.createdAt) ORDER BY YEAR(o.createdAt)")
+       List<Object[]> getYearlyRevenueSince(@Param("sinceYear") int sinceYear);
+
        @Query("SELECT o.paymentMethod, SUM(o.finalAmount) FROM OrderOnline o " +
                      "WHERE o.status = 1 AND o.staff.staffId = :staffId AND o.createdAt BETWEEN :start AND :end " +
                      "GROUP BY o.paymentMethod")

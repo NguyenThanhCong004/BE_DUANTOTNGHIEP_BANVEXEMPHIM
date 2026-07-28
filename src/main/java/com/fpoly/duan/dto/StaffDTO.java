@@ -7,7 +7,6 @@ import com.fasterxml.jackson.annotation.JsonProperty.Access;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -23,10 +22,6 @@ public class StaffDTO {
     @NotBlank(message = "Email nhân viên không được để trống")
     @Email(message = "Email không đúng định dạng")
     private String email;
-
-    @NotBlank(message = "Tên đăng nhập không được để trống")
-    @Size(min = 3, max = 50, message = "Tên đăng nhập từ 3 đến 50 ký tự")
-    private String username;
 
     @NotBlank(message = "Họ và tên không được để trống")
     private String fullname;

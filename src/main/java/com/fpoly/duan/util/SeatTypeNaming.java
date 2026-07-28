@@ -2,21 +2,9 @@ package com.fpoly.duan.util;
 
 import java.util.Locale;
 
-/**
- * Quy ước nhận diện loại ghế đôi (một vé / một chỗ ngồi logic chiếm 2 ô) theo tên loại.
- * Giữ khớp logic phía FE (đôi / sweet / couple / double).
- */
 public final class SeatTypeNaming {
 
     private SeatTypeNaming() {
-    }
-
-    public static boolean isCoupleSeatType(String name) {
-        if (name == null || name.isBlank()) {
-            return false;
-        }
-        String s = name.toLowerCase();
-        return s.contains("đôi") || s.contains("sweet") || s.contains("couple") || s.contains("double");
     }
 
     /**

@@ -6,10 +6,8 @@ import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,14 +15,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-import jakarta.validation.Valid;
-
 import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.MembershipRankDTO;
 import com.fpoly.duan.entity.MembershipRank;
 import com.fpoly.duan.repository.MembershipRankRepository;
-import com.fpoly.duan.repository.UserRepository;
 import com.fpoly.duan.service.UserService;
 import com.fpoly.duan.util.SearchUtils;
 
@@ -44,7 +39,6 @@ import lombok.RequiredArgsConstructor;
 public class MembershipRankController {
 
     private final MembershipRankRepository membershipRankRepository;
-    private final UserRepository userRepository;
     private final UserService userService;
 
     @GetMapping
@@ -79,19 +73,6 @@ public class MembershipRankController {
                 .build());
     }
 
-    @PostMapping
-    @Operation(summary = "Tạo hạng")
-    public ResponseEntity<ApiResponse<MembershipRankDTO>> create(@Valid @RequestBody MembershipRankDTO dto) {
-        validate(dto, null);
-        MembershipRank saved = membershipRankRepository.save(fromDTO(new MembershipRank(), dto));
-        userService.recalculateAllUserRanks();
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<MembershipRankDTO>builder()
-                .status(HttpStatus.CREATED.value())
-                .message("Tạo hạng thành công")
-                .data(toDTO(saved))
-                .build());
-    }
-
     @PutMapping("/{id}")
     @Operation(summary = "Cập nhật hạng")
     public ResponseEntity<ApiResponse<MembershipRankDTO>> update(@PathVariable Integer id,
@@ -122,26 +103,6 @@ public class MembershipRankController {
                 .status(HttpStatus.OK.value())
                 .message("Cập nhật hạng thành công")
                 .data(toDTO(saved))
-                .build());
-    }
-
-    @DeleteMapping("/{id}")
-    @Operation(summary = "Xóa hạng")
-    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
-        MembershipRank r = membershipRankRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy hạng với id: " + id));
-
-        if (r.getMinSpending() != null && r.getMinSpending() == 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không được phép xóa hạng mặc định (0đ)");
-        }
-
-        if (userRepository.existsByRankId(id)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không thể xóa hạng vì đang có người dùng thuộc hạng này");
-        }
-        membershipRankRepository.deleteById(id);
-        return ResponseEntity.ok(ApiResponse.<Void>builder()
-                .status(HttpStatus.OK.value())
-                .message("Xóa hạng thành công")
                 .build());
     }
 
@@ -227,16 +188,6 @@ public class MembershipRankController {
                 .status(r.getStatus())
                 .isDefault(r.getMinSpending() != null && r.getMinSpending() == 0)
                 .build();
-    }
-
-    private MembershipRank fromDTO(MembershipRank r, MembershipRankDTO dto) {
-        r.setRankName(dto.getRankName() != null ? dto.getRankName().trim() : r.getRankName());
-        r.setMinSpending(dto.getMinSpending());
-        r.setDescription(dto.getDescription());
-        r.setDiscountPercent(dto.getDiscountPercent());
-        r.setBonusPoint(dto.getBonusPoint());
-        r.setStatus(dto.getStatus());
-        return r;
     }
 
     private boolean applyChanges(MembershipRank r, MembershipRankDTO dto) {

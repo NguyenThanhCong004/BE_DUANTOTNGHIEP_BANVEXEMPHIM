@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,8 +27,11 @@ import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.CinemaDTO;
 import com.fpoly.duan.entity.Cinema;
 import com.fpoly.duan.entity.Room;
+import com.fpoly.duan.entity.Staff;
 import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.RoomRepository;
+import com.fpoly.duan.security.CustomUserDetails;
+import com.fpoly.duan.service.AuditLogService;
 import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -47,6 +51,7 @@ public class CinemaController {
 
     private final CinemaRepository cinemaRepository;
     private final RoomRepository roomRepository;
+    private final AuditLogService auditLogService;
 
     @GetMapping
     @Operation(summary = "Danh sách rạp")
@@ -106,6 +111,8 @@ public class CinemaController {
         c.setAddress(address);
         c.setStatus(dto.getStatus() != null ? dto.getStatus() : 1);
         Cinema saved = cinemaRepository.save(c);
+        auditLogService.log(currentActorStaff(), "CREATE_CINEMA", "CINEMA", saved.getCinemaId(),
+                "Tạo rạp \"" + saved.getName() + "\"");
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<CinemaDTO>builder()
                 .status(HttpStatus.CREATED.value())
                 .message("Tạo rạp thành công")
@@ -156,6 +163,8 @@ public class CinemaController {
         }
 
         Cinema saved = cinemaRepository.save(c);
+        auditLogService.log(currentActorStaff(), "UPDATE_CINEMA", "CINEMA", saved.getCinemaId(),
+                "Cập nhật rạp \"" + saved.getName() + "\"");
         return ResponseEntity.ok(ApiResponse.<CinemaDTO>builder()
                 .status(HttpStatus.OK.value())
                 .message("Cập nhật rạp thành công")
@@ -166,9 +175,8 @@ public class CinemaController {
     @DeleteMapping("/{id}")
     @Operation(summary = "Xóa rạp")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
-        if (!cinemaRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy rạp với id: " + id);
-        }
+        Cinema cinema = cinemaRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy rạp với id: " + id));
 
         List<Room> roomsInCinema = roomRepository.findByCinema_CinemaId(id);
         if (!roomsInCinema.isEmpty()) {
@@ -178,10 +186,20 @@ public class CinemaController {
         }
 
         cinemaRepository.deleteById(id);
+        auditLogService.log(currentActorStaff(), "DELETE_CINEMA", "CINEMA", id,
+                "Xóa rạp \"" + cinema.getName() + "\"");
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
                 .message("Xóa rạp thành công")
                 .build());
+    }
+
+    private Staff currentActorStaff() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof CustomUserDetails details) {
+            return details.getStaff();
+        }
+        return null;
     }
 
     private CinemaDTO toDTO(Cinema c) {

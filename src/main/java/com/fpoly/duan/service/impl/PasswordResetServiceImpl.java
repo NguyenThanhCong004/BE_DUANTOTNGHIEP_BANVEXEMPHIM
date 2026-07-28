@@ -60,7 +60,7 @@ public class PasswordResetServiceImpl implements PasswordResetService {
     @Transactional
     public ForgotPasswordResponse requestReset(ForgotPasswordRequest request) {
         String sessionToken = newSessionToken();
-        String raw = request.getUsernameOrEmail() != null ? request.getUsernameOrEmail().trim() : "";
+        String raw = request.getAccount() != null ? request.getAccount().trim() : "";
         if (raw.isEmpty()) {
             return ForgotPasswordResponse.builder()
                     .resetSessionToken(sessionToken)
@@ -263,7 +263,7 @@ public class PasswordResetServiceImpl implements PasswordResetService {
                 ? staffRepository.findFirstByEmailIgnoreCaseOrderByStaffIdAsc(raw)
                 : isPhone
                         ? staffRepository.findByPhone(phone)
-                        : staffRepository.findFirstByUsernameIgnoreCaseOrderByStaffIdAsc(raw);
+                        : Optional.empty();
         return staffOpt.map(staff -> new ResolvedAccount(null, staff));
     }
 

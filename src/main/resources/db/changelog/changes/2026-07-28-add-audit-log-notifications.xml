@@ -1,0 +1,87 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Nhật ký hệ thống (audit log) và thông báo nội bộ, phục vụ Dashboard Super Admin/Admin. -->
+
+    <changeSet author="movizone" id="2026-07-28-1-create-audit-logs">
+        <createTable tableName="audit_logs">
+            <column autoIncrement="true" name="id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK_audit_logs"/>
+            </column>
+            <column name="actor_type" type="varchar(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="actor_id" type="int"/>
+            <column name="actor_name" type="nvarchar(200)"/>
+            <column name="actor_role" type="varchar(50)"/>
+            <column name="action" type="varchar(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="target_type" type="varchar(50)"/>
+            <column name="target_id" type="int"/>
+            <column name="description" type="nvarchar(500)"/>
+            <column name="cinema_id" type="int"/>
+            <column name="created_at" type="datetime2">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex indexName="ix_audit_logs_created_at" tableName="audit_logs">
+            <column name="created_at"/>
+        </createIndex>
+        <createIndex indexName="ix_audit_logs_actor_role" tableName="audit_logs">
+            <column name="actor_role"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet author="movizone" id="2026-07-28-2-create-notifications">
+        <createTable tableName="notifications">
+            <column autoIncrement="true" name="id" type="int">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="PK_notifications"/>
+            </column>
+            <column name="title" type="nvarchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="content" type="nvarchar(MAX)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cinema_id" type="int"/>
+            <column name="created_by" type="int"/>
+            <column name="active" type="bit" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="datetime2">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex indexName="ix_notifications_cinema_id" tableName="notifications">
+            <column name="cinema_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet author="movizone" id="2026-07-28-3-seed-notifications">
+        <insert tableName="notifications">
+            <column name="title" value="Chào mừng đến với MovieZone"/>
+            <column name="content" value="Hệ thống quản lý rạp chiếu phim MovieZone đã sẵn sàng. Chúc bạn làm việc hiệu quả!"/>
+            <column name="cinema_id" valueComputed="NULL"/>
+            <column name="active" valueBoolean="true"/>
+            <column name="created_at" valueComputed="SYSDATETIME()"/>
+        </insert>
+        <insert tableName="notifications">
+            <column name="title" value="Nhắc lịch kiểm kê phòng chiếu"/>
+            <column name="content" value="Vui lòng kiểm tra tình trạng ghế và thiết bị phòng chiếu trước mỗi ca làm việc."/>
+            <column name="cinema_id" valueComputed="NULL"/>
+            <column name="active" valueBoolean="true"/>
+            <column name="created_at" valueComputed="SYSDATETIME()"/>
+        </insert>
+        <insert tableName="notifications">
+            <column name="title" value="Cập nhật chính sách đổi/trả vé"/>
+            <column name="content" value="Từ tháng này, khách hàng có thể đổi suất chiếu miễn phí trước giờ chiếu 2 tiếng. Vui lòng hỗ trợ khách hàng theo chính sách mới."/>
+            <column name="cinema_id" valueComputed="NULL"/>
+            <column name="active" valueBoolean="true"/>
+            <column name="created_at" valueComputed="SYSDATETIME()"/>
+        </insert>
+    </changeSet>
+
+</databaseChangeLog>

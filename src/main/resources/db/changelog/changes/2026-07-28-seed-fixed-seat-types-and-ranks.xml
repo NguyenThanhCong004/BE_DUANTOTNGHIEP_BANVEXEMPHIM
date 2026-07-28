@@ -1,0 +1,39 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Loại ghế và Hạng thành viên giờ là danh sách CỐ ĐỊNH (không cho tạo/xóa qua API nữa,
+         chỉ còn sửa giá/ưu đãi — xem SeatController/MembershipRankController). Migration này
+         đảm bảo mọi môi trường (kể cả VPS/production triển khai mới, không chạy qua
+         docker/seed-full-test-data.sql) đều có sẵn đúng bộ dữ liệu mặc định này. -->
+
+    <changeSet author="movizone" id="2026-07-28-5-seed-seat-types">
+        <sql dbms="mssql">
+            IF NOT EXISTS (SELECT 1 FROM seatype WHERE name = N'Ghế thường')
+                INSERT INTO seatype(name, surcharge, color, couple_seat) VALUES (N'Ghế thường', 0, '#0D6EFD', 0);
+            IF NOT EXISTS (SELECT 1 FROM seatype WHERE name = N'Ghế VIP')
+                INSERT INTO seatype(name, surcharge, color, couple_seat) VALUES (N'Ghế VIP', 5000, '#FFC107', 0);
+            IF NOT EXISTS (SELECT 1 FROM seatype WHERE name = N'Ghế đôi')
+                INSERT INTO seatype(name, surcharge, color, couple_seat) VALUES (N'Ghế đôi', 10000, '#DC3545', 1);
+        </sql>
+    </changeSet>
+
+    <changeSet author="movizone" id="2026-07-28-6-seed-membership-ranks">
+        <sql dbms="mssql">
+            IF NOT EXISTS (SELECT 1 FROM membership_ranks WHERE rank_name = N'Hạng Đồng')
+                INSERT INTO membership_ranks(rank_name, min_spending, description, discount_percent, bonus_point, status)
+                VALUES (N'Hạng Đồng', 0, N'Hạng mặc định cho khách mới.', 0, 1, 1);
+            IF NOT EXISTS (SELECT 1 FROM membership_ranks WHERE rank_name = N'Hạng Bạc')
+                INSERT INTO membership_ranks(rank_name, min_spending, description, discount_percent, bonus_point, status)
+                VALUES (N'Hạng Bạc', 1000000, N'Khách quay lại thường xuyên.', 3, 5, 1);
+            IF NOT EXISTS (SELECT 1 FROM membership_ranks WHERE rank_name = N'Hạng Vàng')
+                INSERT INTO membership_ranks(rank_name, min_spending, description, discount_percent, bonus_point, status)
+                VALUES (N'Hạng Vàng', 3000000, N'Khách thân thiết.', 5, 10, 1);
+            IF NOT EXISTS (SELECT 1 FROM membership_ranks WHERE rank_name = N'Hạng Kim Cương')
+                INSERT INTO membership_ranks(rank_name, min_spending, description, discount_percent, bonus_point, status)
+                VALUES (N'Hạng Kim Cương', 7000000, N'Khách VIP.', 8, 20, 1);
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

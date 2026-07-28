@@ -72,7 +72,7 @@ class PasswordResetServiceImplTest {
         when(passwordEncoder.encode(anyString())).thenReturn("otp-hash");
 
         ForgotPasswordResponse response = passwordResetService.requestReset(ForgotPasswordRequest.builder()
-                .usernameOrEmail(" 0900000000 ")
+                .account(" 0900000000 ")
                 .build());
 
         assertNotNull(response.getResetSessionToken());
@@ -97,7 +97,7 @@ class PasswordResetServiceImplTest {
         when(passwordEncoder.encode(anyString())).thenReturn("otp-hash");
 
         ForgotPasswordResponse response = passwordResetService.requestReset(ForgotPasswordRequest.builder()
-                .usernameOrEmail("0911000001")
+                .account("0911000001")
                 .build());
 
         assertNotNull(response.getResetSessionToken());

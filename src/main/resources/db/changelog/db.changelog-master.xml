@@ -18,6 +18,22 @@
     <!-- Cho phép nhân viên (staff) tự quên/đặt lại mật khẩu qua OTP email -->
     <include file="changes/2026-07-17-staff-password-reset.xml" relativeToChangelogFile="true"/>
 
+    <!-- Bỏ đăng nhập bằng username (khách + staff chỉ còn email/SĐT); đổi tên bảng users -> customers -->
+    <include file="changes/2026-07-27-drop-username-rename-customers.xml" relativeToChangelogFile="true"/>
+
+    <!-- Nhật ký hệ thống (audit_logs) và thông báo nội bộ (notifications) cho Dashboard -->
+    <include file="changes/2026-07-28-add-audit-log-notifications.xml" relativeToChangelogFile="true"/>
+
+    <!-- Sửa kiểu cột varchar -> nvarchar trên audit_logs (lỗi đọc cột do driver dùng Unicode) -->
+    <include file="changes/2026-07-28-fix-audit-logs-nvarchar.xml" relativeToChangelogFile="true"/>
+
+    <!-- Seed cố định 3 loại ghế + 4 hạng thành viên mặc định (danh sách khóa cứng, xem SeatController/MembershipRankController) -->
+    <include file="changes/2026-07-28-seed-fixed-seat-types-and-ranks.xml" relativeToChangelogFile="true"/>
+
+    <!-- Voucher gắn với đúng 1 rạp (cinema_id NOT NULL) — Admin tạo voucher cho rạp mình,
+         khách hàng chỉ dùng được voucher đúng rạp đang đặt vé -->
+    <include file="changes/2026-07-28-add-voucher-cinema-scope.xml" relativeToChangelogFile="true"/>
+
     <!-- Các thay đổi schema MỚI kể từ đây: thêm changelog file riêng cho từng đợt thay đổi
          (vd: db/changelog/changes/2026-08-01-add-xyz.xml) rồi include vào đây, KHÔNG sửa
          trực tiếp lên DB hay dựa vào ddl-auto nữa. -->

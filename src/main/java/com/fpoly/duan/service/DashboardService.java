@@ -1,20 +1,31 @@
 package com.fpoly.duan.service;
 
+import com.fpoly.duan.dto.AuditLogDTO;
 import com.fpoly.duan.dto.CinemaRankingDTO;
 import com.fpoly.duan.dto.CinemaDetailDTO;
 import com.fpoly.duan.dto.DashboardSummaryDTO;
+import com.fpoly.duan.dto.RevenueBreakdownDTO;
 import com.fpoly.duan.dto.RevenueChartDTO;
+import com.fpoly.duan.dto.SeatOccupancyDTO;
+import com.fpoly.duan.dto.TopMovieDTO;
+import com.fpoly.duan.entity.AuditLog;
 import com.fpoly.duan.entity.Cinema;
+import com.fpoly.duan.repository.AuditLogRepository;
 import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.MovieRepository;
 import com.fpoly.duan.repository.OrderOnlineRepository;
+import com.fpoly.duan.repository.RoomRepository;
+import com.fpoly.duan.repository.SeatRepository;
+import com.fpoly.duan.repository.ShowtimeRepository;
 import com.fpoly.duan.repository.StaffRepository;
 import com.fpoly.duan.repository.TicketRepository;
 import com.fpoly.duan.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -34,24 +45,32 @@ public class DashboardService {
     private final CinemaRepository cinemaRepository;
     private final StaffRepository staffRepository;
     private final MovieRepository movieRepository;
+    private final RoomRepository roomRepository;
+    private final ShowtimeRepository showtimeRepository;
+    private final SeatRepository seatRepository;
+    private final AuditLogRepository auditLogRepository;
 
     public DashboardSummaryDTO getSummary() {
         try {
             Double totalRevenue = parseDouble(orderOnlineRepository.sumTotalRevenue());
             Long totalTickets = parseLong(ticketRepository.countAllPaidTickets());
-            
+
             Long totalUsers = userRepository.count();
             Long totalCinemas = cinemaRepository.count();
-            Long totalStaff = staffRepository.count();
+            Long totalRooms = roomRepository.count();
+            Long totalStaff = staffRepository.countByRoleIgnoreCase("STAFF");
+            Long totalAdmins = staffRepository.countByRoleIgnoreCase("ADMIN");
             Long totalMovies = movieRepository.count();
 
-            // Calculate growth (Month-over-Month)
             LocalDateTime now = LocalDateTime.now();
             LocalDateTime firstDayThisMonth = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
             LocalDateTime firstDayLastMonth = firstDayThisMonth.minusMonths(1);
-            
+            LocalDateTime todayStart = LocalDate.now().atStartOfDay();
+            LocalDateTime todayEnd = todayStart.plusDays(1);
+
             Double thisM = parseDouble(orderOnlineRepository.sumRevenueBetween(firstDayThisMonth, now));
             Double lastM = parseDouble(orderOnlineRepository.sumRevenueBetween(firstDayLastMonth, firstDayThisMonth));
+            Double revenueToday = parseDouble(orderOnlineRepository.sumRevenueBetween(todayStart, todayEnd));
 
             double growth = 0.0;
             if (lastM > 0) {
@@ -62,10 +81,13 @@ public class DashboardService {
 
             return DashboardSummaryDTO.builder()
                     .totalRevenue(totalRevenue)
+                    .revenueToday(revenueToday)
                     .totalTicketsSold(totalTickets)
                     .totalUsers(totalUsers)
                     .totalCinemas(totalCinemas)
+                    .totalRooms(totalRooms)
                     .totalStaff(totalStaff)
+                    .totalAdmins(totalAdmins)
                     .totalMovies(totalMovies)
                     .revenueGrowth(growth)
                     .build();
@@ -73,10 +95,13 @@ public class DashboardService {
             log.error("Error generating Dashboard Summary: ", e);
             return DashboardSummaryDTO.builder()
                     .totalRevenue(0.0)
+                    .revenueToday(0.0)
                     .totalTicketsSold(0L)
                     .totalUsers(0L)
                     .totalCinemas(0L)
+                    .totalRooms(0L)
                     .totalStaff(0L)
+                    .totalAdmins(0L)
                     .totalMovies(0L)
                     .revenueGrowth(0.0)
                     .build();
@@ -109,6 +134,50 @@ public class DashboardService {
         return chartData;
     }
 
+    /** Doanh thu theo ngày (30 ngày gần nhất), toàn hệ thống. */
+    public List<RevenueChartDTO> getDailyRevenue() {
+        try {
+            LocalDateTime start = LocalDate.now().minusDays(29).atStartOfDay();
+            List<Object[]> rows = orderOnlineRepository.getDailyRevenueSince(start);
+            return toRevenueChartList(rows);
+        } catch (Exception e) {
+            log.error("Error generating Daily Revenue Chart: ", e);
+            return new ArrayList<>();
+        }
+    }
+
+    /** Doanh thu theo ngày trong khoảng [from, to] cho trước (bộ lọc từ ngày - đến ngày), toàn hệ thống. */
+    public List<RevenueChartDTO> getDailyRevenueBetween(LocalDate from, LocalDate to) {
+        try {
+            LocalDateTime start = from.atStartOfDay();
+            LocalDateTime end = to.plusDays(1).atStartOfDay();
+            List<Object[]> rows = orderOnlineRepository.getDailyRevenueBetween(start, end);
+            return toRevenueChartList(rows);
+        } catch (Exception e) {
+            log.error("Error generating Daily Revenue Chart between {} and {}: ", from, to, e);
+            return new ArrayList<>();
+        }
+    }
+
+    /** Doanh thu theo năm (5 năm gần nhất), toàn hệ thống. */
+    public List<RevenueChartDTO> getYearlyRevenue() {
+        try {
+            int sinceYear = LocalDate.now().getYear() - 4;
+            List<Object[]> rows = orderOnlineRepository.getYearlyRevenueSince(sinceYear);
+            List<RevenueChartDTO> chartData = new ArrayList<>();
+            for (Object[] row : rows) {
+                if (row.length >= 2 && row[0] != null && row[1] != null) {
+                    chartData.add(new RevenueChartDTO(String.valueOf(((Number) row[0]).intValue()),
+                            ((Number) row[1]).doubleValue()));
+                }
+            }
+            return chartData;
+        } catch (Exception e) {
+            log.error("Error generating Yearly Revenue Chart: ", e);
+            return new ArrayList<>();
+        }
+    }
+
     public List<CinemaRankingDTO> getCinemaRankings(int year, int month) {
         List<CinemaRankingDTO> ranking = new ArrayList<>();
         try {
@@ -127,6 +196,75 @@ public class DashboardService {
             log.error("Error generating Cinema Rankings for year {} month {}: ", year, month, e);
         }
         return ranking;
+    }
+
+    public List<TopMovieDTO> getTopMovies(int limit) {
+        try {
+            return ticketRepository.getTopMoviesByRevenue().stream()
+                    .limit(limit)
+                    .map(this::toTopMovieDTO)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error generating Top Movies: ", e);
+            return new ArrayList<>();
+        }
+    }
+
+    public SeatOccupancyDTO getSeatOccupancyToday() {
+        try {
+            LocalDateTime start = LocalDate.now().atStartOfDay();
+            LocalDateTime end = start.plusDays(1);
+            long sold = parseLong(ticketRepository.countSoldSeatsForShowtimesBetween(start, end));
+            List<Integer> roomIds = showtimeRepository.findDistinctRoomIdsWithShowtimeBetween(start, end);
+            long total = roomIds.isEmpty() ? 0L : seatRepository.countByRoom_RoomIdIn(roomIds);
+            double ratio = total > 0 ? (sold * 100.0 / total) : 0.0;
+            return SeatOccupancyDTO.builder().soldSeats(sold).totalSeats(total).ratio(ratio).build();
+        } catch (Exception e) {
+            log.error("Error computing Seat Occupancy: ", e);
+            return SeatOccupancyDTO.builder().soldSeats(0L).totalSeats(0L).ratio(0.0).build();
+        }
+    }
+
+    /** PayOS thực chất là một hình thức chuyển khoản — gộp chung vào "TRANSFER" để không tách rời trên biểu đồ. */
+    public List<RevenueBreakdownDTO> getPaymentMethodRevenue() {
+        try {
+            Map<String, Double> totals = new LinkedHashMap<>();
+            for (Object[] row : orderOnlineRepository.getRevenueBreakdownAll()) {
+                String method = row[0] != null ? row[0].toString() : "N/A";
+                Double amount = row[1] instanceof Number ? ((Number) row[1]).doubleValue() : 0.0;
+                String bucket = "PAYOS".equalsIgnoreCase(method) ? "TRANSFER" : method;
+                totals.merge(bucket, amount, Double::sum);
+            }
+            return totals.entrySet().stream()
+                    .map(e -> RevenueBreakdownDTO.builder().method(e.getKey()).total(e.getValue()).build())
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error generating Payment Method Revenue: ", e);
+            return new ArrayList<>();
+        }
+    }
+
+    public List<AuditLogDTO> getRecentAdminActivity(int limit) {
+        try {
+            return auditLogRepository.findByActorRoleIgnoreCaseOrderByCreatedAtDesc("ADMIN", PageRequest.of(0, limit)).stream()
+                    .map(this::toAuditLogDTO)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error loading recent admin activity: ", e);
+            return new ArrayList<>();
+        }
+    }
+
+    public List<AuditLogDTO> getAuditLog(int limit) {
+        try {
+            return auditLogRepository.findTop20ByOrderByCreatedAtDesc().stream()
+                    .limit(limit)
+                    .map(this::toAuditLogDTO)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error loading audit log: ", e);
+            return new ArrayList<>();
+        }
     }
 
     public CinemaDetailDTO getCinemaDetail(Integer cinemaId) {
@@ -171,6 +309,40 @@ public class DashboardService {
                 .cinemaName(cinema.getName())
                 .topMovies(topMovies)
                 .recommendations(recommendations)
+                .build();
+    }
+
+    private List<RevenueChartDTO> toRevenueChartList(List<Object[]> rows) {
+        List<RevenueChartDTO> chartData = new ArrayList<>();
+        if (rows == null) {
+            return chartData;
+        }
+        for (Object[] row : rows) {
+            if (row.length >= 2 && row[0] != null) {
+                double revenue = row[1] instanceof Number ? ((Number) row[1]).doubleValue() : 0.0;
+                chartData.add(new RevenueChartDTO(row[0].toString(), revenue));
+            }
+        }
+        return chartData;
+    }
+
+    private TopMovieDTO toTopMovieDTO(Object[] row) {
+        String title = row[0] != null ? row[0].toString() : "N/A";
+        Long tickets = row[1] instanceof Number ? ((Number) row[1]).longValue() : 0L;
+        Double revenue = row[2] instanceof Number ? ((Number) row[2]).doubleValue() : 0.0;
+        return TopMovieDTO.builder().movieTitle(title).ticketsSold(tickets).revenue(revenue).build();
+    }
+
+    private AuditLogDTO toAuditLogDTO(AuditLog a) {
+        return AuditLogDTO.builder()
+                .id(a.getId())
+                .actorName(a.getActorName())
+                .actorRole(a.getActorRole())
+                .action(a.getAction())
+                .targetType(a.getTargetType())
+                .targetId(a.getTargetId())
+                .description(a.getDescription())
+                .createdAt(a.getCreatedAt())
                 .build();
     }
 

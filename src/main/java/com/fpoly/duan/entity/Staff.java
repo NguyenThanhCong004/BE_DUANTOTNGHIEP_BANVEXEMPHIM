@@ -9,7 +9,6 @@ import java.time.LocalDate;
 @Table(
         name = "staff",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uk_staff_username", columnNames = "username"),
                 @UniqueConstraint(name = "uk_staff_email", columnNames = "email"),
                 @UniqueConstraint(name = "uk_staff_phone", columnNames = "phone")
         })
@@ -21,9 +20,6 @@ public class Staff {
 
     @Column(nullable = false, columnDefinition = "NVARCHAR(255)")
     private String email;
-
-    @Column(nullable = false, columnDefinition = "NVARCHAR(100)")
-    private String username;
 
     @Column(nullable = false, columnDefinition = "NVARCHAR(255)")
     private String password;
