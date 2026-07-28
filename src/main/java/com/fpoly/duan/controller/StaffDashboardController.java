@@ -28,10 +28,11 @@ public class StaffDashboardController {
     private final StaffDashboardService staffDashboardService;
 
     @GetMapping
-    @Operation(summary = "Lấy thống kê dashboard cho nhân viên trong ca hiện tại")
+    @Operation(summary = "Lấy thống kê dashboard cho nhân viên trong ca hiện tại hoặc ca cụ thể (shiftId)")
     public ResponseEntity<ApiResponse<StaffDashboardStats>> getStats(
             Authentication authentication,
-            @RequestParam(required = false) String date) {
+            @RequestParam(required = false) String date,
+            @RequestParam(required = false) Integer shiftId) {
         if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
             return ResponseEntity.status(401).body(ApiResponse.<StaffDashboardStats>builder()
                     .status(401)
@@ -39,8 +40,8 @@ public class StaffDashboardController {
                     .build());
         }
         Integer staffId = details.getStaff().getStaffId();
-        
-        StaffDashboardStats stats = staffDashboardService.getDashboardStats(staffId);
+
+        StaffDashboardStats stats = staffDashboardService.getDashboardStats(staffId, shiftId);
         
         return ResponseEntity.ok(ApiResponse.<StaffDashboardStats>builder()
                 .status(200)
@@ -51,13 +52,15 @@ public class StaffDashboardController {
 
     @GetMapping("/products-breakdown")
     @Operation(summary = "Lấy chi tiết danh sách bắp nước đã bán")
-    public ResponseEntity<ApiResponse<List<ProductSoldBreakdown>>> getProductsBreakdown(Authentication authentication) {
+    public ResponseEntity<ApiResponse<List<ProductSoldBreakdown>>> getProductsBreakdown(
+            Authentication authentication,
+            @RequestParam(required = false) Integer shiftId) {
         if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
             return ResponseEntity.status(401).body(ApiResponse.<List<ProductSoldBreakdown>>builder().status(401).message("Unauthorized").build());
         }
         Integer staffId = details.getStaff().getStaffId();
-        
-        List<ProductSoldBreakdown> list = staffDashboardService.getProductsBreakdown(staffId);
+
+        List<ProductSoldBreakdown> list = staffDashboardService.getProductsBreakdown(staffId, shiftId);
         
         return ResponseEntity.ok(ApiResponse.<List<ProductSoldBreakdown>>builder()
                 .status(200)
@@ -68,13 +71,15 @@ public class StaffDashboardController {
 
     @GetMapping("/revenue-breakdown")
     @Operation(summary = "Lấy chi tiết doanh thu theo phương thức thanh toán")
-    public ResponseEntity<ApiResponse<List<RevenueBreakdownDTO>>> getRevenueBreakdown(Authentication authentication) {
+    public ResponseEntity<ApiResponse<List<RevenueBreakdownDTO>>> getRevenueBreakdown(
+            Authentication authentication,
+            @RequestParam(required = false) Integer shiftId) {
         if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
             return ResponseEntity.status(401).body(ApiResponse.<List<RevenueBreakdownDTO>>builder().status(401).message("Unauthorized").build());
         }
         Integer staffId = details.getStaff().getStaffId();
-        
-        List<RevenueBreakdownDTO> list = staffDashboardService.getRevenueBreakdown(staffId);
+
+        List<RevenueBreakdownDTO> list = staffDashboardService.getRevenueBreakdown(staffId, shiftId);
         
         return ResponseEntity.ok(ApiResponse.<List<RevenueBreakdownDTO>>builder()
                 .status(200)
@@ -89,14 +94,15 @@ public class StaffDashboardController {
             Authentication authentication,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String q) {
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Integer shiftId) {
         if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
             return ResponseEntity.status(401).body(ApiResponse.<List<OrderOnline>>builder().status(401).message("Unauthorized").build());
         }
         Integer staffId = details.getStaff().getStaffId();
         String term = SearchUtils.pick(search, keyword, q);
-        
-        List<OrderOnline> orders = staffDashboardService.getRecentOrders(staffId).stream()
+
+        List<OrderOnline> orders = staffDashboardService.getRecentOrders(staffId, shiftId).stream()
                 .filter(o -> SearchUtils.matches(term,
                         o.getOrderOnlineId(), o.getOrderCode(), o.getPaymentMethod(), o.getStatus(), o.getFinalAmount(),
                         o.getUser() != null ? o.getUser().getFullname() : null,

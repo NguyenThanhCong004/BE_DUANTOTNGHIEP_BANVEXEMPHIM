@@ -81,6 +81,9 @@ public interface OrderOnlineRepository extends JpaRepository<OrderOnline, Intege
 
        List<OrderOnline> findTop10ByStaffStaffIdOrderByCreatedAtDesc(Integer staffId);
 
+       List<OrderOnline> findTop10ByStaffStaffIdAndCreatedAtBetweenOrderByCreatedAtDesc(
+               Integer staffId, LocalDateTime start, LocalDateTime end);
+
        @Query("SELECT MONTH(o.createdAt), SUM(o.finalAmount) " +
                      "FROM OrderOnline o " +
                      "WHERE o.status = 1 AND YEAR(o.createdAt) = :year " +
