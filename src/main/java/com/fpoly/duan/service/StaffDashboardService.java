@@ -37,9 +37,9 @@ public class StaffDashboardService {
     private final StaffShiftRepository staffShiftRepository;
     private final StaffRepository staffRepository;
 
-    public List<RevenueBreakdownDTO> getRevenueBreakdown(Integer staffId) {
+    public List<RevenueBreakdownDTO> getRevenueBreakdown(Integer staffId, Integer shiftId) {
         try {
-            LocalDateTime[] range = getCurrentRange(staffId);
+            LocalDateTime[] range = getRange(staffId, shiftId);
             List<Object[]> rows = orderOnlineRepository.getRevenueBreakdownByStaffBetween(staffId, range[0], range[1]);
             List<RevenueBreakdownDTO> list = new ArrayList<>();
             for (Object[] row : rows) {
@@ -61,9 +61,9 @@ public class StaffDashboardService {
         }
     }
 
-    public List<ProductSoldBreakdown> getProductsBreakdown(Integer staffId) {
+    public List<ProductSoldBreakdown> getProductsBreakdown(Integer staffId, Integer shiftId) {
         try {
-            LocalDateTime[] range = getCurrentRange(staffId);
+            LocalDateTime[] range = getRange(staffId, shiftId);
             List<Object[]> rows = orderDetailFoodRepository.getProductsBreakdownByStaffBetween(staffId, range[0], range[1]);
             List<ProductSoldBreakdown> list = new ArrayList<>();
             for (Object[] row : rows) {
@@ -85,7 +85,11 @@ public class StaffDashboardService {
         }
     }
 
-    public List<OrderOnline> getRecentOrders(Integer staffId) {
+    public List<OrderOnline> getRecentOrders(Integer staffId, Integer shiftId) {
+        if (shiftId != null) {
+            LocalDateTime[] range = getRange(staffId, shiftId);
+            return orderOnlineRepository.findTop10ByStaffStaffIdAndCreatedAtBetweenOrderByCreatedAtDesc(staffId, range[0], range[1]);
+        }
         return orderOnlineRepository.findTop10ByStaffStaffIdOrderByCreatedAtDesc(staffId);
     }
 
@@ -169,34 +173,32 @@ public class StaffDashboardService {
                 .orElse(null);
     }
 
-    public StaffDashboardStats getDashboardStats(Integer staffId) {
+    public StaffDashboardStats getDashboardStats(Integer staffId, Integer shiftId) {
         try {
             LocalDateTime now = nowInAppZone();
-            
-            // Lấy tên rạp
             String cinemaName = "N/A";
             Optional<Staff> staffOpt = staffRepository.findById(staffId);
             if (staffOpt.isPresent() && staffOpt.get().getCinema() != null) {
                 cinemaName = staffOpt.get().getCinema().getName();
             }
 
-            Optional<StaffShift> currentShift = staffShiftRepository.findActiveShift(staffId, now);
-
-            LocalDateTime start = now.toLocalDate().atStartOfDay();
-            LocalDateTime end = now.toLocalDate().atTime(23, 59, 59);
+            LocalDateTime[] range = getRange(staffId, shiftId);
             String shiftName;
+            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("HH:mm");
 
-            if (currentShift.isPresent()) {
-                StaffShift shift = currentShift.get();
-                DateTimeFormatter fmt = DateTimeFormatter.ofPattern("HH:mm");
-                shiftName = "Ca: " + shift.getStartTime().format(fmt) + " - " + shift.getEndTime().format(fmt);
+            if (shiftId != null) {
+                Optional<StaffShift> shiftOpt = staffShiftRepository.findById(shiftId);
+                shiftName = shiftOpt.map(s -> "Ca: " + s.getStartTime().format(fmt) + " - " + s.getEndTime().format(fmt))
+                        .orElse("Ca đã chọn");
             } else {
-                shiftName = "Cả ngày hôm nay";
+                Optional<StaffShift> currentShift = staffShiftRepository.findActiveShift(staffId, now);
+                shiftName = currentShift.map(s -> "Ca: " + s.getStartTime().format(fmt) + " - " + s.getEndTime().format(fmt))
+                        .orElse("Cả ngày hôm nay");
             }
 
-            Double revenue = orderOnlineRepository.sumRevenueByStaffBetween(staffId, start, end);
-            Long tickets = ticketRepository.countTicketsByStaffBetweenJPQL(staffId, start, end);
-            Long products = orderDetailFoodRepository.countProductsByStaffBetween(staffId, start, end);
+            Double revenue = orderOnlineRepository.sumRevenueByStaffBetween(staffId, range[0], range[1]);
+            Long tickets = ticketRepository.countTicketsByStaffBetweenJPQL(staffId, range[0], range[1]);
+            Long products = orderDetailFoodRepository.countProductsByStaffBetween(staffId, range[0], range[1]);
 
             return StaffDashboardStats.builder()
                     .totalRevenue(revenue != null ? revenue : 0.0)
@@ -216,7 +218,16 @@ public class StaffDashboardService {
         }
     }
 
-    private LocalDateTime[] getCurrentRange(Integer staffId) {
+    private LocalDateTime[] getRange(Integer staffId, Integer shiftId) {
+        if (shiftId != null) {
+            Optional<StaffShift> shiftOpt = staffShiftRepository.findById(shiftId);
+            if (shiftOpt.isPresent()) {
+                StaffShift shift = shiftOpt.get();
+                if (shift.getStartTime() != null && shift.getEndTime() != null) {
+                    return new LocalDateTime[]{shift.getStartTime(), shift.getEndTime()};
+                }
+            }
+        }
         LocalDateTime now = nowInAppZone();
         return new LocalDateTime[]{now.toLocalDate().atStartOfDay(), now.toLocalDate().atTime(23, 59, 59)};
     }
