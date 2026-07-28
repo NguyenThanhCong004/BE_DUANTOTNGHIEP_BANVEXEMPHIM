@@ -1,6 +1,7 @@
 package com.fpoly.duan.controller;
 
 import com.fpoly.duan.dto.ApiResponse;
+import com.fpoly.duan.dto.CustomerBasicDTO;
 import com.fpoly.duan.dto.OrderDetailDTO;
 import com.fpoly.duan.dto.ProductSoldBreakdown;
 import com.fpoly.duan.dto.RevenueBreakdownDTO;
@@ -121,11 +122,39 @@ public class StaffDashboardController {
     @Operation(summary = "Lấy chi tiết một hóa đơn theo mã")
     public ResponseEntity<ApiResponse<OrderDetailDTO>> getOrderDetail(@PathVariable String orderCode) {
         OrderDetailDTO detail = staffDashboardService.getOrderDetail(orderCode);
-        
+
         return ResponseEntity.ok(ApiResponse.<OrderDetailDTO>builder()
                 .status(200)
                 .message("Lấy chi tiết hóa đơn thành công")
                 .data(detail)
                 .build());
+    }
+
+    @GetMapping("/customer-by-phone")
+    @Operation(summary = "Tra cứu tài khoản khách hàng theo SĐT (không tạo mới)")
+    public ResponseEntity<ApiResponse<CustomerBasicDTO>> lookupCustomerByPhone(
+            @RequestParam String phone) {
+        if (phone == null || !phone.matches("^[0-9]{10}$")) {
+            return ResponseEntity.badRequest().body(ApiResponse.<CustomerBasicDTO>builder()
+                    .status(400).message("Số điện thoại không hợp lệ (cần đúng 10 chữ số)").build());
+        }
+        CustomerBasicDTO customer = staffDashboardService.lookupCustomerByPhone(phone);
+        String msg = Boolean.TRUE.equals(customer.getIsNew()) ? "Chưa có tài khoản" : "Tìm thấy tài khoản thành viên";
+        return ResponseEntity.ok(ApiResponse.<CustomerBasicDTO>builder()
+                .status(200).message(msg).data(customer).build());
+    }
+
+    @PostMapping("/create-guest")
+    @Operation(summary = "Tạo tài khoản khách sau khi thanh toán thành công")
+    public ResponseEntity<ApiResponse<CustomerBasicDTO>> createGuestCustomer(
+            @RequestParam String phone) {
+        if (phone == null || !phone.matches("^[0-9]{10}$")) {
+            return ResponseEntity.badRequest().body(ApiResponse.<CustomerBasicDTO>builder()
+                    .status(400).message("Số điện thoại không hợp lệ (cần đúng 10 chữ số)").build());
+        }
+        CustomerBasicDTO customer = staffDashboardService.createGuestCustomer(phone);
+        String msg = Boolean.TRUE.equals(customer.getIsNew()) ? "Đã tạo tài khoản mới cho khách hàng" : "Tài khoản đã tồn tại";
+        return ResponseEntity.ok(ApiResponse.<CustomerBasicDTO>builder()
+                .status(200).message(msg).data(customer).build());
     }
 }

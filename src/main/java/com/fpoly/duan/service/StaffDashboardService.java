@@ -1,5 +1,6 @@
 package com.fpoly.duan.service;
 
+import com.fpoly.duan.dto.CustomerBasicDTO;
 import com.fpoly.duan.dto.OrderDetailDTO;
 import com.fpoly.duan.dto.ProductSoldBreakdown;
 import com.fpoly.duan.dto.RevenueBreakdownDTO;
@@ -10,18 +11,24 @@ import com.fpoly.duan.entity.Ticket;
 import com.fpoly.duan.entity.Cinema;
 import com.fpoly.duan.entity.Staff;
 import com.fpoly.duan.entity.StaffShift;
+import com.fpoly.duan.entity.User;
+import com.fpoly.duan.entity.MembershipRank;
+import com.fpoly.duan.repository.MembershipRankRepository;
 import com.fpoly.duan.repository.OrderOnlineRepository;
 import com.fpoly.duan.repository.TicketRepository;
 import com.fpoly.duan.repository.OrderDetailFoodRepository;
 import com.fpoly.duan.repository.StaffShiftRepository;
 import com.fpoly.duan.repository.StaffRepository;
+import com.fpoly.duan.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -36,6 +43,9 @@ public class StaffDashboardService {
     private final OrderDetailFoodRepository orderDetailFoodRepository;
     private final StaffShiftRepository staffShiftRepository;
     private final StaffRepository staffRepository;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final MembershipRankRepository membershipRankRepository;
 
     public List<RevenueBreakdownDTO> getRevenueBreakdown(Integer staffId, Integer shiftId) {
         try {
@@ -234,5 +244,59 @@ public class StaffDashboardService {
 
     private LocalDateTime nowInAppZone() {
         return LocalDateTime.now(APP_ZONE);
+    }
+
+    public CustomerBasicDTO lookupCustomerByPhone(String phone) {
+        Optional<User> existing = userRepository.findByPhone(phone);
+        if (existing.isPresent()) {
+            User u = existing.get();
+            return CustomerBasicDTO.builder()
+                    .userId(u.getUserId())
+                    .fullname(u.getFullname())
+                    .phone(u.getPhone())
+                    .email(u.getEmail())
+                    .isNew(false)
+                    .build();
+        }
+        return CustomerBasicDTO.builder()
+                .phone(phone)
+                .isNew(true)
+                .build();
+    }
+
+    public CustomerBasicDTO createGuestCustomer(String phone) {
+        Optional<User> existing = userRepository.findByPhone(phone);
+        if (existing.isPresent()) {
+            User u = existing.get();
+            return CustomerBasicDTO.builder()
+                    .userId(u.getUserId())
+                    .fullname(u.getFullname())
+                    .phone(u.getPhone())
+                    .email(u.getEmail())
+                    .isNew(false)
+                    .build();
+        }
+        Integer defaultRankId = membershipRankRepository.findAll().stream()
+                .min(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .map(MembershipRank::getRankId)
+                .orElse(null);
+
+        User newUser = new User();
+        newUser.setPhone(phone);
+        newUser.setFullname("Khách " + phone);
+        newUser.setEmail(phone + "@guest.local");
+        newUser.setPassword(passwordEncoder.encode(phone));
+        newUser.setStatus(1);
+        newUser.setPoints(0);
+        newUser.setTotalSpending(0.0);
+        newUser.setRankId(defaultRankId);
+        User saved = userRepository.save(newUser);
+        return CustomerBasicDTO.builder()
+                .userId(saved.getUserId())
+                .fullname(saved.getFullname())
+                .phone(saved.getPhone())
+                .email(saved.getEmail())
+                .isNew(true)
+                .build();
     }
 }
