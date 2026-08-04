@@ -17,9 +17,12 @@ import org.springframework.web.bind.annotation.RestController;
 import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.OrderOnlineDTO;
+import com.fpoly.duan.entity.MembershipRank;
 import com.fpoly.duan.entity.OrderOnline;
 import com.fpoly.duan.entity.Staff;
 import com.fpoly.duan.entity.User;
+import com.fpoly.duan.entity.Voucher;
+import com.fpoly.duan.repository.MembershipRankRepository;
 import com.fpoly.duan.repository.OrderDetailFoodRepository;
 import com.fpoly.duan.repository.OrderOnlineRepository;
 import com.fpoly.duan.repository.TicketRepository;
@@ -43,6 +46,7 @@ public class OrderOnlineController {
     private final TicketRepository ticketRepository;
     private final OrderDetailFoodRepository orderDetailFoodRepository;
     private final CinemaScopeService cinemaScopeService;
+    private final MembershipRankRepository membershipRankRepository;
 
     @GetMapping
     @Operation(summary = "Danh sách đơn online (có lọc theo rạp)")
@@ -121,14 +125,30 @@ public class OrderOnlineController {
                 : u.getUsername()) : "Khách vãng lai";
         String email = u != null && u.getEmail() != null ? u.getEmail() : "—";
         String phone = u != null && u.getPhone() != null ? u.getPhone() : "—";
-        String voucherCode = o.getUserVoucher() != null && o.getUserVoucher().getVoucher() != null
-                ? o.getUserVoucher().getVoucher().getCode()
-                : null;
+        Voucher voucher = o.getUserVoucher() != null ? o.getUserVoucher().getVoucher() : null;
+        String voucherCode = voucher != null ? voucher.getCode() : null;
+        String voucherDiscountType = voucher != null ? voucher.getDiscountType() : null;
+        Double voucherValue = voucher != null ? voucher.getValue() : null;
 
-        // Lấy thông tin vé
+        MembershipRank rank = u != null && u.getRankId() != null
+                ? membershipRankRepository.findById(u.getRankId()).orElse(null)
+                : null;
+        String rankName = rank != null ? rank.getRankName() : null;
+        Double rankDiscountPercent = rank != null ? rank.getDiscountPercent() : null;
+
+        // Lấy thông tin vé — tách rõ phần giảm do khuyến mãi và phần giảm do hạng hội viên
+        // (backend chỉ lưu originalPrice/promotionDiscount/price, phần hội viên được suy ra từ hiệu số).
         List<OrderOnlineDTO.TicketInfoDTO> tickets = ticketRepository.findByOrderOnline_OrderOnlineId(o.getOrderOnlineId())
                 .stream().map(t -> {
                     String qrToken = t.getQrToken();
+                    double original = t.getOriginalPrice() != null ? t.getOriginalPrice() : (t.getPrice() != null ? t.getPrice() : 0.0);
+                    double promoDiscount = t.getPromotionDiscount() != null ? t.getPromotionDiscount() : 0.0;
+                    double finalPrice = t.getPrice() != null ? t.getPrice() : 0.0;
+                    double afterPromo = original - promoDiscount;
+                    double memberDiscount = Math.max(0.0, afterPromo - finalPrice);
+                    double promoPercent = original > 0 ? Math.round(promoDiscount / original * 1000.0) / 10.0 : 0.0;
+                    double memberPercent = afterPromo > 0 ? Math.round(memberDiscount / afterPromo * 1000.0) / 10.0 : 0.0;
+
                     return OrderOnlineDTO.TicketInfoDTO.builder()
                             .ticketId(t.getTicketId())
                             .ticketCode(t.getTicketCode())
@@ -147,9 +167,12 @@ public class OrderOnlineController {
                             .seatTypeName(t.getSeat() != null && t.getSeat().getSeatType() != null
                                     ? t.getSeat().getSeatType().getName()
                                     : "N/A")
-                            .originalPrice(t.getOriginalPrice() != null ? t.getOriginalPrice() : t.getPrice())
-                            .promotionDiscount(t.getPromotionDiscount() != null ? t.getPromotionDiscount() : 0.0)
-                            .price(t.getPrice())
+                            .originalPrice(original)
+                            .promotionDiscount(promoDiscount)
+                            .promotionDiscountPercent(promoPercent)
+                            .membershipDiscount(memberDiscount)
+                            .membershipDiscountPercent(memberPercent)
+                            .price(finalPrice)
                             .build();
                 })
                 .collect(Collectors.toList());
@@ -205,6 +228,10 @@ public class OrderOnlineController {
                 .customerPhone(phone)
                 .paymentMethod(o.getPaymentMethod())
                 .voucherCode(voucherCode)
+                .voucherDiscountType(voucherDiscountType)
+                .voucherValue(voucherValue)
+                .rankName(rankName)
+                .rankDiscountPercent(rankDiscountPercent)
                 .cinemaName(cinemaName)
                 .cinemaId(cinemaId)
                 .cinemaAddress(cinemaAddress)

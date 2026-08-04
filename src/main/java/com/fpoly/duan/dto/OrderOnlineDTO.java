@@ -26,7 +26,12 @@ public class OrderOnlineDTO {
     private String customerPhone;
     private String paymentMethod;
     private String voucherCode;
-    
+    private String voucherDiscountType;
+    private Double voucherValue;
+
+    private String rankName;
+    private Double rankDiscountPercent;
+
     private String cinemaName;
     private Integer cinemaId;
     private String cinemaAddress;
@@ -48,6 +53,9 @@ public class OrderOnlineDTO {
         private String seatTypeName;
         private Double originalPrice;
         private Double promotionDiscount;
+        private Double promotionDiscountPercent;
+        private Double membershipDiscount;
+        private Double membershipDiscountPercent;
         private Double price;
     }
 
