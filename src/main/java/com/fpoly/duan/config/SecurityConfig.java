@@ -147,7 +147,9 @@ public class SecurityConfig {
                                 "/api/v1/users/**",
                                 "/api/v1/orders-online/**",
                                 "/api/v1/vouchers/**",
-                                "/api/v1/cinemas/*/product-menu/**")
+                                "/api/v1/cinemas/*/product-menu/**",
+                                "/api/v1/admin/dashboard/**",
+                                "/api/v1/notifications/**")
                         .hasAnyAuthority("ROLE_ADMIN", "ROLE_SUPER_ADMIN")
 
                         // Quản lý toàn hệ thống.

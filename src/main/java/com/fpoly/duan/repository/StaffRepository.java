@@ -15,7 +15,6 @@ public interface StaffRepository extends JpaRepository<Staff, Integer> {
     // Đã xóa các dòng import trùng lặp gây lỗi biên dịch ở file cũ
     
     Optional<Staff> findByEmail(String email);
-    Optional<Staff> findByUsername(String username);
     Optional<Staff> findByPhone(String phone);
 
     /** Tránh lỗi NonUniqueResult khi DB trùng email (luôn lấy 1 bản ghi cố định). */
@@ -23,18 +22,16 @@ public interface StaffRepository extends JpaRepository<Staff, Integer> {
 
     Optional<Staff> findFirstByEmailIgnoreCaseOrderByStaffIdAsc(String email);
 
-    Optional<Staff> findFirstByUsernameOrderByStaffIdAsc(String username);
-    Optional<Staff> findFirstByUsernameIgnoreCaseOrderByStaffIdAsc(String username);
     Boolean existsByEmail(String email);
-    Boolean existsByUsername(String username);
     Boolean existsByPhone(String phone);
 
     boolean existsByEmailAndStaffIdNot(String email, Integer staffId);
-    boolean existsByUsernameAndStaffIdNot(String username, Integer staffId);
     boolean existsByPhoneAndStaffIdNot(String phone, Integer staffId);
 
     @Query(value = "SELECT * FROM staff WHERE UPPER(role) NOT LIKE '%SUPER_ADMIN%' OR role IS NULL", nativeQuery = true)
     List<Staff> findAllExceptSuperAdmin();
 
     List<Staff> findByCinema_CinemaIdAndRoleAndStatus(Integer cinemaId, String role, Integer status);
+
+    long countByRoleIgnoreCase(String role);
 }

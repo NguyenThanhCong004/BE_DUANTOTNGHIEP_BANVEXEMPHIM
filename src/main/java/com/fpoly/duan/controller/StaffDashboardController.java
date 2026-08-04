@@ -1,6 +1,7 @@
 package com.fpoly.duan.controller;
 
 import com.fpoly.duan.dto.ApiResponse;
+import com.fpoly.duan.dto.CustomerBasicDTO;
 import com.fpoly.duan.dto.OrderDetailDTO;
 import com.fpoly.duan.dto.ProductSoldBreakdown;
 import com.fpoly.duan.dto.RevenueBreakdownDTO;
@@ -28,10 +29,11 @@ public class StaffDashboardController {
     private final StaffDashboardService staffDashboardService;
 
     @GetMapping
-    @Operation(summary = "Lấy thống kê dashboard cho nhân viên trong ca hiện tại")
+    @Operation(summary = "Lấy thống kê dashboard cho nhân viên trong ca hiện tại hoặc ca cụ thể (shiftId)")
     public ResponseEntity<ApiResponse<StaffDashboardStats>> getStats(
             Authentication authentication,
-            @RequestParam(required = false) String date) {
+            @RequestParam(required = false) String date,
+            @RequestParam(required = false) Integer shiftId) {
         if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
             return ResponseEntity.status(401).body(ApiResponse.<StaffDashboardStats>builder()
                     .status(401)
@@ -39,8 +41,8 @@ public class StaffDashboardController {
                     .build());
         }
         Integer staffId = details.getStaff().getStaffId();
-        
-        StaffDashboardStats stats = staffDashboardService.getDashboardStats(staffId);
+
+        StaffDashboardStats stats = staffDashboardService.getDashboardStats(staffId, shiftId);
         
         return ResponseEntity.ok(ApiResponse.<StaffDashboardStats>builder()
                 .status(200)
@@ -51,13 +53,15 @@ public class StaffDashboardController {
 
     @GetMapping("/products-breakdown")
     @Operation(summary = "Lấy chi tiết danh sách bắp nước đã bán")
-    public ResponseEntity<ApiResponse<List<ProductSoldBreakdown>>> getProductsBreakdown(Authentication authentication) {
+    public ResponseEntity<ApiResponse<List<ProductSoldBreakdown>>> getProductsBreakdown(
+            Authentication authentication,
+            @RequestParam(required = false) Integer shiftId) {
         if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
             return ResponseEntity.status(401).body(ApiResponse.<List<ProductSoldBreakdown>>builder().status(401).message("Unauthorized").build());
         }
         Integer staffId = details.getStaff().getStaffId();
-        
-        List<ProductSoldBreakdown> list = staffDashboardService.getProductsBreakdown(staffId);
+
+        List<ProductSoldBreakdown> list = staffDashboardService.getProductsBreakdown(staffId, shiftId);
         
         return ResponseEntity.ok(ApiResponse.<List<ProductSoldBreakdown>>builder()
                 .status(200)
@@ -68,13 +72,15 @@ public class StaffDashboardController {
 
     @GetMapping("/revenue-breakdown")
     @Operation(summary = "Lấy chi tiết doanh thu theo phương thức thanh toán")
-    public ResponseEntity<ApiResponse<List<RevenueBreakdownDTO>>> getRevenueBreakdown(Authentication authentication) {
+    public ResponseEntity<ApiResponse<List<RevenueBreakdownDTO>>> getRevenueBreakdown(
+            Authentication authentication,
+            @RequestParam(required = false) Integer shiftId) {
         if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
             return ResponseEntity.status(401).body(ApiResponse.<List<RevenueBreakdownDTO>>builder().status(401).message("Unauthorized").build());
         }
         Integer staffId = details.getStaff().getStaffId();
-        
-        List<RevenueBreakdownDTO> list = staffDashboardService.getRevenueBreakdown(staffId);
+
+        List<RevenueBreakdownDTO> list = staffDashboardService.getRevenueBreakdown(staffId, shiftId);
         
         return ResponseEntity.ok(ApiResponse.<List<RevenueBreakdownDTO>>builder()
                 .status(200)
@@ -89,14 +95,15 @@ public class StaffDashboardController {
             Authentication authentication,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String q) {
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Integer shiftId) {
         if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
             return ResponseEntity.status(401).body(ApiResponse.<List<OrderOnline>>builder().status(401).message("Unauthorized").build());
         }
         Integer staffId = details.getStaff().getStaffId();
         String term = SearchUtils.pick(search, keyword, q);
-        
-        List<OrderOnline> orders = staffDashboardService.getRecentOrders(staffId).stream()
+
+        List<OrderOnline> orders = staffDashboardService.getRecentOrders(staffId, shiftId).stream()
                 .filter(o -> SearchUtils.matches(term,
                         o.getOrderOnlineId(), o.getOrderCode(), o.getPaymentMethod(), o.getStatus(), o.getFinalAmount(),
                         o.getUser() != null ? o.getUser().getFullname() : null,
@@ -115,11 +122,39 @@ public class StaffDashboardController {
     @Operation(summary = "Lấy chi tiết một hóa đơn theo mã")
     public ResponseEntity<ApiResponse<OrderDetailDTO>> getOrderDetail(@PathVariable String orderCode) {
         OrderDetailDTO detail = staffDashboardService.getOrderDetail(orderCode);
-        
+
         return ResponseEntity.ok(ApiResponse.<OrderDetailDTO>builder()
                 .status(200)
                 .message("Lấy chi tiết hóa đơn thành công")
                 .data(detail)
                 .build());
+    }
+
+    @GetMapping("/customer-by-phone")
+    @Operation(summary = "Tra cứu tài khoản khách hàng theo SĐT (không tạo mới)")
+    public ResponseEntity<ApiResponse<CustomerBasicDTO>> lookupCustomerByPhone(
+            @RequestParam String phone) {
+        if (phone == null || !phone.matches("^[0-9]{10}$")) {
+            return ResponseEntity.badRequest().body(ApiResponse.<CustomerBasicDTO>builder()
+                    .status(400).message("Số điện thoại không hợp lệ (cần đúng 10 chữ số)").build());
+        }
+        CustomerBasicDTO customer = staffDashboardService.lookupCustomerByPhone(phone);
+        String msg = Boolean.TRUE.equals(customer.getIsNew()) ? "Chưa có tài khoản" : "Tìm thấy tài khoản thành viên";
+        return ResponseEntity.ok(ApiResponse.<CustomerBasicDTO>builder()
+                .status(200).message(msg).data(customer).build());
+    }
+
+    @PostMapping("/create-guest")
+    @Operation(summary = "Tạo tài khoản khách sau khi thanh toán thành công")
+    public ResponseEntity<ApiResponse<CustomerBasicDTO>> createGuestCustomer(
+            @RequestParam String phone) {
+        if (phone == null || !phone.matches("^[0-9]{10}$")) {
+            return ResponseEntity.badRequest().body(ApiResponse.<CustomerBasicDTO>builder()
+                    .status(400).message("Số điện thoại không hợp lệ (cần đúng 10 chữ số)").build());
+        }
+        CustomerBasicDTO customer = staffDashboardService.createGuestCustomer(phone);
+        String msg = Boolean.TRUE.equals(customer.getIsNew()) ? "Đã tạo tài khoản mới cho khách hàng" : "Tài khoản đã tồn tại";
+        return ResponseEntity.ok(ApiResponse.<CustomerBasicDTO>builder()
+                .status(200).message(msg).data(customer).build());
     }
 }

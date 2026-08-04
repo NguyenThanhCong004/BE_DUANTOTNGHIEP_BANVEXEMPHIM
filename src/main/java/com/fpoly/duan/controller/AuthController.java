@@ -40,7 +40,7 @@ public class AuthController {
 
     @PostMapping("/login")
     @Operation(summary = "Đăng nhập khách hàng", description = """
-            Chỉ đọc bảng `users`. Khách đăng nhập bằng email hoặc số điện thoại.
+            Chỉ đọc bảng `customers`. Khách đăng nhập bằng email hoặc số điện thoại.
             Trả `data.token`, `data.refreshToken`, `data.user`.
             """)
     public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest loginRequest) {
@@ -55,7 +55,7 @@ public class AuthController {
     @PostMapping("/staff-login")
     @Operation(summary = "Đăng nhập nhân viên/admin", description = """
             Chỉ đọc bảng `staff`. Trả `data.token`, `data.refreshToken`, `data.staff`.
-            Username nhận username, email hoặc số điện thoại của nhân viên.
+            Đăng nhập bằng email hoặc số điện thoại của nhân viên.
             """)
     public ResponseEntity<ApiResponse<AuthResponse>> staffLogin(@Valid @RequestBody LoginRequest loginRequest) {
         AuthResponse response = authService.staffLogin(loginRequest);
@@ -89,7 +89,7 @@ public class AuthController {
 
     @PostMapping("/forgot-password")
     @Operation(summary = "Quên mật khẩu — bước 1", description = """
-            Body: `usernameOrEmail`. Khách nhập email hoặc số điện thoại; staff nhập username, email hoặc số điện thoại.
+            Body: `account`. Khách và staff đều nhập email hoặc số điện thoại.
             Nếu tài khoản hợp lệ, gửi OTP 6 số qua email đã đăng ký.
             Luôn trả `data.resetSessionToken` (và `maskedEmail` nếu có tài khoản) để FE tiếp tục bước 2–3.
             """)

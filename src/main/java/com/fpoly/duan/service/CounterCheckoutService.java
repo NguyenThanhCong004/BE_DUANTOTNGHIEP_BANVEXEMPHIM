@@ -213,6 +213,9 @@ public class CounterCheckoutService {
 
         if (!isTransfer) {
             ticketEmailService.sendPaidTicketEmailIfNeeded(savedOrder);
+            if (customer != null) {
+                addPointsForOrder(savedOrder);
+            }
         }
 
         if (isTransfer) {
@@ -368,9 +371,11 @@ public class CounterCheckoutService {
                 return;
             }
             
-            // Cộng điểm vào user
+            // Cộng điểm vào user + cập nhật tổng chi tiêu
             int currentPoints = user.getPoints() != null ? user.getPoints() : 0;
             user.setPoints(currentPoints + totalPoints);
+            double currentSpending = user.getTotalSpending() != null ? user.getTotalSpending() : 0.0;
+            user.setTotalSpending(currentSpending + finalAmount);
             userRepository.save(user);
             
             // Lưu lịch sử điểm

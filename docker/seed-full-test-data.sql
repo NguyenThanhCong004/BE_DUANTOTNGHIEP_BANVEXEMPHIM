@@ -8,12 +8,12 @@ IF EXISTS (
     SELECT 1
     FROM sys.columns c
     JOIN sys.types ty ON c.user_type_id = ty.user_type_id
-    WHERE c.object_id = OBJECT_ID(N'users')
+    WHERE c.object_id = OBJECT_ID(N'customers')
       AND c.name = N'avatar'
       AND ty.name = N'text'
 )
 BEGIN
-    ALTER TABLE users ALTER COLUMN avatar NVARCHAR(MAX) NULL;
+    ALTER TABLE customers ALTER COLUMN avatar NVARCHAR(MAX) NULL;
 END
 
 IF NOT EXISTS (SELECT 1 FROM genres WHERE name = N'Hành động') INSERT INTO genres(name) VALUES (N'Hành động');
@@ -205,51 +205,51 @@ DECLARE @rankDong int = (SELECT TOP 1 rank_id FROM membership_ranks WHERE rank_n
 DECLARE @rankBac int = (SELECT TOP 1 rank_id FROM membership_ranks WHERE rank_name = N'Hạng Bạc');
 DECLARE @rankVang int = (SELECT TOP 1 rank_id FROM membership_ranks WHERE rank_name = N'Hạng Vàng');
 
-IF NOT EXISTS (SELECT 1 FROM users WHERE username = N'testuser01')
-    INSERT INTO users(username, password, fullname, status, birthday, avatar, email, phone, points, rank_id, total_spending)
-    VALUES (N'testuser01', @passwordHash, N'Khách Test 01', 1, '2000-01-10', N'https://i.pravatar.cc/150?u=testuser01', N'testuser01@gmail.com', N'0909000001', 150, @rankDong, 350000);
+IF NOT EXISTS (SELECT 1 FROM customers WHERE email = N'testuser01@gmail.com')
+    INSERT INTO customers(password, fullname, status, birthday, avatar, email, phone, points, rank_id, total_spending)
+    VALUES (@passwordHash, N'Khách Test 01', 1, '2000-01-10', N'https://i.pravatar.cc/150?u=testuser01', N'testuser01@gmail.com', N'0909000001', 150, @rankDong, 350000);
 ELSE
-    UPDATE users SET password = @passwordHash, status = 1, rank_id = COALESCE(rank_id, @rankDong) WHERE username = N'testuser01';
+    UPDATE customers SET password = @passwordHash, status = 1, rank_id = COALESCE(rank_id, @rankDong) WHERE email = N'testuser01@gmail.com';
 
-IF NOT EXISTS (SELECT 1 FROM users WHERE username = N'testuser02')
-    INSERT INTO users(username, password, fullname, status, birthday, avatar, email, phone, points, rank_id, total_spending)
-    VALUES (N'testuser02', @passwordHash, N'Khách Test 02', 1, '1999-11-05', N'https://i.pravatar.cc/150?u=testuser02', N'testuser02@gmail.com', N'0909000002', 620, @rankBac, 1500000);
+IF NOT EXISTS (SELECT 1 FROM customers WHERE email = N'testuser02@gmail.com')
+    INSERT INTO customers(password, fullname, status, birthday, avatar, email, phone, points, rank_id, total_spending)
+    VALUES (@passwordHash, N'Khách Test 02', 1, '1999-11-05', N'https://i.pravatar.cc/150?u=testuser02', N'testuser02@gmail.com', N'0909000002', 620, @rankBac, 1500000);
 ELSE
-    UPDATE users SET password = @passwordHash, status = 1, rank_id = COALESCE(rank_id, @rankBac) WHERE username = N'testuser02';
+    UPDATE customers SET password = @passwordHash, status = 1, rank_id = COALESCE(rank_id, @rankBac) WHERE email = N'testuser02@gmail.com';
 
-IF NOT EXISTS (SELECT 1 FROM users WHERE username = N'testuser03')
-    INSERT INTO users(username, password, fullname, status, birthday, avatar, email, phone, points, rank_id, total_spending)
-    VALUES (N'testuser03', @passwordHash, N'Khách Test 03', 1, '1997-07-20', N'https://i.pravatar.cc/150?u=testuser03', N'testuser03@gmail.com', N'0909000003', 1280, @rankVang, 3600000);
+IF NOT EXISTS (SELECT 1 FROM customers WHERE email = N'testuser03@gmail.com')
+    INSERT INTO customers(password, fullname, status, birthday, avatar, email, phone, points, rank_id, total_spending)
+    VALUES (@passwordHash, N'Khách Test 03', 1, '1997-07-20', N'https://i.pravatar.cc/150?u=testuser03', N'testuser03@gmail.com', N'0909000003', 1280, @rankVang, 3600000);
 ELSE
-    UPDATE users SET password = @passwordHash, status = 1, rank_id = COALESCE(rank_id, @rankVang) WHERE username = N'testuser03';
+    UPDATE customers SET password = @passwordHash, status = 1, rank_id = COALESCE(rank_id, @rankVang) WHERE email = N'testuser03@gmail.com';
 
 DECLARE @cinemaA int = (SELECT TOP 1 cinema_id FROM cinemas WHERE name = N'Galaxy Nguyễn Du');
 DECLARE @cinemaB int = (SELECT TOP 1 cinema_id FROM cinemas WHERE name = N'Beta Thủ Đức');
 DECLARE @cinemaC int = (SELECT TOP 1 cinema_id FROM cinemas WHERE name = N'CGV Vincom Đồng Khởi');
 
-IF NOT EXISTS (SELECT 1 FROM staff WHERE username = N'testadmin01')
-    INSERT INTO staff(email, username, password, fullname, status, phone, birthday, role, avatar, cinema_id)
-    VALUES (N'testadmin01@cinema.local', N'testadmin01', @passwordHash, N'Quản Lý Test 01', 1, N'0911000001', '1994-04-12', N'ADMIN', N'https://i.pravatar.cc/150?u=testadmin01', @cinemaA);
+IF NOT EXISTS (SELECT 1 FROM staff WHERE email = N'testadmin01@cinema.local')
+    INSERT INTO staff(email, password, fullname, status, phone, birthday, role, avatar, cinema_id)
+    VALUES (N'testadmin01@cinema.local', @passwordHash, N'Quản Lý Test 01', 1, N'0911000001', '1994-04-12', N'ADMIN', N'https://i.pravatar.cc/150?u=testadmin01', @cinemaA);
 ELSE
-    UPDATE staff SET password = @passwordHash, status = 1, role = N'ADMIN', cinema_id = @cinemaA WHERE username = N'testadmin01';
+    UPDATE staff SET password = @passwordHash, status = 1, role = N'ADMIN', cinema_id = @cinemaA WHERE email = N'testadmin01@cinema.local';
 
-IF NOT EXISTS (SELECT 1 FROM staff WHERE username = N'teststaff01')
-    INSERT INTO staff(email, username, password, fullname, status, phone, birthday, role, avatar, cinema_id)
-    VALUES (N'teststaff01@cinema.local', N'teststaff01', @passwordHash, N'Nhân Viên Bán Vé 01', 1, N'0911000002', '1998-03-15', N'STAFF', N'https://i.pravatar.cc/150?u=teststaff01', @cinemaA);
+IF NOT EXISTS (SELECT 1 FROM staff WHERE email = N'teststaff01@cinema.local')
+    INSERT INTO staff(email, password, fullname, status, phone, birthday, role, avatar, cinema_id)
+    VALUES (N'teststaff01@cinema.local', @passwordHash, N'Nhân Viên Bán Vé 01', 1, N'0911000002', '1998-03-15', N'STAFF', N'https://i.pravatar.cc/150?u=teststaff01', @cinemaA);
 ELSE
-    UPDATE staff SET password = @passwordHash, status = 1, role = N'STAFF', cinema_id = @cinemaA WHERE username = N'teststaff01';
+    UPDATE staff SET password = @passwordHash, status = 1, role = N'STAFF', cinema_id = @cinemaA WHERE email = N'teststaff01@cinema.local';
 
-IF NOT EXISTS (SELECT 1 FROM staff WHERE username = N'teststaff02')
-    INSERT INTO staff(email, username, password, fullname, status, phone, birthday, role, avatar, cinema_id)
-    VALUES (N'teststaff02@cinema.local', N'teststaff02', @passwordHash, N'Nhân Viên Soát Vé 02', 1, N'0911000003', '1998-06-25', N'STAFF', N'https://i.pravatar.cc/150?u=teststaff02', @cinemaB);
+IF NOT EXISTS (SELECT 1 FROM staff WHERE email = N'teststaff02@cinema.local')
+    INSERT INTO staff(email, password, fullname, status, phone, birthday, role, avatar, cinema_id)
+    VALUES (N'teststaff02@cinema.local', @passwordHash, N'Nhân Viên Soát Vé 02', 1, N'0911000003', '1998-06-25', N'STAFF', N'https://i.pravatar.cc/150?u=teststaff02', @cinemaB);
 ELSE
-    UPDATE staff SET password = @passwordHash, status = 1, role = N'STAFF', cinema_id = @cinemaB WHERE username = N'teststaff02';
+    UPDATE staff SET password = @passwordHash, status = 1, role = N'STAFF', cinema_id = @cinemaB WHERE email = N'teststaff02@cinema.local';
 
 INSERT INTO user_vouchers(user_id, voucher_id, status)
 SELECT u.user_id, v.vouchers_id, 1
-FROM users u
+FROM customers u
 CROSS JOIN vouchers v
-WHERE u.username IN (N'testuser01', N'testuser02', N'testuser03')
+WHERE u.email IN (N'testuser01@gmail.com', N'testuser02@gmail.com', N'testuser03@gmail.com')
   AND v.code IN (N'TEST10', N'TEST50K', N'VIP15', N'COMBO20')
   AND NOT EXISTS (
       SELECT 1 FROM user_vouchers uv
@@ -315,9 +315,9 @@ BEGIN
     );
 END
 
-DECLARE @staff01 int = (SELECT TOP 1 staff_id FROM staff WHERE username = N'teststaff01');
-DECLARE @staff02 int = (SELECT TOP 1 staff_id FROM staff WHERE username = N'teststaff02');
-DECLARE @admin01 int = (SELECT TOP 1 staff_id FROM staff WHERE username = N'testadmin01');
+DECLARE @staff01 int = (SELECT TOP 1 staff_id FROM staff WHERE email = N'teststaff01@cinema.local');
+DECLARE @staff02 int = (SELECT TOP 1 staff_id FROM staff WHERE email = N'teststaff02@cinema.local');
+DECLARE @admin01 int = (SELECT TOP 1 staff_id FROM staff WHERE email = N'testadmin01@cinema.local');
 
 ;WITH Days(n) AS (
     SELECT 0 UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
@@ -349,9 +349,9 @@ WHERE sr.staff_id IS NOT NULL
 
 INSERT INTO favorites(user_id, movie_id)
 SELECT u.user_id, m.movie_id
-FROM users u
+FROM customers u
 CROSS JOIN movie m
-WHERE u.username IN (N'testuser01', N'testuser02', N'testuser03')
+WHERE u.email IN (N'testuser01@gmail.com', N'testuser02@gmail.com', N'testuser03@gmail.com')
   AND m.title IN (N'Đêm Cuối Ở Sài Gòn', N'Robot Và Thành Phố Mây', N'Phi Vụ Không Gian')
   AND NOT EXISTS (
       SELECT 1 FROM favorites f
@@ -365,8 +365,8 @@ DECLARE @testRoom2 int = (SELECT room_id FROM showtimes WHERE showtime_id = @tes
 DECLARE @testSeat1 int = (SELECT TOP 1 seat_id FROM seats WHERE room_id = @testRoom1 ORDER BY y, x);
 DECLARE @testSeat2 int = (SELECT TOP 1 seat_id FROM seats WHERE room_id = @testRoom1 AND seat_id <> @testSeat1 ORDER BY y, x);
 DECLARE @testSeat3 int = (SELECT TOP 1 seat_id FROM seats WHERE room_id = @testRoom2 ORDER BY y, x);
-DECLARE @testUser1 int = (SELECT TOP 1 user_id FROM users WHERE username = N'testuser01');
-DECLARE @testUser2 int = (SELECT TOP 1 user_id FROM users WHERE username = N'testuser02');
+DECLARE @testUser1 int = (SELECT TOP 1 user_id FROM customers WHERE email = N'testuser01@gmail.com');
+DECLARE @testUser2 int = (SELECT TOP 1 user_id FROM customers WHERE email = N'testuser02@gmail.com');
 DECLARE @productCombo int = (SELECT TOP 1 product_id FROM products WHERE name = N'Combo Bắp Nước Lớn');
 
 IF @testUser1 IS NOT NULL AND @testShowtime1 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM orders_online WHERE order_code = N'TEST-PAID-001')
@@ -382,7 +382,7 @@ BEGIN
         VALUES (1, 1, 79000, @order1, @productCombo);
     INSERT INTO points_histories([date], description, points, user_id)
     VALUES (DATEADD(day, -2, @today), N'Tích điểm từ đơn TEST-PAID-001', 200, @testUser1);
-    UPDATE users SET points = ISNULL(points, 0) + 200, total_spending = ISNULL(total_spending, 0) + 200000 WHERE user_id = @testUser1;
+    UPDATE customers SET points = ISNULL(points, 0) + 200, total_spending = ISNULL(total_spending, 0) + 200000 WHERE user_id = @testUser1;
 END
 
 IF @testUser2 IS NOT NULL AND @testShowtime2 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM orders_online WHERE order_code = N'TEST-PAID-002')
@@ -394,7 +394,7 @@ BEGIN
     VALUES (1, 125000, 125000, 0, @testShowtime2, @testSeat3, @order2);
     INSERT INTO points_histories([date], description, points, user_id)
     VALUES (DATEADD(day, -1, @today), N'Tích điểm từ đơn TEST-PAID-002', 125, @testUser2);
-    UPDATE users SET points = ISNULL(points, 0) + 125, total_spending = ISNULL(total_spending, 0) + 125000 WHERE user_id = @testUser2;
+    UPDATE customers SET points = ISNULL(points, 0) + 125, total_spending = ISNULL(total_spending, 0) + 125000 WHERE user_id = @testUser2;
 END
 
 DECLARE @firstTicket int = (
@@ -417,7 +417,7 @@ SELECT COUNT(*) AS seats FROM seats;
 SELECT COUNT(*) AS products FROM products;
 SELECT COUNT(*) AS cinema_products FROM cinema_products;
 SELECT COUNT(*) AS showtimes FROM showtimes;
-SELECT COUNT(*) AS users FROM users;
+SELECT COUNT(*) AS customers FROM customers;
 SELECT COUNT(*) AS staff FROM staff;
 SELECT COUNT(*) AS vouchers FROM vouchers;
 SELECT COUNT(*) AS shifts FROM staff_shifts;

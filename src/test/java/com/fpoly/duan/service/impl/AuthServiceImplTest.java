@@ -48,6 +48,8 @@ class AuthServiceImplTest {
     private StaffRepository staffRepository;
     @Mock
     private PasswordEncoder passwordEncoder;
+    @Mock
+    private com.fpoly.duan.service.AuditLogService auditLogService;
 
     @InjectMocks
     private AuthServiceImpl authService;
@@ -56,12 +58,12 @@ class AuthServiceImplTest {
     void loginReturnsTokensAndCustomerWhenCredentialsAreValid() {
         User user = User.builder()
                 .userId(7)
-                .username("customer01")
+                .email("customer@example.com")
                 .password("encoded-password")
                 .status(1)
                 .build();
         CustomUserDetails details = CustomUserDetails.builder().user(user).build();
-        UserDTO customer = UserDTO.builder().userId(7).username("customer01").build();
+        UserDTO customer = UserDTO.builder().userId(7).email("customer@example.com").build();
 
         when(userDetailsService.loadCustomerLoginAccount("customer@example.com")).thenReturn(details);
         when(passwordEncoder.matches("Password1!", "encoded-password")).thenReturn(true);
@@ -70,7 +72,7 @@ class AuthServiceImplTest {
         when(userService.getUserById(7)).thenReturn(customer);
 
         AuthResponse response = authService.login(LoginRequest.builder()
-                .username("  customer@example.com  ")
+                .account("  customer@example.com  ")
                 .password("Password1!")
                 .build());
 
@@ -87,7 +89,7 @@ class AuthServiceImplTest {
                 .thenThrow(new UsernameNotFoundException("missing"));
 
         BadCredentialsException exception = assertThrows(BadCredentialsException.class,
-                () -> authService.login(LoginRequest.builder().username("missing@example.com").password("Password1!").build()));
+                () -> authService.login(LoginRequest.builder().account("missing@example.com").password("Password1!").build()));
 
         assertEquals("Sai tài khoản hoặc mật khẩu", exception.getMessage());
         verify(jwtService, never()).generateToken(org.mockito.ArgumentMatchers.any());
@@ -97,7 +99,6 @@ class AuthServiceImplTest {
     void staffLoginAcceptsPhoneNumber() {
         Staff staff = new Staff();
         staff.setStaffId(3);
-        staff.setUsername("staff01");
         staff.setEmail("staff01@example.com");
         staff.setPhone("0911000001");
         staff.setPassword("encoded-password");
@@ -111,7 +112,7 @@ class AuthServiceImplTest {
         when(jwtService.generateRefreshToken(details)).thenReturn("refresh-token");
 
         AuthResponse response = authService.staffLogin(LoginRequest.builder()
-                .username(" 0911000001 ")
+                .account(" 0911000001 ")
                 .password("Password1!")
                 .build());
 
@@ -147,21 +148,20 @@ class AuthServiceImplTest {
                 .build();
         UserDTO created = UserDTO.builder()
                 .userId(12)
-                .username("customer")
                 .fullname("Khách Hàng")
                 .email("customer@example.com")
                 .phone("0900000000")
                 .status(1)
                 .build();
         CustomUserDetails details = CustomUserDetails.builder()
-                .user(User.builder().userId(12).username("customer").password("encoded").status(1).build())
+                .user(User.builder().userId(12).email("customer@example.com").password("encoded").status(1).build())
                 .build();
 
         when(userRepository.existsByEmail("customer@example.com")).thenReturn(false);
         when(userRepository.existsByPhone("0900000000")).thenReturn(false);
         when(userService.createUser(org.mockito.ArgumentMatchers.any(UserDTO.class), org.mockito.ArgumentMatchers.eq("Password1!")))
                 .thenReturn(created);
-        when(userDetailsService.loadUserAccount("customer")).thenReturn(details);
+        when(userDetailsService.loadUserAccount("customer@example.com")).thenReturn(details);
         when(jwtService.generateToken(details)).thenReturn("access-token");
         when(jwtService.generateRefreshToken(details)).thenReturn("refresh-token");
 
@@ -171,7 +171,7 @@ class AuthServiceImplTest {
         assertEquals("access-token", response.getToken());
         assertEquals("refresh-token", response.getRefreshToken());
         verify(userService).createUser(org.mockito.ArgumentMatchers.argThat(dto ->
-                dto.getUsername().equals("customer") && dto.getFullname().equals("Khách Hàng") && dto.getStatus() == 1),
+                dto.getEmail().equals("customer@example.com") && dto.getFullname().equals("Khách Hàng") && dto.getStatus() == 1),
                 org.mockito.ArgumentMatchers.eq("Password1!"));
     }
 }

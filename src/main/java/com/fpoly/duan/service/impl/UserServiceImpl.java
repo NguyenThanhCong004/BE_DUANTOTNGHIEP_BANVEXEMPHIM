@@ -48,25 +48,6 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public UserDTO getUserByUsername(String username) {
-        String key = username != null ? username.trim() : "";
-        return userRepository.findFirstByUsernameOrderByUserIdAsc(key)
-                .map(this::convertToDTO)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng với tên đăng nhập: " + username));
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public UserDTO getUserByUsernameOrEmail(String usernameOrEmail) {
-        String key = usernameOrEmail != null ? usernameOrEmail.trim() : "";
-        return userRepository.findByUsernameIgnoreCase(key)
-                .or(() -> userRepository.findByEmailIgnoreCase(key))
-                .map(this::convertToDTO)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng với tên đăng nhập/email: " + key));
-    }
-
-    @Override
     public UserDTO createUser(UserDTO userDTO, String password) {
         validateUserUniqueForCreate(userDTO);
         User user = convertToEntity(userDTO);
@@ -182,7 +163,6 @@ public class UserServiceImpl implements UserService {
 
         return UserDTO.builder()
                 .userId(user.getUserId())
-                .username(user.getUsername())
                 .fullname(user.getFullname())
                 .email(user.getEmail())
                 .phone(user.getPhone())
@@ -214,7 +194,6 @@ public class UserServiceImpl implements UserService {
     private User convertToEntity(UserDTO userDTO) {
         User user = new User();
         user.setUserId(userDTO.getUserId());
-        user.setUsername(userDTO.getUsername());
         user.setFullname(userDTO.getFullname());
         user.setEmail(userDTO.getEmail());
         user.setPhone(userDTO.getPhone());
@@ -231,14 +210,9 @@ public class UserServiceImpl implements UserService {
         if (userDTO == null) {
             throw new RuntimeException("Dữ liệu người dùng không hợp lệ");
         }
-        String username = userDTO.getUsername() != null ? userDTO.getUsername().trim() : "";
         String email = userDTO.getEmail() != null ? userDTO.getEmail().trim() : "";
         String phone = userDTO.getPhone() != null ? userDTO.getPhone().trim() : "";
 
-        if (Boolean.TRUE.equals(userRepository.existsByUsername(username))
-                || Boolean.TRUE.equals(staffRepository.existsByUsername(username))) {
-            throw new RuntimeException("Tên đăng nhập đã tồn tại");
-        }
         if (Boolean.TRUE.equals(userRepository.existsByEmail(email))
                 || Boolean.TRUE.equals(staffRepository.existsByEmail(email))) {
             throw new RuntimeException("Email đã tồn tại");

@@ -56,7 +56,7 @@ public class UserController {
         String term = SearchUtils.pick(search, keyword, q);
         List<UserDTO> users = userService.getAllUsers().stream()
                 .filter(u -> SearchUtils.matches(term,
-                        u.getUserId(), u.getUsername(), u.getFullname(), u.getEmail(), u.getPhone(),
+                        u.getUserId(), u.getFullname(), u.getEmail(), u.getPhone(),
                         u.getStatus(), u.getRankName(), u.getPoints(), u.getTotalSpending()))
                 .toList();
         return ResponseEntity.ok(ApiResponse.<List<UserDTO>>builder()
@@ -83,7 +83,6 @@ public class UserController {
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<UserDTO>> createUser(@Valid @RequestBody UserRequest userRequest) {
         UserDTO userDTO = UserDTO.builder()
-                .username(userRequest.getUsername())
                 .fullname(userRequest.getFullname())
                 .email(userRequest.getEmail())
                 .phone(userRequest.getPhone())

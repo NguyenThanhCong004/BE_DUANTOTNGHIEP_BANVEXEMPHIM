@@ -228,6 +228,13 @@ public class TicketCheckoutService {
             if (voucher == null || voucher.getStatus() == null || voucher.getStatus() != 1) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher không khả dụng");
             }
+            Integer voucherCinemaId = voucher.getCinema() != null ? voucher.getCinema().getCinemaId() : null;
+            if (voucherCinemaId == null || !voucherCinemaId.equals(cinemaId)) {
+                String voucherCinemaName = voucher.getCinema() != null ? voucher.getCinema().getName() : null;
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Voucher này chỉ áp dụng tại rạp "
+                                + (voucherCinemaName != null ? voucherCinemaName : "khác") + ", không áp dụng cho rạp bạn đang đặt vé");
+            }
             LocalDate todayVoucher = todayInAppZone();
             if (voucher.getStartDate() != null && todayVoucher.isBefore(voucher.getStartDate())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher chưa có hiệu lực");
@@ -326,7 +333,7 @@ public class TicketCheckoutService {
         }
 
         double subtotal = ticketTotal + snackTotal;
-        VoucherDiscount vd = computeVoucherDiscountForQuote(userId, req.getUserVoucherId(), subtotal);
+        VoucherDiscount vd = computeVoucherDiscountForQuote(userId, req.getUserVoucherId(), subtotal, cinemaId);
 
         double finalAmount = subtotal - vd.discountAmount();
         if (finalAmount < 0) finalAmount = 0;
@@ -580,7 +587,7 @@ public class TicketCheckoutService {
                 .description(description)
                 .returnUrl(returnUrl.trim())
                 .cancelUrl(cancelUrl.trim())
-                .buyerName(user.getFullname() != null && !user.getFullname().isBlank() ? user.getFullname() : user.getUsername())
+                .buyerName(user.getFullname() != null && !user.getFullname().isBlank() ? user.getFullname() : user.getEmail())
                 .buyerEmail(user.getEmail())
                 .buyerPhone(user.getPhone())
                 .expiredAt(expiredAt) // Thêm thuộc tính này
@@ -685,7 +692,7 @@ public class TicketCheckoutService {
     private record VoucherDiscount(double discountAmount) {
     }
 
-    private VoucherDiscount computeVoucherDiscountForQuote(Integer userId, Integer userVoucherId, double subtotal) {
+    private VoucherDiscount computeVoucherDiscountForQuote(Integer userId, Integer userVoucherId, double subtotal, Integer cinemaId) {
         if (userVoucherId == null) {
             return new VoucherDiscount(0.0);
         }
@@ -702,6 +709,13 @@ public class TicketCheckoutService {
         Voucher v = uv.getVoucher();
         if (v == null || v.getStatus() == null || v.getStatus() != 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Voucher không khả dụng");
+        }
+        Integer voucherCinemaId = v.getCinema() != null ? v.getCinema().getCinemaId() : null;
+        if (voucherCinemaId == null || !voucherCinemaId.equals(cinemaId)) {
+            String voucherCinemaName = v.getCinema() != null ? v.getCinema().getName() : null;
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Voucher này chỉ áp dụng tại rạp "
+                            + (voucherCinemaName != null ? voucherCinemaName : "khác") + ", không áp dụng cho rạp bạn đang đặt vé");
         }
         LocalDate today = todayInAppZone();
         if (v.getStartDate() != null && today.isBefore(v.getStartDate())) {

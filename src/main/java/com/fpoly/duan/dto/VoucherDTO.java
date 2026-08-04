@@ -24,4 +24,6 @@ public class VoucherDTO {
     private BigDecimal pointVoucher;
     /** 1 = Active, 0 = Inactive */
     private Integer status;
+    private Integer cinemaId;
+    private String cinemaName;
 }

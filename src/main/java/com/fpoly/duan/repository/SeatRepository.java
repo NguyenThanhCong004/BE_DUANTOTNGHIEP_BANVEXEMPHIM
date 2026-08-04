@@ -18,7 +18,9 @@ public interface SeatRepository extends JpaRepository<Seat, Integer> {
 
     void deleteByRoom_RoomId(Integer roomId);
 
-    long countBySeatType_SeatTypeId(Integer seatTypeId);
+    long countByRoom_RoomIdIn(Collection<Integer> roomIds);
+
+    long countByRoom_RoomId(Integer roomId);
 
     @Query("SELECT s FROM Seat s JOIN FETCH s.seatType WHERE s.seatId IN :ids")
     List<Seat> findAllByIdWithType(@Param("ids") Collection<Integer> ids);

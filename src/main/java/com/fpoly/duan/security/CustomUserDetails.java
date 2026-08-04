@@ -43,11 +43,8 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public String getUsername() {
-        // Với staff: ưu tiên username, fallback email
-        if (staff == null) return user.getUsername();
-        return (staff.getUsername() != null && !staff.getUsername().trim().isEmpty())
-                ? staff.getUsername()
-                : staff.getEmail();
+        // Định danh duy nhất cho JWT subject: cả customer và staff đều dùng email.
+        return staff == null ? user.getEmail() : staff.getEmail();
     }
 
     @Override

@@ -39,4 +39,8 @@ public class Voucher {
 
     @Column(name = "status")
     private Integer status;
+
+    @ManyToOne
+    @JoinColumn(name = "cinema_id", nullable = false)
+    private Cinema cinema;
 }

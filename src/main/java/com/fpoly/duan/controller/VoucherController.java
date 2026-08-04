@@ -22,9 +22,12 @@ import org.springframework.web.server.ResponseStatusException;
 import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.VoucherDTO;
+import com.fpoly.duan.entity.Cinema;
 import com.fpoly.duan.entity.Voucher;
+import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.UserVoucherRepository;
 import com.fpoly.duan.repository.VoucherRepository;
+import com.fpoly.duan.service.CinemaScopeService;
 import com.fpoly.duan.util.SearchUtils;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -45,15 +48,21 @@ public class VoucherController {
 
     private final VoucherRepository voucherRepository;
     private final UserVoucherRepository userVoucherRepository;
+    private final CinemaRepository cinemaRepository;
+    private final CinemaScopeService cinemaScopeService;
 
     @GetMapping
-    @Operation(summary = "Danh sách voucher")
+    @Operation(summary = "Danh sách voucher (công khai — trang khách đổi voucher dùng chung endpoint này)")
     public ResponseEntity<ApiResponse<List<VoucherDTO>>> list(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String q) {
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Integer cinemaId) {
         String term = SearchUtils.pick(search, keyword, q);
-        List<VoucherDTO> data = voucherRepository.findAll().stream()
+        List<Voucher> source = cinemaId != null
+                ? voucherRepository.findByCinema_CinemaId(cinemaId)
+                : voucherRepository.findAll();
+        List<VoucherDTO> data = source.stream()
                 .filter(v -> SearchUtils.matches(term,
                         v.getVouchersId(), v.getCode(), v.getValue(), v.getMinOrderValue(),
                         v.getMaxDiscountAmount(), v.getPointVoucher(), v.getStatus()))
@@ -79,14 +88,17 @@ public class VoucherController {
     }
 
     @PostMapping
-    @Operation(summary = "Tạo voucher")
+    @Operation(summary = "Tạo voucher — Admin tự động gán rạp của mình, Super Admin bắt buộc chọn rạp")
     public ResponseEntity<ApiResponse<VoucherDTO>> create(@RequestBody VoucherDTO dto) {
         validate(dto, true);
         if (voucherRepository.findAll().stream().anyMatch(v -> v.getCode() != null
                 && v.getCode().equalsIgnoreCase(dto.getCode().trim()))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mã voucher đã tồn tại");
         }
-        Voucher saved = voucherRepository.save(fromDTO(new Voucher(), dto));
+        Cinema cinema = resolveCinemaForWrite(dto.getCinemaId());
+        Voucher v = fromDTO(new Voucher(), dto);
+        v.setCinema(cinema);
+        Voucher saved = voucherRepository.save(v);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<VoucherDTO>builder()
                 .status(HttpStatus.CREATED.value())
                 .message("Tạo voucher thành công")
@@ -99,7 +111,10 @@ public class VoucherController {
     public ResponseEntity<ApiResponse<VoucherDTO>> update(@PathVariable Integer id, @RequestBody VoucherDTO dto) {
         Voucher v = voucherRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy voucher với id: " + id));
+        cinemaScopeService.requireCinemaAccess(v.getCinema());
         validate(dto, false);
+
+        Cinema newCinema = dto.getCinemaId() != null ? resolveCinemaForWrite(dto.getCinemaId()) : v.getCinema();
 
         boolean hasChanges = false;
         String newCode = dto.getCode() != null ? dto.getCode().trim() : v.getCode();
@@ -115,6 +130,7 @@ public class VoucherController {
             hasChanges = true;
         }
         if (dto.getStatus() != null && !dto.getStatus().equals(v.getStatus())) hasChanges = true;
+        if (v.getCinema() == null || !newCinema.getCinemaId().equals(v.getCinema().getCinemaId())) hasChanges = true;
 
         if (!hasChanges) {
             return ResponseEntity.ok(ApiResponse.<VoucherDTO>builder()
@@ -129,7 +145,9 @@ public class VoucherController {
                         && x.getCode().equalsIgnoreCase(newCode))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mã voucher đã tồn tại");
         }
-        Voucher saved = voucherRepository.save(fromDTO(v, dto));
+        Voucher toSave = fromDTO(v, dto);
+        toSave.setCinema(newCinema);
+        Voucher saved = voucherRepository.save(toSave);
         return ResponseEntity.ok(ApiResponse.<VoucherDTO>builder()
                 .status(HttpStatus.OK.value())
                 .message("Cập nhật voucher thành công")
@@ -140,9 +158,9 @@ public class VoucherController {
     @DeleteMapping("/{id}")
     @Operation(summary = "Xóa voucher")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
-        if (!voucherRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy voucher với id: " + id);
-        }
+        Voucher v = voucherRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy voucher với id: " + id));
+        cinemaScopeService.requireCinemaAccess(v.getCinema());
         if (userVoucherRepository.existsByVoucher_VouchersId(id)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Không thể xóa voucher này vì đã có khách hàng sở hữu hoặc đã sử dụng. Hãy chuyển sang trạng thái Dừng phát hành.");
@@ -192,6 +210,20 @@ public class VoucherController {
         toPointVoucherInt(dto.getPointVoucher());
     }
 
+    /**
+     * Admin (gán rạp cố định) không cần gửi cinemaId — tự động lấy rạp của mình.
+     * Super Admin bắt buộc chọn rạp (không có voucher "toàn hệ thống").
+     */
+    private Cinema resolveCinemaForWrite(Integer requestedCinemaId) {
+        Integer resolvedCinemaId = cinemaScopeService.effectiveCinemaId(requestedCinemaId);
+        if (resolvedCinemaId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng chọn rạp áp dụng voucher");
+        }
+        return cinemaRepository.findById(resolvedCinemaId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Không tìm thấy rạp với mã: " + resolvedCinemaId));
+    }
+
     private VoucherDTO toDTO(Voucher v) {
         Integer rawStatus = v.getStatus() != null ? v.getStatus() : 0;
         Integer displayStatus = rawStatus;
@@ -221,6 +253,8 @@ public class VoucherController {
                 .endDate(end)
                 .pointVoucher(BigDecimal.valueOf(v.getPointVoucher() != null ? v.getPointVoucher() : 0))
                 .status(displayStatus)
+                .cinemaId(v.getCinema() != null ? v.getCinema().getCinemaId() : null)
+                .cinemaName(v.getCinema() != null ? v.getCinema().getName() : null)
                 .build();
     }
 
