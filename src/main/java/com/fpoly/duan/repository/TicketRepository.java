@@ -63,6 +63,59 @@ public interface TicketRepository extends JpaRepository<Ticket, Integer> {
     @Query("SELECT COUNT(t) FROM Ticket t JOIN t.orderOnline o WHERE o.status = 1")
     Long countAllPaidTickets();
 
+    /** Top phim theo doanh thu vé (toàn hệ thống), sắp xếp giảm dần — cắt limit ở tầng service. */
+    @Query("SELECT m.title, COUNT(t), COALESCE(SUM(t.price), 0.0) " +
+           "FROM Ticket t JOIN t.showtime s JOIN s.movie m JOIN t.orderOnline o " +
+           "WHERE o.status = 1 " +
+           "GROUP BY m.title " +
+           "ORDER BY SUM(t.price) DESC")
+    List<Object[]> getTopMoviesByRevenue();
+
+    /** Top phim theo doanh thu vé, giới hạn theo rạp. */
+    @Query("SELECT m.title, COUNT(t), COALESCE(SUM(t.price), 0.0) " +
+           "FROM Ticket t JOIN t.showtime s JOIN s.movie m JOIN s.room r JOIN t.orderOnline o " +
+           "WHERE o.status = 1 AND r.cinema.cinemaId = :cinemaId " +
+           "GROUP BY m.title " +
+           "ORDER BY SUM(t.price) DESC")
+    List<Object[]> getTopMoviesByRevenueForCinema(@Param("cinemaId") Integer cinemaId);
+
+    /** Số vé đã bán (theo suất chiếu diễn ra trong khoảng thời gian) — dùng để tính tỷ lệ ghế đã bán hôm nay. */
+    @Query("SELECT COUNT(t) FROM Ticket t JOIN t.showtime s JOIN t.orderOnline o " +
+           "WHERE o.status = 1 AND s.startTime >= :start AND s.startTime < :end")
+    Long countSoldSeatsForShowtimesBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    /** Số vé đã bán cho các suất chiếu của một rạp trong khoảng thời gian (ghế đã bán trong ngày, theo giờ chiếu). */
+    @Query("SELECT COUNT(t) FROM Ticket t JOIN t.showtime s JOIN s.room r JOIN t.orderOnline o " +
+           "WHERE o.status = 1 AND r.cinema.cinemaId = :cinemaId AND s.startTime >= :start AND s.startTime < :end")
+    Long countSoldSeatsForCinemaShowtimesBetween(@Param("cinemaId") Integer cinemaId,
+            @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    /** Số vé bán ra (theo thời điểm đặt đơn) cho một rạp trong khoảng thời gian — dùng cho KPI "vé bán hôm nay". */
+    @Query("SELECT COUNT(t) FROM Ticket t JOIN t.orderOnline o " +
+           "WHERE o.status = 1 AND o.cinema.cinemaId = :cinemaId AND o.createdAt BETWEEN :start AND :end")
+    Long countTicketsSoldByCinemaBetween(@Param("cinemaId") Integer cinemaId,
+            @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    /** Tỷ lệ ghế theo loại (VIP/thường/đôi) đã bán cho các suất chiếu hôm nay của một rạp. */
+    @Query("SELECT st.name, st.coupleSeat, COUNT(t) " +
+           "FROM Ticket t JOIN t.seat seat JOIN seat.seatType st " +
+           "JOIN t.showtime s JOIN s.room r JOIN t.orderOnline o " +
+           "WHERE o.status = 1 AND r.cinema.cinemaId = :cinemaId " +
+           "AND s.startTime >= :start AND s.startTime < :end " +
+           "GROUP BY st.name, st.coupleSeat")
+    List<Object[]> getSeatTypeRatioForCinemaBetween(@Param("cinemaId") Integer cinemaId,
+            @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    /** Vé bán theo giờ trong ngày (theo thời điểm đặt đơn) cho một rạp — SQL Server DATEPART. */
+    @Query(value = "SELECT DATEPART(HOUR, o.created_at) AS hr, COUNT(t.ticket_id) " +
+           "FROM tickets t JOIN orders_online o ON t.order_online_id = o.order_online_id " +
+           "WHERE o.status = 1 AND o.cinema_id = :cinemaId " +
+           "AND o.created_at >= :start AND o.created_at < :end " +
+           "GROUP BY DATEPART(HOUR, o.created_at) " +
+           "ORDER BY hr", nativeQuery = true)
+    List<Object[]> getTicketsByHourForCinema(@Param("cinemaId") Integer cinemaId,
+            @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
     @Query("SELECT COUNT(t) FROM Ticket t JOIN t.orderOnline o JOIN o.staff st WHERE o.status = 1 AND st.staffId = :staffId AND o.createdAt BETWEEN :start AND :end")
     Long countTicketsByStaffBetweenJPQL(@Param("staffId") Integer staffId, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 

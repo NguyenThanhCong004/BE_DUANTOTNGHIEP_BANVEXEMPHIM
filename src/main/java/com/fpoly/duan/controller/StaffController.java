@@ -56,7 +56,6 @@ public class StaffController {
         StaffDTO safePayload = StaffDTO.builder()
                 .fullname(staffDTO != null ? staffDTO.getFullname() : null)
                 .email(staffDTO != null ? staffDTO.getEmail() : null)
-                .username(staffDTO != null ? staffDTO.getUsername() : null)
                 .phone(staffDTO != null ? staffDTO.getPhone() : null)
                 .birthday(staffDTO != null ? staffDTO.getBirthday() : null)
                 .avatar(staffDTO != null ? staffDTO.getAvatar() : null)
@@ -165,7 +164,6 @@ public class StaffController {
         boolean hasChanges = false;
 
         if (staffDTO.getFullname() != null) hasChanges = true;
-        if (staffDTO.getUsername() != null) hasChanges = true;
         if (staffDTO.getEmail() != null) hasChanges = true;
         if (staffDTO.getPhone() != null) hasChanges = true;
         if (staffDTO.getBirthday() != null) hasChanges = true;
@@ -272,7 +270,7 @@ public class StaffController {
 
     private boolean matchesSearch(String term, StaffDTO staff) {
         return SearchUtils.matches(term,
-                staff.getStaffId(), staff.getFullname(), staff.getUsername(), staff.getEmail(),
+                staff.getStaffId(), staff.getFullname(), staff.getEmail(),
                 staff.getPhone(), staff.getRole(), staff.getStatus(), staff.getCinemaId(), staff.getCinemaName());
     }
 

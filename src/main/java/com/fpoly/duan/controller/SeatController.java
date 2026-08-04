@@ -12,10 +12,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -74,34 +72,6 @@ public class SeatController {
                 .status(HttpStatus.OK.value())
                 .message("OK")
                 .data(dto)
-                .build());
-    }
-
-    @PostMapping("/seat-types")
-    @Operation(summary = "Tạo loại ghế", tags = { "Table: seat_types" })
-    public ResponseEntity<ApiResponse<SeatTypeDTO>> createSeatType(@RequestBody SeatTypeDTO dto) {
-        if (dto == null || dto.getName() == null || dto.getName().trim().isEmpty()) {
-            throw new RuntimeException("Tên loại ghế không được để trống");
-        }
-        if (seatTypeRepository.findByName(dto.getName().trim()).isPresent()) {
-            throw new RuntimeException("Tên loại ghế đã tồn tại");
-        }
-        SeatType t = new SeatType();
-        t.setName(dto.getName().trim());
-        t.setSurcharge(dto.getSurcharge() != null ? dto.getSurcharge() : 0.0);
-        t.setCoupleSeat(dto.getCoupleSeat() != null ? dto.getCoupleSeat() : SeatTypeNaming.isCoupleSeatType(t.getName()));
-        t.setColor(SeatTypeNaming.normalizeColorHex(dto.getColor()));
-        SeatType saved = seatTypeRepository.save(t);
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<SeatTypeDTO>builder()
-                .status(HttpStatus.CREATED.value())
-                .message("Tạo loại ghế thành công")
-                .data(SeatTypeDTO.builder()
-                        .seatTypeId(saved.getSeatTypeId())
-                        .name(saved.getName())
-                        .surcharge(saved.getSurcharge())
-                        .coupleSeat(Boolean.TRUE.equals(saved.getCoupleSeat()))
-                        .color(saved.getColor())
-                        .build())
                 .build());
     }
 
@@ -165,23 +135,6 @@ public class SeatController {
                         .coupleSeat(Boolean.TRUE.equals(saved.getCoupleSeat()))
                         .color(saved.getColor())
                         .build())
-                .build());
-    }
-
-    @DeleteMapping("/seat-types/{id}")
-    @Operation(summary = "Xóa loại ghế", tags = { "Table: seat_types" })
-    public ResponseEntity<ApiResponse<Void>> deleteSeatType(@PathVariable Integer id) {
-        if (!seatTypeRepository.existsById(id)) {
-            throw new RuntimeException("Không tìm thấy loại ghế với id: " + id);
-        }
-        long used = seatRepository.countBySeatType_SeatTypeId(id);
-        if (used > 0) {
-            throw new RuntimeException("Không thể xóa: còn " + used + " ghế đang dùng loại này");
-        }
-        seatTypeRepository.deleteById(id);
-        return ResponseEntity.ok(ApiResponse.<Void>builder()
-                .status(HttpStatus.OK.value())
-                .message("Xóa loại ghế thành công")
                 .build());
     }
 
@@ -306,7 +259,7 @@ public class SeatController {
                     seat.setStatus("1");
                 }
             }
-            SeatType seatType = resolveOrCreateSeatType(item.getSeatTypeName());
+            SeatType seatType = resolveSeatType(item.getSeatTypeName());
             seat.setX(item.getX());
             seat.setY(item.getY());
             seat.setRow(item.getRow());
@@ -354,18 +307,15 @@ public class SeatController {
                 .build();
     }
 
-    private SeatType resolveOrCreateSeatType(String rawName) {
+    /** Chỉ tra cứu — không tự tạo loại ghế mới. Danh sách loại ghế đã cố định (3 loại), quản lý qua trang Loại ghế. */
+    private SeatType resolveSeatType(String rawName) {
         if (rawName == null || rawName.isBlank()) {
             throw new RuntimeException("Thiếu loại ghế");
         }
         String name = rawName.trim();
-        return seatTypeRepository.findByName(name).orElseGet(() -> {
-            SeatType created = new SeatType();
-            created.setName(name);
-            created.setSurcharge(0.0);
-            created.setCoupleSeat(SeatTypeNaming.isCoupleSeatType(name));
-            return seatTypeRepository.save(created);
-        });
+        return seatTypeRepository.findByName(name)
+                .orElseThrow(() -> new RuntimeException(
+                        "Loại ghế \"" + name + "\" không tồn tại. Vui lòng chọn 1 trong các loại ghế đã có."));
     }
 
 }

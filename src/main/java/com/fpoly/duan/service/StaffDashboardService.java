@@ -1,5 +1,6 @@
 package com.fpoly.duan.service;
 
+import com.fpoly.duan.dto.CustomerBasicDTO;
 import com.fpoly.duan.dto.OrderDetailDTO;
 import com.fpoly.duan.dto.ProductSoldBreakdown;
 import com.fpoly.duan.dto.RevenueBreakdownDTO;
@@ -10,18 +11,24 @@ import com.fpoly.duan.entity.Ticket;
 import com.fpoly.duan.entity.Cinema;
 import com.fpoly.duan.entity.Staff;
 import com.fpoly.duan.entity.StaffShift;
+import com.fpoly.duan.entity.User;
+import com.fpoly.duan.entity.MembershipRank;
+import com.fpoly.duan.repository.MembershipRankRepository;
 import com.fpoly.duan.repository.OrderOnlineRepository;
 import com.fpoly.duan.repository.TicketRepository;
 import com.fpoly.duan.repository.OrderDetailFoodRepository;
 import com.fpoly.duan.repository.StaffShiftRepository;
 import com.fpoly.duan.repository.StaffRepository;
+import com.fpoly.duan.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -36,10 +43,13 @@ public class StaffDashboardService {
     private final OrderDetailFoodRepository orderDetailFoodRepository;
     private final StaffShiftRepository staffShiftRepository;
     private final StaffRepository staffRepository;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final MembershipRankRepository membershipRankRepository;
 
-    public List<RevenueBreakdownDTO> getRevenueBreakdown(Integer staffId) {
+    public List<RevenueBreakdownDTO> getRevenueBreakdown(Integer staffId, Integer shiftId) {
         try {
-            LocalDateTime[] range = getCurrentRange(staffId);
+            LocalDateTime[] range = getRange(staffId, shiftId);
             List<Object[]> rows = orderOnlineRepository.getRevenueBreakdownByStaffBetween(staffId, range[0], range[1]);
             List<RevenueBreakdownDTO> list = new ArrayList<>();
             for (Object[] row : rows) {
@@ -61,9 +71,9 @@ public class StaffDashboardService {
         }
     }
 
-    public List<ProductSoldBreakdown> getProductsBreakdown(Integer staffId) {
+    public List<ProductSoldBreakdown> getProductsBreakdown(Integer staffId, Integer shiftId) {
         try {
-            LocalDateTime[] range = getCurrentRange(staffId);
+            LocalDateTime[] range = getRange(staffId, shiftId);
             List<Object[]> rows = orderDetailFoodRepository.getProductsBreakdownByStaffBetween(staffId, range[0], range[1]);
             List<ProductSoldBreakdown> list = new ArrayList<>();
             for (Object[] row : rows) {
@@ -85,7 +95,11 @@ public class StaffDashboardService {
         }
     }
 
-    public List<OrderOnline> getRecentOrders(Integer staffId) {
+    public List<OrderOnline> getRecentOrders(Integer staffId, Integer shiftId) {
+        if (shiftId != null) {
+            LocalDateTime[] range = getRange(staffId, shiftId);
+            return orderOnlineRepository.findTop10ByStaffStaffIdAndCreatedAtBetweenOrderByCreatedAtDesc(staffId, range[0], range[1]);
+        }
         return orderOnlineRepository.findTop10ByStaffStaffIdOrderByCreatedAtDesc(staffId);
     }
 
@@ -169,34 +183,32 @@ public class StaffDashboardService {
                 .orElse(null);
     }
 
-    public StaffDashboardStats getDashboardStats(Integer staffId) {
+    public StaffDashboardStats getDashboardStats(Integer staffId, Integer shiftId) {
         try {
             LocalDateTime now = nowInAppZone();
-            
-            // Lấy tên rạp
             String cinemaName = "N/A";
             Optional<Staff> staffOpt = staffRepository.findById(staffId);
             if (staffOpt.isPresent() && staffOpt.get().getCinema() != null) {
                 cinemaName = staffOpt.get().getCinema().getName();
             }
 
-            Optional<StaffShift> currentShift = staffShiftRepository.findActiveShift(staffId, now);
-
-            LocalDateTime start = now.toLocalDate().atStartOfDay();
-            LocalDateTime end = now.toLocalDate().atTime(23, 59, 59);
+            LocalDateTime[] range = getRange(staffId, shiftId);
             String shiftName;
+            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("HH:mm");
 
-            if (currentShift.isPresent()) {
-                StaffShift shift = currentShift.get();
-                DateTimeFormatter fmt = DateTimeFormatter.ofPattern("HH:mm");
-                shiftName = "Ca: " + shift.getStartTime().format(fmt) + " - " + shift.getEndTime().format(fmt);
+            if (shiftId != null) {
+                Optional<StaffShift> shiftOpt = staffShiftRepository.findById(shiftId);
+                shiftName = shiftOpt.map(s -> "Ca: " + s.getStartTime().format(fmt) + " - " + s.getEndTime().format(fmt))
+                        .orElse("Ca đã chọn");
             } else {
-                shiftName = "Cả ngày hôm nay";
+                Optional<StaffShift> currentShift = staffShiftRepository.findActiveShift(staffId, now);
+                shiftName = currentShift.map(s -> "Ca: " + s.getStartTime().format(fmt) + " - " + s.getEndTime().format(fmt))
+                        .orElse("Cả ngày hôm nay");
             }
 
-            Double revenue = orderOnlineRepository.sumRevenueByStaffBetween(staffId, start, end);
-            Long tickets = ticketRepository.countTicketsByStaffBetweenJPQL(staffId, start, end);
-            Long products = orderDetailFoodRepository.countProductsByStaffBetween(staffId, start, end);
+            Double revenue = orderOnlineRepository.sumRevenueByStaffBetween(staffId, range[0], range[1]);
+            Long tickets = ticketRepository.countTicketsByStaffBetweenJPQL(staffId, range[0], range[1]);
+            Long products = orderDetailFoodRepository.countProductsByStaffBetween(staffId, range[0], range[1]);
 
             return StaffDashboardStats.builder()
                     .totalRevenue(revenue != null ? revenue : 0.0)
@@ -216,12 +228,75 @@ public class StaffDashboardService {
         }
     }
 
-    private LocalDateTime[] getCurrentRange(Integer staffId) {
+    private LocalDateTime[] getRange(Integer staffId, Integer shiftId) {
+        if (shiftId != null) {
+            Optional<StaffShift> shiftOpt = staffShiftRepository.findById(shiftId);
+            if (shiftOpt.isPresent()) {
+                StaffShift shift = shiftOpt.get();
+                if (shift.getStartTime() != null && shift.getEndTime() != null) {
+                    return new LocalDateTime[]{shift.getStartTime(), shift.getEndTime()};
+                }
+            }
+        }
         LocalDateTime now = nowInAppZone();
         return new LocalDateTime[]{now.toLocalDate().atStartOfDay(), now.toLocalDate().atTime(23, 59, 59)};
     }
 
     private LocalDateTime nowInAppZone() {
         return LocalDateTime.now(APP_ZONE);
+    }
+
+    public CustomerBasicDTO lookupCustomerByPhone(String phone) {
+        Optional<User> existing = userRepository.findByPhone(phone);
+        if (existing.isPresent()) {
+            User u = existing.get();
+            return CustomerBasicDTO.builder()
+                    .userId(u.getUserId())
+                    .fullname(u.getFullname())
+                    .phone(u.getPhone())
+                    .email(u.getEmail())
+                    .isNew(false)
+                    .build();
+        }
+        return CustomerBasicDTO.builder()
+                .phone(phone)
+                .isNew(true)
+                .build();
+    }
+
+    public CustomerBasicDTO createGuestCustomer(String phone) {
+        Optional<User> existing = userRepository.findByPhone(phone);
+        if (existing.isPresent()) {
+            User u = existing.get();
+            return CustomerBasicDTO.builder()
+                    .userId(u.getUserId())
+                    .fullname(u.getFullname())
+                    .phone(u.getPhone())
+                    .email(u.getEmail())
+                    .isNew(false)
+                    .build();
+        }
+        Integer defaultRankId = membershipRankRepository.findAll().stream()
+                .min(Comparator.comparing(r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                .map(MembershipRank::getRankId)
+                .orElse(null);
+
+        User newUser = new User();
+        newUser.setPhone(phone);
+        newUser.setFullname("Khách " + phone);
+        newUser.setEmail(phone + "@guest.local");
+        newUser.setPassword(passwordEncoder.encode(phone));
+        newUser.setStatus(1);
+        newUser.setPoints(0);
+        newUser.setTotalSpending(0.0);
+        newUser.setRankId(defaultRankId);
+        User saved = userRepository.save(newUser);
+        return CustomerBasicDTO.builder()
+                .userId(saved.getUserId())
+                .fullname(saved.getFullname())
+                .phone(saved.getPhone())
+                .email(saved.getEmail())
+                .isNew(true)
+                .build();
     }
 }

@@ -24,14 +24,11 @@ public class CustomUserDetailsService implements UserDetailsService {
         return loadAnyAccount(username);
     }
 
-    public CustomUserDetails loadUserAccount(String usernameOrEmail) throws UsernameNotFoundException {
-        String key = usernameOrEmail != null ? usernameOrEmail.trim() : "";
-        User user = userRepository.findFirstByUsernameIgnoreCaseOrderByUserIdAsc(key).orElse(null);
-        if (user == null && key.contains("@")) {
-            user = userRepository.findFirstByEmailIgnoreCaseOrderByUserIdAsc(key).orElse(null);
-        }
+    public CustomUserDetails loadUserAccount(String email) throws UsernameNotFoundException {
+        String key = email != null ? email.trim() : "";
+        User user = userRepository.findFirstByEmailIgnoreCaseOrderByUserIdAsc(key).orElse(null);
         if (user == null) {
-            throw new UsernameNotFoundException("User not found with username/email: " + usernameOrEmail);
+            throw new UsernameNotFoundException("User not found with email: " + email);
         }
         return CustomUserDetails.builder().user(user).build();
     }
@@ -53,13 +50,9 @@ public class CustomUserDetailsService implements UserDetailsService {
         return CustomUserDetails.builder().user(user).build();
     }
 
-    public CustomUserDetails loadStaffAccount(String usernameOrEmail) throws UsernameNotFoundException {
-        String key = usernameOrEmail != null ? usernameOrEmail.trim() : "";
-        // Staff: tránh NonUniqueResult khi trùng email/username trong DB
+    public CustomUserDetails loadStaffAccount(String emailOrPhone) throws UsernameNotFoundException {
+        String key = emailOrPhone != null ? emailOrPhone.trim() : "";
         Staff staff = staffRepository.findFirstByEmailIgnoreCaseOrderByStaffIdAsc(key).orElse(null);
-        if (staff == null) {
-            staff = staffRepository.findFirstByUsernameIgnoreCaseOrderByStaffIdAsc(key).orElse(null);
-        }
         if (staff == null) {
             String phone = key.replaceAll("\\s+", "");
             if (phone.matches("^[0-9]{10}$")) {
@@ -69,36 +62,30 @@ public class CustomUserDetailsService implements UserDetailsService {
         if (staff != null) {
             return CustomUserDetails.builder().staff(staff).build();
         }
-        throw new UsernameNotFoundException("Staff not found with username/email/phone: " + usernameOrEmail);
+        throw new UsernameNotFoundException("Staff not found with email/phone: " + emailOrPhone);
     }
 
-    public CustomUserDetails loadByUsernameAndAccountType(String usernameOrEmail, String accountType)
+    public CustomUserDetails loadByUsernameAndAccountType(String email, String accountType)
             throws UsernameNotFoundException {
         if ("STAFF".equalsIgnoreCase(accountType)) {
-            return loadStaffAccount(usernameOrEmail);
+            return loadStaffAccount(email);
         }
         if ("USER".equalsIgnoreCase(accountType)) {
-            return loadUserAccount(usernameOrEmail);
+            return loadUserAccount(email);
         }
-        return loadAnyAccount(usernameOrEmail);
+        return loadAnyAccount(email);
     }
 
-    private CustomUserDetails loadAnyAccount(String username) throws UsernameNotFoundException {
-        String key = username != null ? username.trim() : "";
+    private CustomUserDetails loadAnyAccount(String email) throws UsernameNotFoundException {
+        String key = email != null ? email.trim() : "";
         Staff staff = staffRepository.findFirstByEmailIgnoreCaseOrderByStaffIdAsc(key).orElse(null);
-        if (staff == null) {
-            staff = staffRepository.findFirstByUsernameIgnoreCaseOrderByStaffIdAsc(key).orElse(null);
-        }
         if (staff != null) {
             return CustomUserDetails.builder().staff(staff).build();
         }
 
-        User user = userRepository.findFirstByUsernameOrderByUserIdAsc(key).orElse(null);
-        if (user == null && key.contains("@")) {
-            user = userRepository.findFirstByEmailIgnoreCaseOrderByUserIdAsc(key).orElse(null);
-        }
+        User user = userRepository.findFirstByEmailIgnoreCaseOrderByUserIdAsc(key).orElse(null);
         if (user == null) {
-            throw new UsernameNotFoundException("User not found with username/email: " + username);
+            throw new UsernameNotFoundException("User not found with email: " + email);
         }
         return CustomUserDetails.builder().user(user).build();
     }

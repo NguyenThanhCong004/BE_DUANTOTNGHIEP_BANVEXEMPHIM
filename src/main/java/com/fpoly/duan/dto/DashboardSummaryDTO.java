@@ -11,10 +11,14 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class DashboardSummaryDTO {
     private Double totalRevenue;
+    private Double revenueToday;
     private Long totalTicketsSold;
     private Long totalUsers;
     private Long totalCinemas;
+    private Long totalRooms;
+    /** Chỉ tính nhân viên có role STAFF (không gồm Admin/Super Admin). */
     private Long totalStaff;
+    private Long totalAdmins;
     private Long totalMovies;
-    private Double revenueGrowth; 
+    private Double revenueGrowth;
 }

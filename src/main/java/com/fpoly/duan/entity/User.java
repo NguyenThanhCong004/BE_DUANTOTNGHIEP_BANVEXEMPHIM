@@ -13,9 +13,8 @@ import java.time.LocalDate;
 @AllArgsConstructor
 @Entity
 @Table(
-        name = "users",
+        name = "customers",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uk_users_username", columnNames = "username"),
                 @UniqueConstraint(name = "uk_users_email", columnNames = "email"),
                 @UniqueConstraint(name = "uk_users_phone", columnNames = "phone")
         })
@@ -24,9 +23,6 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "user_id")
     private Integer userId;
-
-    @Column(nullable = false, length = 100)
-    private String username;
 
     @Column(nullable = false)
     private String password;

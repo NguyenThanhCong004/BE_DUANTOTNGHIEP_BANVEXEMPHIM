@@ -122,7 +122,7 @@ public class OrderOnlineController {
 
         String name = u != null ? (u.getFullname() != null && !u.getFullname().isBlank()
                 ? u.getFullname()
-                : u.getUsername()) : "Khách vãng lai";
+                : u.getEmail()) : "Khách vãng lai";
         String email = u != null && u.getEmail() != null ? u.getEmail() : "—";
         String phone = u != null && u.getPhone() != null ? u.getPhone() : "—";
         Voucher voucher = o.getUserVoucher() != null ? o.getUserVoucher().getVoucher() : null;

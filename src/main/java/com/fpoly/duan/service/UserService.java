@@ -7,8 +7,6 @@ import com.fpoly.duan.dto.UserDTO;
 public interface UserService {
     List<UserDTO> getAllUsers();
     UserDTO getUserById(Integer id);
-    UserDTO getUserByUsername(String username);
-    UserDTO getUserByUsernameOrEmail(String usernameOrEmail);
     UserDTO createUser(UserDTO userDTO, String password);
     UserDTO updateUser(Integer id, UserDTO userDTO);
 
