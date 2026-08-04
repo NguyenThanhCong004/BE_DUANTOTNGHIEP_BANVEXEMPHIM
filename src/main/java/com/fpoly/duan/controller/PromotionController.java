@@ -128,6 +128,7 @@ public class PromotionController {
         if (movieIds == null || movieIds.isEmpty()) {
             throw new RuntimeException("Vui lòng chọn ít nhất 1 phim");
         }
+        ensureNoOverlappingPromotion(cinemaId, movieIds, request.getStart_date(), request.getEnd_date());
 
         LocalDate today = LocalDate.now();
         Integer statusInt = computeStatus(request.getStart_date(), request.getEnd_date(), today);
@@ -200,6 +201,9 @@ public class PromotionController {
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với mã: " + cinemaId));
         cinemaScopeService.requireCinemaAccess(cinema);
         cinemaScopeService.requireCinemaOperational(cinema);
+
+        // Nhóm cũ đã bị xóa (deleteAll + flush ở trên) nên không cần loại trừ chính nó ở đây.
+        ensureNoOverlappingPromotion(cinemaId, movieIds, request.getStart_date(), request.getEnd_date());
 
         LocalDate today = LocalDate.now();
         Integer statusInt = computeStatus(request.getStart_date(), request.getEnd_date(), today);
@@ -280,6 +284,27 @@ public class PromotionController {
         }
         if (request.getEnd_date().isBefore(request.getStart_date())) {
             throw new RuntimeException("Ngày kết thúc phải sau ngày bắt đầu");
+        }
+        if (request.getStart_date().isBefore(LocalDate.now())) {
+            throw new RuntimeException("Ngày bắt đầu không được là ngày quá khứ");
+        }
+    }
+
+    // Chặn tạo/sửa khuyến mãi trùng: cùng một phim không được thuộc 2 khuyến mãi
+    // có khoảng thời gian chồng lấn tại cùng một rạp (bao gồm cả trường hợp trùng y hệt).
+    private void ensureNoOverlappingPromotion(Integer cinemaId, List<Integer> movieIds, LocalDate start, LocalDate end) {
+        List<Promotion> existing = promotionRepository.findByCinema_CinemaId(cinemaId);
+        for (Promotion p : existing) {
+            Movie movie = p.getMovie();
+            if (movie == null || movie.getMovieId() == null || !movieIds.contains(movie.getMovieId())) {
+                continue;
+            }
+            boolean overlap = !p.getEndDate().isBefore(start) && !p.getStartDate().isAfter(end);
+            if (overlap) {
+                throw new RuntimeException("Phim \"" + movie.getTitle() + "\" đã có khuyến mãi \""
+                        + p.getPromotionName() + "\" trong khoảng " + p.getStartDate() + " đến " + p.getEndDate()
+                        + ". Vui lòng chọn thời gian khác hoặc bỏ chọn phim này.");
+            }
         }
     }
 
