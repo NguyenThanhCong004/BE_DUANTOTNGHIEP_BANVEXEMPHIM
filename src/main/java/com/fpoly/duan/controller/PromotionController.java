@@ -39,6 +39,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 
 @RestController
 @RequestMapping("/api/v1/promotions")
@@ -115,6 +116,7 @@ public class PromotionController {
 
     @PostMapping
     @Operation(summary = "Tạo nhóm khuyến mãi (nhiều phim)")
+    @Transactional
     public ResponseEntity<ApiResponse<Integer>> createPromotionGroup(@RequestBody PromotionGroupRequest request) {
         validateRequest(request);
 
@@ -162,6 +164,7 @@ public class PromotionController {
 
     @PutMapping("/{id}")
     @Operation(summary = "Cập nhật nhóm khuyến mãi")
+    @Transactional
     public ResponseEntity<ApiResponse<Integer>> updatePromotionGroup(
             @PathVariable Integer id,
             @RequestBody PromotionGroupRequest request) {
@@ -176,7 +179,7 @@ public class PromotionController {
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy rạp với mã: " + oldKey.getCinemaId()));
         cinemaScopeService.requireCinemaOperational(oldCinema);
 
-        // Xóa toàn bộ nhóm cũ theo key
+        // Xác định nhóm cũ (chưa xóa vội) để có thể loại trừ chính nó khi kiểm tra trùng lặp bên dưới.
         List<Promotion> candidates = promotionRepository.findByCinema_CinemaId(oldKey.getCinemaId());
         List<Promotion> oldGroup = candidates.stream()
                 .filter(p -> Objects.equals(p.getPromotionName(), oldKey.getPromotionName())
@@ -184,11 +187,10 @@ public class PromotionController {
                         && Objects.equals(p.getStartDate(), oldKey.getStartDate())
                         && Objects.equals(p.getEndDate(), oldKey.getEndDate()))
                 .collect(Collectors.toList());
+        Set<Integer> oldGroupIds = oldGroup.stream()
+                .map(Promotion::getPromotionId)
+                .collect(Collectors.toSet());
 
-        promotionRepository.deleteAll(oldGroup);
-        promotionRepository.flush(); // Cưỡng ép xóa ngay lập tức để tránh lỗi Unique
-
-        // Tạo mới
         Integer cinemaId = request.getCinemaId() != null ? request.getCinemaId() : oldKey.getCinemaId();
         request.setCinemaId(cinemaId);
 
@@ -202,8 +204,13 @@ public class PromotionController {
         cinemaScopeService.requireCinemaAccess(cinema);
         cinemaScopeService.requireCinemaOperational(cinema);
 
-        // Nhóm cũ đã bị xóa (deleteAll + flush ở trên) nên không cần loại trừ chính nó ở đây.
-        ensureNoOverlappingPromotion(cinemaId, movieIds, request.getStart_date(), request.getEnd_date());
+        // Kiểm tra hợp lệ TRƯỚC khi xóa nhóm cũ — tránh trường hợp báo lỗi nhưng khuyến mãi
+        // cũ đã bị xóa mất (không rollback được vì đã flush). Loại trừ chính nhóm đang sửa.
+        ensureNoOverlappingPromotion(cinemaId, movieIds, request.getStart_date(), request.getEnd_date(), oldGroupIds);
+
+        // Mọi kiểm tra đã qua — giờ mới xóa nhóm cũ và tạo nhóm mới.
+        promotionRepository.deleteAll(oldGroup);
+        promotionRepository.flush(); // Cưỡng ép xóa ngay lập tức để tránh lỗi Unique
 
         LocalDate today = LocalDate.now();
         Integer statusInt = computeStatus(request.getStart_date(), request.getEnd_date(), today);
@@ -293,8 +300,16 @@ public class PromotionController {
     // Chặn tạo/sửa khuyến mãi trùng: cùng một phim không được thuộc 2 khuyến mãi
     // có khoảng thời gian chồng lấn tại cùng một rạp (bao gồm cả trường hợp trùng y hệt).
     private void ensureNoOverlappingPromotion(Integer cinemaId, List<Integer> movieIds, LocalDate start, LocalDate end) {
+        ensureNoOverlappingPromotion(cinemaId, movieIds, start, end, Set.of());
+    }
+
+    private void ensureNoOverlappingPromotion(Integer cinemaId, List<Integer> movieIds, LocalDate start, LocalDate end,
+            Set<Integer> excludePromotionIds) {
         List<Promotion> existing = promotionRepository.findByCinema_CinemaId(cinemaId);
         for (Promotion p : existing) {
+            if (excludePromotionIds != null && excludePromotionIds.contains(p.getPromotionId())) {
+                continue;
+            }
             Movie movie = p.getMovie();
             if (movie == null || movie.getMovieId() == null || !movieIds.contains(movie.getMovieId())) {
                 continue;
