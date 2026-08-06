@@ -20,8 +20,8 @@ public class Ticket {
     private Double price;
 
     /** Đã soát vé (khách đã vào rạp) hay chưa — đánh dấu khi nhân viên xác nhận sau khi quét QR. */
-    @Column(name = "checked_in")
-    private Boolean checkedIn;
+    @Column(name = "checked_in", nullable = false)
+    private Boolean checkedIn = false;
 
     @Column(name = "checked_in_at")
     private LocalDateTime checkedInAt;
