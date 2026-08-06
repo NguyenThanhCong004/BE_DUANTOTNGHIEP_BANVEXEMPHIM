@@ -12,6 +12,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
@@ -19,6 +21,9 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class TicketVerificationService {
+    private static final ZoneId VN = ZoneId.of("Asia/Ho_Chi_Minh");
+    private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy");
+
     private final TicketRepository ticketRepository;
     private final TicketQrService ticketQrService;
 
@@ -42,6 +47,26 @@ public class TicketVerificationService {
         if (ticket.getStatus() == null || ticket.getStatus() != 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vé chưa thanh toán hoặc đã bị hủy");
         }
+        if (ticket.getCheckedInAt() != null) {
+            String usedAt = ticket.getCheckedInAt().format(FMT);
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Vé đã được sử dụng lúc " + usedAt);
+        }
+        // Kiểm tra khung giờ hợp lệ: cho phép vào 30 phút trước đến 3 giờ sau suất bắt đầu (giờ VN)
+        LocalDateTime nowVN = LocalDateTime.now(VN);
+        if (st.getStartTime() != null) {
+            LocalDateTime openGate  = st.getStartTime().minusMinutes(30);
+            LocalDateTime closeGate = st.getStartTime().plusHours(3);
+            if (nowVN.isBefore(openGate)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Suất chiếu chưa đến giờ vào rạp. Cổng mở lúc " + openGate.format(FMT));
+            }
+            if (nowVN.isAfter(closeGate)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Suất chiếu " + st.getStartTime().format(FMT) + " đã kết thúc, không thể soát vé");
+            }
+        }
+        ticket.setCheckedInAt(nowVN);
+        ticketRepository.save(ticket);
         List<Ticket> orderTickets = ticket.getOrderOnline() != null
                 ? ticketRepository.findByOrderOnline_OrderOnlineId(ticket.getOrderOnline().getOrderOnlineId())
                 : List.of(ticket);
@@ -58,6 +83,8 @@ public class TicketVerificationService {
                 .distinct()
                 .reduce((a, b) -> a + ", " + b)
                 .orElseGet(() -> ticket.getSeat() == null ? "" : string(ticket.getSeat().getRow()) + string(ticket.getSeat().getNumber()));
+        String checkedInAtStr = ticket.getCheckedInAt() != null
+                ? ticket.getCheckedInAt().format(FMT) : null;
         return TicketQrVerificationDTO.builder()
                 .orderCode(ticket.getOrderOnline() != null ? ticket.getOrderOnline().getOrderCode() : null)
                 .ticketCode(ticket.getTicketCode())
@@ -67,9 +94,10 @@ public class TicketVerificationService {
                 .cinemaName(st.getRoom().getCinema().getName())
                 .cinemaAddress(st.getRoom().getCinema().getAddress())
                 .movieTitle(st.getMovie() != null ? st.getMovie().getTitle() : "Vé xem phim")
-                .showtime(st.getStartTime() != null ? st.getStartTime().format(DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy")) : "")
+                .showtime(st.getStartTime() != null ? st.getStartTime().format(FMT) : "")
                 .roomName(st.getRoom().getName())
                 .seatNumber(seats)
+                .checkedInAt(checkedInAtStr)
                 .build();
     }
 

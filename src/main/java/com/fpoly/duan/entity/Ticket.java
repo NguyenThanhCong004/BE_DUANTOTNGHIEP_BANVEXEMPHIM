@@ -2,6 +2,7 @@ package com.fpoly.duan.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import java.time.LocalDateTime;
 
 @Data
 @Entity
@@ -16,6 +17,10 @@ public class Ticket {
 
     private Integer status;
     private Double price;
+
+    /** Thời điểm nhân viên soát vé quét QR; null nếu chưa vào rạp. */
+    @Column(name = "checked_in_at")
+    private LocalDateTime checkedInAt;
 
     @Column(name = "original_price")
     private Double originalPrice;
