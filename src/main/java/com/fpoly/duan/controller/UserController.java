@@ -24,6 +24,7 @@ import com.fpoly.duan.dto.UserDTO;
 import com.fpoly.duan.dto.UserPasswordChangeRequest;
 import com.fpoly.duan.dto.UserRequest;
 import com.fpoly.duan.security.CustomUserDetails;
+import com.fpoly.duan.service.CinemaScopeService;
 import com.fpoly.duan.service.UserService;
 import com.fpoly.duan.util.SearchUtils;
 
@@ -45,16 +46,19 @@ import lombok.RequiredArgsConstructor;
 public class UserController {
 
     private final UserService userService;
+    private final CinemaScopeService cinemaScopeService;
 
     @GetMapping
-    @Operation(summary = "Danh sách tất cả user")
+    @Operation(summary = "Danh sách user (Admin: chỉ khách đã từng đặt vé tại rạp mình quản lý; Super Admin: theo cinemaId hoặc toàn hệ thống nếu bỏ trống)")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<List<UserDTO>>> getAllUsers(
+            @RequestParam(required = false) Integer cinemaId,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String q) {
+        Integer effectiveCinemaId = cinemaScopeService.effectiveCinemaId(cinemaId);
         String term = SearchUtils.pick(search, keyword, q);
-        List<UserDTO> users = userService.getAllUsers().stream()
+        List<UserDTO> users = userService.getAllUsers(effectiveCinemaId).stream()
                 .filter(u -> SearchUtils.matches(term,
                         u.getUserId(), u.getFullname(), u.getEmail(), u.getPhone(),
                         u.getStatus(), u.getRankName(), u.getPoints(), u.getTotalSpending()))
