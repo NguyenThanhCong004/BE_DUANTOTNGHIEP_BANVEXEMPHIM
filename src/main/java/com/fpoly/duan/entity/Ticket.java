@@ -3,6 +3,8 @@ package com.fpoly.duan.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 
+import java.time.LocalDateTime;
+
 @Data
 @Entity
 @Table(name = "tickets", uniqueConstraints = {
@@ -16,6 +18,13 @@ public class Ticket {
 
     private Integer status;
     private Double price;
+
+    /** Đã soát vé (khách đã vào rạp) hay chưa — đánh dấu khi nhân viên xác nhận sau khi quét QR. */
+    @Column(name = "checked_in")
+    private Boolean checkedIn;
+
+    @Column(name = "checked_in_at")
+    private LocalDateTime checkedInAt;
 
     @Column(name = "original_price")
     private Double originalPrice;
