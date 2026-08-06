@@ -33,8 +33,15 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public List<UserDTO> getAllUsers() {
-        return userRepository.findAll().stream()
+    public List<UserDTO> getAllUsers(Integer cinemaId) {
+        List<User> users;
+        if (cinemaId != null) {
+            List<Integer> userIds = orderOnlineRepository.findDistinctUserIdsByCinema(cinemaId);
+            users = userIds.isEmpty() ? List.of() : userRepository.findAllById(userIds);
+        } else {
+            users = userRepository.findAll();
+        }
+        return users.stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
