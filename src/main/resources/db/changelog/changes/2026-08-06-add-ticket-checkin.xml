@@ -1,0 +1,20 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Soát vé bằng QR: đánh dấu vé đã cho khách vào rạp (Ticket.checkedIn/checkedInAt). -->
+    <changeSet author="movizone" id="2026-08-06-1-add-ticket-checkin">
+        <sql dbms="mssql">
+            ALTER TABLE tickets ADD checked_in bit NOT NULL DEFAULT 0;
+            ALTER TABLE tickets ADD checked_in_at datetime2 NULL;
+        </sql>
+        <rollback>
+            <sql dbms="mssql">
+                ALTER TABLE tickets DROP COLUMN checked_in_at;
+                ALTER TABLE tickets DROP COLUMN checked_in;
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
