@@ -16,4 +16,6 @@ public class TicketQrVerificationDTO {
     private String showtime;
     private String roomName;
     private String seatNumber;
+    private Boolean checkedIn;
+    private String checkedInAt;
 }

@@ -121,7 +121,7 @@ public class SecurityConfig {
                         .hasAuthority("ROLE_STAFF")
                         .requestMatchers("/api/v1/staff/dashboard-stats", "/api/v1/staff/dashboard-stats/**")
                         .hasAuthority("ROLE_STAFF")
-                        .requestMatchers(HttpMethod.POST, "/api/v1/staff/verify-ticket")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/staff/verify-ticket", "/api/v1/staff/check-in-ticket")
                         // Controller bắt buộc principal là Staff; không khóa nhầm các role staff cũ như EMPLOYEE/NHANVIEN.
                         .authenticated()
                         .requestMatchers("/api/v1/shifts/me", "/api/v1/shifts/active")
