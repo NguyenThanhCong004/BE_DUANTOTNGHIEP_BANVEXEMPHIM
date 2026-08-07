@@ -22,7 +22,7 @@ public class TicketVerificationController {
     private final TicketVerificationService ticketVerificationService;
 
     @PostMapping("/verify-ticket")
-    @Operation(summary = "Xác thực QR vé", description = "Chỉ nhân viên/quản trị rạp được quét. QR được giải mã và đối chiếu lại với dữ liệu vé.")
+    @Operation(summary = "Soát vé QR", description = "Chỉ nhân viên/quản trị rạp được quét. QR được giải mã, đối chiếu với dữ liệu vé và đánh dấu khách đã vào rạp ngay trong một bước.")
     public ResponseEntity<ApiResponse<TicketQrVerificationDTO>> verify(
             Authentication authentication, @Valid @RequestBody TicketQrVerifyRequest request) {
         if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)
@@ -32,6 +32,6 @@ public class TicketVerificationController {
         }
         TicketQrVerificationDTO data = ticketVerificationService.verify(details.getStaff(), request.getQrToken());
         return ResponseEntity.ok(ApiResponse.<TicketQrVerificationDTO>builder()
-                .status(200).message("QR vé hợp lệ").data(data).build());
+                .status(200).message("Đã xác nhận khách vào rạp").data(data).build());
     }
 }
