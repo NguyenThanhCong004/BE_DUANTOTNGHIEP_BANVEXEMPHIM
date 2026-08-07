@@ -26,22 +26,15 @@ public class TicketVerificationService {
     private final TicketRepository ticketRepository;
     private final TicketQrService ticketQrService;
 
+    /** Quét QR = soát vé luôn trong một bước: đánh dấu khách đã vào rạp ngay khi quét lần đầu hợp lệ. */
     public TicketQrVerificationDTO verify(Staff staff, String qrToken) {
-        Resolved r = resolve(staff, qrToken);
-        List<Ticket> group = sameShowtimeGroup(r.ticket(), r.orderTickets(), r.showtime());
-        LocalDateTime checkedInAt = earliestCheckedInAt(group);
-        return buildDto(r.ticket(), r.showtime(), group, checkedInAt != null, checkedInAt);
-    }
-
-    /** Đánh dấu khách đã vào rạp — chỉ gọi sau khi verify() đã hiển thị thông tin vé cho nhân viên xác nhận. */
-    public TicketQrVerificationDTO checkIn(Staff staff, String qrToken) {
         Resolved r = resolve(staff, qrToken);
         List<Ticket> group = sameShowtimeGroup(r.ticket(), r.orderTickets(), r.showtime());
 
         LocalDateTime existing = earliestCheckedInAt(group);
         if (existing != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Vé đã được soát lúc " + existing.format(DISPLAY_FORMAT));
+                    "Vé đã được sử dụng lúc " + existing.format(DISPLAY_FORMAT));
         }
 
         LocalDateTime now = LocalDateTime.now();
