@@ -17,17 +17,39 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
 public class TicketVerificationService {
     private static final ZoneId VN = ZoneId.of("Asia/Ho_Chi_Minh");
-    private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy");
+    private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy");
 
     private final TicketRepository ticketRepository;
     private final TicketQrService ticketQrService;
 
+    /** Quét QR = soát vé luôn trong một bước: đánh dấu khách đã vào rạp ngay khi quét lần đầu hợp lệ. */
     public TicketQrVerificationDTO verify(Staff staff, String qrToken) {
+        Resolved r = resolve(staff, qrToken);
+        List<Ticket> group = sameShowtimeGroup(r.ticket(), r.orderTickets(), r.showtime());
+
+        LocalDateTime existing = earliestCheckedInAt(group);
+        if (existing != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Vé đã được sử dụng lúc " + existing.format(DISPLAY_FORMAT));
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        group.forEach(t -> {
+            t.setCheckedIn(true);
+            t.setCheckedInAt(now);
+        });
+        ticketRepository.saveAll(group);
+
+        return buildDto(r.ticket(), r.showtime(), group, true, now);
+    }
+
+    private Resolved resolve(Staff staff, String qrToken) {
         TicketQrService.TicketReference ref = ticketQrService.decodeReference(qrToken);
         Ticket ticket = ticketRepository.findById(ref.ticketId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy vé"));
@@ -48,7 +70,7 @@ public class TicketVerificationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vé chưa thanh toán hoặc đã bị hủy");
         }
         if (ticket.getCheckedInAt() != null) {
-            String usedAt = ticket.getCheckedInAt().format(FMT);
+            String usedAt = ticket.getCheckedInAt().format(DISPLAY_FORMAT);
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Vé đã được sử dụng lúc " + usedAt);
         }
         // Kiểm tra khung giờ hợp lệ: cho phép vào 30 phút trước đến 3 giờ sau suất bắt đầu (giờ VN)
@@ -58,11 +80,11 @@ public class TicketVerificationService {
             LocalDateTime closeGate = st.getStartTime().plusHours(3);
             if (nowVN.isBefore(openGate)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Suất chiếu chưa đến giờ vào rạp. Cổng mở lúc " + openGate.format(FMT));
+                        "Suất chiếu chưa đến giờ vào rạp. Cổng mở lúc " + openGate.format(DISPLAY_FORMAT));
             }
             if (nowVN.isAfter(closeGate)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Suất chiếu " + st.getStartTime().format(FMT) + " đã kết thúc, không thể soát vé");
+                        "Suất chiếu " + st.getStartTime().format(DISPLAY_FORMAT) + " đã kết thúc, không thể soát vé");
             }
         }
         ticket.setCheckedInAt(nowVN);
@@ -70,11 +92,32 @@ public class TicketVerificationService {
         List<Ticket> orderTickets = ticket.getOrderOnline() != null
                 ? ticketRepository.findByOrderOnline_OrderOnlineId(ticket.getOrderOnline().getOrderOnlineId())
                 : List.of(ticket);
-        String seats = orderTickets.stream()
+        return new Resolved(ticket, st, orderTickets);
+    }
+
+    /** Vé cùng đơn + cùng suất chiếu với vé vừa quét — nhóm được soát vé chung một lượt. */
+    private List<Ticket> sameShowtimeGroup(Ticket ticket, List<Ticket> orderTickets, Showtime showtime) {
+        List<Ticket> group = orderTickets.stream()
                 .filter(t -> t.getShowtime() != null
                         && t.getShowtime().getShowtimeId() != null
-                        && t.getShowtime().getShowtimeId().equals(st.getShowtimeId())
-                        && t.getSeat() != null)
+                        && t.getShowtime().getShowtimeId().equals(showtime.getShowtimeId()))
+                .toList();
+        return group.isEmpty() ? List.of(ticket) : group;
+    }
+
+    private LocalDateTime earliestCheckedInAt(List<Ticket> group) {
+        return group.stream()
+                .filter(t -> Boolean.TRUE.equals(t.getCheckedIn()))
+                .map(Ticket::getCheckedInAt)
+                .filter(Objects::nonNull)
+                .min(Comparator.naturalOrder())
+                .orElse(null);
+    }
+
+    private TicketQrVerificationDTO buildDto(Ticket ticket, Showtime st, List<Ticket> group,
+                                              boolean checkedIn, LocalDateTime checkedInAt) {
+        String seats = group.stream()
+                .filter(t -> t.getSeat() != null)
                 .sorted(Comparator
                         .comparing((Ticket t) -> string(t.getSeat().getRow()))
                         .thenComparing(t -> t.getSeat().getX() != null ? t.getSeat().getX() : 0)
@@ -83,8 +126,6 @@ public class TicketVerificationService {
                 .distinct()
                 .reduce((a, b) -> a + ", " + b)
                 .orElseGet(() -> ticket.getSeat() == null ? "" : string(ticket.getSeat().getRow()) + string(ticket.getSeat().getNumber()));
-        String checkedInAtStr = ticket.getCheckedInAt() != null
-                ? ticket.getCheckedInAt().format(FMT) : null;
         return TicketQrVerificationDTO.builder()
                 .orderCode(ticket.getOrderOnline() != null ? ticket.getOrderOnline().getOrderCode() : null)
                 .ticketCode(ticket.getTicketCode())
@@ -94,12 +135,15 @@ public class TicketVerificationService {
                 .cinemaName(st.getRoom().getCinema().getName())
                 .cinemaAddress(st.getRoom().getCinema().getAddress())
                 .movieTitle(st.getMovie() != null ? st.getMovie().getTitle() : "Vé xem phim")
-                .showtime(st.getStartTime() != null ? st.getStartTime().format(FMT) : "")
+                .showtime(st.getStartTime() != null ? st.getStartTime().format(DISPLAY_FORMAT) : "")
                 .roomName(st.getRoom().getName())
                 .seatNumber(seats)
-                .checkedInAt(checkedInAtStr)
+                .checkedIn(checkedIn)
+                .checkedInAt(checkedInAt != null ? checkedInAt.format(DISPLAY_FORMAT) : null)
                 .build();
     }
 
     private static String string(Object value) { return value == null ? "" : String.valueOf(value); }
+
+    private record Resolved(Ticket ticket, Showtime showtime, List<Ticket> orderTickets) {}
 }

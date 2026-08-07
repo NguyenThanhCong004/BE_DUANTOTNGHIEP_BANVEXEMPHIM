@@ -27,4 +27,11 @@ public interface ReviewRepository extends JpaRepository<Review, Integer> {
             "WHERE s.movie.movieId = :movieId AND o.status = 1 AND (t.status IS NULL OR t.status = 1) " +
             "ORDER BY r.reviewId DESC")
     List<Review> findPublicByMovieId(@Param("movieId") Integer movieId);
+
+    @Query("SELECT AVG(r.rating) FROM Review r " +
+            "JOIN r.ticket t " +
+            "JOIN t.orderOnline o " +
+            "JOIN t.showtime s " +
+            "WHERE s.movie.movieId = :movieId AND o.status = 1 AND (t.status IS NULL OR t.status = 1)")
+    Double findAverageRatingByMovieId(@Param("movieId") Integer movieId);
 }

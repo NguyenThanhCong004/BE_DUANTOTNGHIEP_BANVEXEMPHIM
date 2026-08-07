@@ -1,0 +1,24 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Soát vé bằng QR: đánh dấu vé đã cho khách vào rạp (Ticket.checkedIn/checkedInAt). -->
+    <changeSet author="movizone" id="2026-08-06-1-add-ticket-checkin">
+        <sql dbms="mssql">
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'tickets') AND name = N'checked_in')
+                ALTER TABLE tickets ADD checked_in bit NOT NULL DEFAULT 0;
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'tickets') AND name = N'checked_in_at')
+                ALTER TABLE tickets ADD checked_in_at datetime2 NULL;
+        </sql>
+        <rollback>
+            <sql dbms="mssql">
+                IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'tickets') AND name = N'checked_in_at')
+                    ALTER TABLE tickets DROP COLUMN checked_in_at;
+                IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'tickets') AND name = N'checked_in')
+                    ALTER TABLE tickets DROP COLUMN checked_in;
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

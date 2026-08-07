@@ -29,5 +29,7 @@ public class MovieDTO {
     /** Nội dung chi tiết */
     private String content;
     private String banner;
+    /** Điểm đánh giá trung bình từ người dùng (0–5) */
+    private Double averageRating;
 }
 

@@ -38,4 +38,7 @@
          (vd: db/changelog/changes/2026-08-01-add-xyz.xml) rồi include vào đây, KHÔNG sửa
          trực tiếp lên DB hay dựa vào ddl-auto nữa. -->
 
+    <!-- Soát vé QR: thêm tickets.checked_in / checked_in_at để nhân viên xác nhận khách đã vào rạp -->
+    <include file="changes/2026-08-06-add-ticket-checkin.xml" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

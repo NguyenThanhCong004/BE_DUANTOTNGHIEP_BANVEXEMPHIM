@@ -16,6 +16,6 @@ public class TicketQrVerificationDTO {
     private String showtime;
     private String roomName;
     private String seatNumber;
-    /** Thời điểm vé được quét vào rạp (HH:mm dd/MM/yyyy), null nếu chưa vào. */
+    private Boolean checkedIn;
     private String checkedInAt;
 }

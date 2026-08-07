@@ -39,6 +39,7 @@ import com.fpoly.duan.entity.Movie;
 import com.fpoly.duan.entity.Showtime;
 import com.fpoly.duan.repository.GenreRepository;
 import com.fpoly.duan.repository.MovieRepository;
+import com.fpoly.duan.repository.ReviewRepository;
 import com.fpoly.duan.repository.ShowtimeRepository;
 import com.fpoly.duan.repository.TicketRepository;
 import com.fpoly.duan.service.CinemaScopeService;
@@ -62,6 +63,7 @@ public class MovieController {
     private final GenreRepository genreRepository;
     private final TicketRepository ticketRepository;
     private final ShowtimeRepository showtimeRepository;
+    private final ReviewRepository reviewRepository;
     private final CustomerMeService customerMeService;
     private final CinemaScopeService cinemaScopeService;
 
@@ -70,12 +72,14 @@ public class MovieController {
             GenreRepository genreRepository,
             TicketRepository ticketRepository,
             ShowtimeRepository showtimeRepository,
+            ReviewRepository reviewRepository,
             CustomerMeService customerMeService,
             CinemaScopeService cinemaScopeService) {
         this.movieRepository = movieRepository;
         this.genreRepository = genreRepository;
         this.ticketRepository = ticketRepository;
         this.showtimeRepository = showtimeRepository;
+        this.reviewRepository = reviewRepository;
         this.customerMeService = customerMeService;
         this.cinemaScopeService = cinemaScopeService;
     }
@@ -324,6 +328,7 @@ public class MovieController {
     private MovieDTO toDTO(Movie m) {
         List<String> genreNames = m.getGenres() == null ? List.of()
                 : m.getGenres().stream().map(Genre::getName).collect(Collectors.toList());
+        Double avgRating = reviewRepository.findAverageRatingByMovieId(m.getMovieId());
         return MovieDTO.builder()
                 .id(m.getMovieId())
                 .title(m.getTitle())
@@ -339,6 +344,7 @@ public class MovieController {
                 .description(m.getDescription())
                 .content(m.getContent())
                 .banner(m.getBanner())
+                .averageRating(avgRating)
                 .build();
     }
 }
