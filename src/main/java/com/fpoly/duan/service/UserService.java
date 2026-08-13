@@ -5,7 +5,8 @@ import java.util.List;
 import com.fpoly.duan.dto.UserDTO;
 
 public interface UserService {
-    List<UserDTO> getAllUsers();
+    /** cinemaId == null: toàn hệ thống. Khác null: chỉ khách đã từng có đơn hàng tại rạp đó. */
+    List<UserDTO> getAllUsers(Integer cinemaId);
     UserDTO getUserById(Integer id);
     UserDTO createUser(UserDTO userDTO, String password);
     UserDTO updateUser(Integer id, UserDTO userDTO);

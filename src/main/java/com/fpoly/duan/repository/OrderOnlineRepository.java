@@ -16,6 +16,20 @@ public interface OrderOnlineRepository extends JpaRepository<OrderOnline, Intege
 
        List<OrderOnline> findByUser_UserIdOrderByCreatedAtDesc(Integer userId);
 
+       /**
+        * Khách đã từng có đơn hàng "thuộc" một rạp — suy ra rạp theo đúng thứ tự ưu tiên dùng khi
+        * hiển thị (orders_online.cinema_id trước, rồi tới rạp của nhân viên xử lý đơn, cuối cùng
+        * là rạp suy từ vé/suất chiếu), vì một số đơn cũ không lưu trực tiếp cinema_id.
+        */
+       @Query(value = "SELECT DISTINCT o.user_id FROM orders_online o " +
+                     "LEFT JOIN staff s ON o.staff_id = s.staff_id " +
+                     "LEFT JOIN tickets t ON t.order_online_id = o.order_online_id " +
+                     "LEFT JOIN showtimes st ON t.showtime_id = st.showtime_id " +
+                     "LEFT JOIN rooms r ON st.room_id = r.room_id " +
+                     "WHERE o.user_id IS NOT NULL " +
+                     "AND COALESCE(o.cinema_id, s.cinema_id, r.cinema_id) = :cinemaId", nativeQuery = true)
+       List<Integer> findDistinctUserIdsByCinema(@Param("cinemaId") Integer cinemaId);
+
        Optional<OrderOnline> findByOrderCode(String orderCode);
 
        Optional<OrderOnline> findByReceiptToken(String receiptToken);
