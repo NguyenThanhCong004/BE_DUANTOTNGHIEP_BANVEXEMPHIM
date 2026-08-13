@@ -41,4 +41,9 @@
     <!-- Soát vé QR: thêm tickets.checked_in / checked_in_at để nhân viên xác nhận khách đã vào rạp -->
     <include file="changes/2026-08-06-add-ticket-checkin.xml" relativeToChangelogFile="true"/>
 
+    <!-- Fix unique index orders_online.receipt_token: doi sang filtered index (WHERE NOT NULL)
+         vi don online moi luon co receipt_token = NULL, gay loi "duplicate key (<NULL>)"
+         tu don thu 2 tro di khi khach bam Thanh toan PayOS. -->
+    <include file="changes/2026-08-13-fix-receipt-token-unique-index.xml" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>
