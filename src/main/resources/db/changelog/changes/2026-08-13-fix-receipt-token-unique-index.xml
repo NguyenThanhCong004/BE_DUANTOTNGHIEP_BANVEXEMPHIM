@@ -1,0 +1,27 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- UKj98tlmei5cncvshk5tyy1qc60 (orders_online.receipt_token) la unique index KHONG loc.
+         orders_online.receipt_token luon la NULL khi tao don online moi (chi duoc gan gia tri
+         sau nay khi xuat bien lai/hoa don). Tren SQL Server, unique index chi cho phep DUY NHAT
+         1 dong NULL trong toan bang (khac Postgres/MySQL cho phep nhieu NULL). Vi vay tu don
+         hang thu 2 tro di, insert luon that bai voi loi "Cannot insert duplicate key row ...
+         duplicate key value is (<NULL>)" -> FE hien "Du lieu da ton tai trong he thong" khi
+         bam Thanh toan PayOS. Doi sang filtered unique index (chi ap dung khi receipt_token
+         KHONG NULL) de cho phep nhieu don co receipt_token = NULL cung luc. -->
+    <changeSet id="2026-08-13-fix-receipt-token-unique-index-1" author="claude">
+        <dropIndex tableName="orders_online" indexName="UKj98tlmei5cncvshk5tyy1qc60"/>
+    </changeSet>
+
+    <changeSet id="2026-08-13-fix-receipt-token-unique-index-2" author="claude">
+        <sql dbms="mssql">
+            CREATE UNIQUE INDEX UKj98tlmei5cncvshk5tyy1qc60 ON orders_online(receipt_token) WHERE receipt_token IS NOT NULL;
+        </sql>
+        <rollback>
+            <sql dbms="mssql">DROP INDEX UKj98tlmei5cncvshk5tyy1qc60 ON orders_online;</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
