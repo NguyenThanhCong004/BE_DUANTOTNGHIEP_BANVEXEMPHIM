@@ -76,6 +76,7 @@ public class AuthServiceImpl implements AuthService {
         } catch (UsernameNotFoundException ex) {
             throw new BadCredentialsException("Sai tài khoản hoặc mật khẩu");
         }
+        
         authenticatePassword(loginRequest.getPassword(), userDetails);
         assertStaffCinemaOperational(userDetails);
         rotateSessionVersion(userDetails);
