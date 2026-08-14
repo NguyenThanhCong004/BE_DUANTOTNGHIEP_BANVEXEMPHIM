@@ -1,0 +1,29 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- uk_tickets_ticket_code (tickets.ticket_code) la unique index KHONG loc, cung
+         loi voi UKj98tlmei5cncvshk5tyy1qc60 (orders_online.receipt_token) da fix truoc do.
+         TicketCheckoutService.checkout() luu vé qua 2 buoc: saveAll(tickets) TRUOC (ticket_code
+         con NULL) roi moi goi ticketQrService.assignSecureCodes(tickets) va saveAll lai lan 2
+         de dien ticket_code that. Khi 1 don co >= 2 ve (>= 2 ghe), ca 2 dong NULL insert cung
+         luc trong CUNG 1 transaction -> SQL Server chi cho phep DUY NHAT 1 dong NULL trong
+         unique index (khac Postgres/MySQL cho nhieu NULL) -> loi "Cannot insert duplicate key
+         row ... duplicate key value is (<NULL>)" -> FE hien "Du lieu da ton tai trong he thong"
+         ngay khi chon tu 2 ghe tro len. Doi sang filtered unique index (chi ap dung khi
+         ticket_code KHONG NULL) de cho phep nhieu dong NULL cung luc trong buoc insert dau. -->
+    <changeSet id="2026-08-14-fix-ticket-code-unique-index-1" author="claude">
+        <dropIndex tableName="tickets" indexName="uk_tickets_ticket_code"/>
+    </changeSet>
+
+    <changeSet id="2026-08-14-fix-ticket-code-unique-index-2" author="claude">
+        <sql dbms="mssql">
+            CREATE UNIQUE INDEX uk_tickets_ticket_code ON tickets(ticket_code) WHERE ticket_code IS NOT NULL;
+        </sql>
+        <rollback>
+            <sql dbms="mssql">DROP INDEX uk_tickets_ticket_code ON tickets;</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

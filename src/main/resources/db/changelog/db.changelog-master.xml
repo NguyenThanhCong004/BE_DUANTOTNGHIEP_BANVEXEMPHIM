@@ -50,4 +50,8 @@
          va staff.session_version -->
     <include file="changes/2026-08-14-add-single-device-login.xml" relativeToChangelogFile="true"/>
 
+    <!-- Fix unique index tickets.ticket_code: doi sang filtered index (WHERE NOT NULL),
+         cung loi voi receipt_token truoc do -> gay loi "Du lieu da ton tai" khi dat >= 2 ghe. -->
+    <include file="changes/2026-08-14-fix-ticket-code-unique-index.xml" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>
