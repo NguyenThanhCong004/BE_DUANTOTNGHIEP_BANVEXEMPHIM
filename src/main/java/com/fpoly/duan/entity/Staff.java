@@ -48,4 +48,8 @@ public class Staff {
     @ManyToOne
     @JoinColumn(name = "cinema_id", nullable = true)
     private Cinema cinema;
+
+    /** Danh dau phien dang nhap hien tai (gioi han 1 thiet bi/tai khoan). Doi moi lan login. */
+    @Column(name = "session_version", columnDefinition = "NVARCHAR(64)")
+    private String sessionVersion;
 }

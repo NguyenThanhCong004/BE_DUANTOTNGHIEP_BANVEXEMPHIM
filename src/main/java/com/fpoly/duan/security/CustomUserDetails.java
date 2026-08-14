@@ -77,6 +77,11 @@ public class CustomUserDetails implements UserDetails {
         return staff != null ? "STAFF" : "USER";
     }
 
+    /** Phien dang nhap hien tai trong DB — dung de phat hien token cua thiet bi khac da bi thay the. */
+    public String getSessionVersion() {
+        return (staff != null) ? staff.getSessionVersion() : (user != null ? user.getSessionVersion() : null);
+    }
+
     /** Tương thích dữ liệu role cũ trước khi hệ thống thống nhất STAFF/ADMIN/SUPER_ADMIN. */
     private static String normalizeStaffRole(String role) {
         if (role == null || role.isBlank()) return "ROLE_STAFF";

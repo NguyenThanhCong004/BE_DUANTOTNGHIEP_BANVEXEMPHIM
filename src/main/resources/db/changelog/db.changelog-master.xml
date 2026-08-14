@@ -46,4 +46,8 @@
          tu don thu 2 tro di khi khach bam Thanh toan PayOS. -->
     <include file="changes/2026-08-13-fix-receipt-token-unique-index.xml" relativeToChangelogFile="true"/>
 
+    <!-- Gioi han 1 tai khoan chi dang nhap 1 thiet bi: them customers.session_version
+         va staff.session_version -->
+    <include file="changes/2026-08-14-add-single-device-login.xml" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>
