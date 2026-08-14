@@ -15,6 +15,7 @@ import com.fpoly.duan.dto.UserRequest;
 import com.fpoly.duan.entity.Staff;
 import com.fpoly.duan.entity.RevokedToken;
 import com.fpoly.duan.repository.RevokedTokenRepository;
+import com.fpoly.duan.repository.StaffRepository;
 import com.fpoly.duan.repository.UserRepository;
 import com.fpoly.duan.security.CustomUserDetails;
 import com.fpoly.duan.security.CustomUserDetailsService;
@@ -39,6 +40,7 @@ public class AuthServiceImpl implements AuthService {
     private final UserService userService;
     private final RevokedTokenRepository revokedTokenRepository;
     private final UserRepository userRepository;
+    private final StaffRepository staffRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuditLogService auditLogService;
 
@@ -53,6 +55,7 @@ public class AuthServiceImpl implements AuthService {
         }
         authenticatePassword(loginRequest.getPassword(), userDetails);
         assertStaffCinemaOperational(userDetails);
+        rotateSessionVersion(userDetails);
 
         String token = jwtService.generateToken(userDetails);
         String refreshToken = jwtService.generateRefreshToken(userDetails);
@@ -74,6 +77,7 @@ public class AuthServiceImpl implements AuthService {
             throw new BadCredentialsException("Sai tài khoản hoặc mật khẩu");
         }
         authenticatePassword(loginRequest.getPassword(), userDetails);
+        rotateSessionVersion(userDetails);
 
         String token = jwtService.generateToken(userDetails);
         String refreshToken = jwtService.generateRefreshToken(userDetails);
@@ -133,6 +137,7 @@ public class AuthServiceImpl implements AuthService {
         UserDTO createdUser = userService.createUser(userDTO, password);
 
         CustomUserDetails userDetails = userDetailsService.loadUserAccount(createdUser.getEmail());
+        rotateSessionVersion(userDetails);
         String token = jwtService.generateToken(userDetails);
         String refreshToken = jwtService.generateRefreshToken(userDetails);
         
@@ -213,6 +218,22 @@ public class AuthServiceImpl implements AuthService {
         }
 
         return responseBuilder.build();
+    }
+
+    /**
+     * Gioi han 1 tai khoan chi dang nhap 1 thiet bi: sinh mot session_version moi va luu
+     * xuong DB. Token cua cac phien dang nhap truoc do (mang session_version cu) se
+     * khong con khop va bi tu choi ngay o request tiep theo (xem JwtService.sameSessionVersion).
+     */
+    private void rotateSessionVersion(CustomUserDetails userDetails) {
+        String newVersion = java.util.UUID.randomUUID().toString();
+        if (userDetails.getStaff() != null) {
+            userDetails.getStaff().setSessionVersion(newVersion);
+            staffRepository.save(userDetails.getStaff());
+        } else if (userDetails.getUser() != null) {
+            userDetails.getUser().setSessionVersion(newVersion);
+            userRepository.save(userDetails.getUser());
+        }
     }
 
     private void authenticatePassword(String rawPassword, CustomUserDetails userDetails) {

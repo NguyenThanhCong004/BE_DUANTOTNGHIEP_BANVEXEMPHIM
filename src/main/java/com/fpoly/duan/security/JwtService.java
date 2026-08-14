@@ -58,6 +58,9 @@ public class JwtService {
         if (userDetails instanceof CustomUserDetails customUser) {
             claims.put("userId", customUser.getUserId());
             claims.put("accountType", customUser.getAccountType());
+            if (customUser.getSessionVersion() != null) {
+                claims.put("sv", customUser.getSessionVersion());
+            }
         }
         // Thêm danh sách quyền vào claim "authorities"
         claims.put("authorities", userDetails.getAuthorities().stream()
@@ -105,6 +108,7 @@ public class JwtService {
         final String username = extractUsername(token);
         return username.equals(userDetails.getUsername())
                 && sameAccountType(token, userDetails)
+                && sameSessionVersion(token, userDetails)
                 && !isTokenExpired(token)
                 && extractTokenType(token) == TokenType.ACCESS;
     }
@@ -113,8 +117,24 @@ public class JwtService {
         final String username = extractUsername(token);
         return username.equals(userDetails.getUsername())
                 && sameAccountType(token, userDetails)
+                && sameSessionVersion(token, userDetails)
                 && !isTokenExpired(token)
                 && extractTokenType(token) == TokenType.REFRESH;
+    }
+
+    /**
+     * Gioi han 1 tai khoan chi dang nhap 1 thiet bi: token mang theo claim "sv" (session
+     * version) tai thoi diem phat hanh. Neu tai khoan da dang nhap noi khac sau do,
+     * session_version trong DB doi khac -> token cu (kem ca token da refresh tu no) bi
+     * tu choi ngay, khong can cho het han. Token/tai khoan chua tung dang nhap lai sau
+     * khi trien khai tinh nang nay (ca hai deu null) van duoc coi la hop le.
+     */
+    private boolean sameSessionVersion(String token, UserDetails userDetails) {
+        if (!(userDetails instanceof CustomUserDetails customUser)) {
+            return true;
+        }
+        String tokenSessionVersion = extractClaim(token, claims -> (String) claims.get("sv"));
+        return java.util.Objects.equals(tokenSessionVersion, customUser.getSessionVersion());
     }
 
     private boolean sameAccountType(String token, UserDetails userDetails) {

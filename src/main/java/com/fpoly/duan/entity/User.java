@@ -49,4 +49,8 @@ public class User {
 
     @Column(name = "total_spending")
     private Double totalSpending;
+
+    /** Danh dau phien dang nhap hien tai (gioi han 1 thiet bi/tai khoan). Doi moi lan login. */
+    @Column(name = "session_version", columnDefinition = "NVARCHAR(64)")
+    private String sessionVersion;
 }

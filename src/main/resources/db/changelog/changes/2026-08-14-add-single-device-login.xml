@@ -1,0 +1,23 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Gioi han 1 tai khoan chi dang nhap 1 thiet bi: moi lan dang nhap tao
+         1 "session_version" (UUID) moi, nhung vao JWT. Cac token cu (voi
+         session_version khac) se bi tu choi ngay o request ke tiep, du chua
+         het han. Cot de NULL: tai khoan/token cu truoc migration nay van
+         hop le cho toi khi dang nhap lai lan dau. -->
+    <changeSet id="2026-08-14-add-single-device-login-1" author="claude">
+        <addColumn tableName="customers">
+            <column name="session_version" type="nvarchar(64)"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="2026-08-14-add-single-device-login-2" author="claude">
+        <addColumn tableName="staff">
+            <column name="session_version" type="nvarchar(64)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>
