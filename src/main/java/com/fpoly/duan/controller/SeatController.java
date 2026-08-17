@@ -255,9 +255,10 @@ public class SeatController {
             if (seat == null) {
                 seat = new Seat();
                 seat.setRoom(room);
-                if (seat.getStatus() == null) {
-                    seat.setStatus("1");
-                }
+                seat.setStatus("available");
+            }
+            if (item.getStatus() != null) {
+                seat.setStatus(item.getStatus());
             }
             SeatType seatType = resolveSeatType(item.getSeatTypeName());
             seat.setX(item.getX());
