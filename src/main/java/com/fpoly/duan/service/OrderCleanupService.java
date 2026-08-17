@@ -38,6 +38,7 @@ public class OrderCleanupService {
     private final EphemeralSeatHoldService ephemeralSeatHoldService;
     private final UserVoucherRepository userVoucherRepository;
     private final TicketCheckoutService ticketCheckoutService;
+    private final SeatHoldAbuseService seatHoldAbuseService;
 
     /**
      * Tự động dọn dẹp các đơn hàng PENDING (trạng thái 0) quá 5 phút.
@@ -98,9 +99,16 @@ public class OrderCleanupService {
                     userVoucherRepository.save(userVoucher);
                 }
 
+                Integer orderUserId = o.getUser() != null ? o.getUser().getUserId() : null;
                 if (stId != null && !seatIds.isEmpty()) {
-                    ephemeralSeatHoldService.releaseSeats(stId, seatIds);
+                    ephemeralSeatHoldService.releaseSeats(stId, seatIds, orderUserId);
                 }
+
+                // Chỉ tính vi phạm cho đơn khách tự đặt online (không tính đơn nhân viên tạo tại quầy).
+                if (orderUserId != null && o.getStaff() == null) {
+                    seatHoldAbuseService.recordViolation(orderUserId, SeatHoldAbuseService.ViolationType.ORDER_ABANDONED);
+                }
+
                 log.info("Đã chuyển đơn quá hạn sang trạng thái hủy: ID={}, OrderCode={}", o.getOrderOnlineId(),
                         o.getOrderCode());
             } catch (Exception e) {

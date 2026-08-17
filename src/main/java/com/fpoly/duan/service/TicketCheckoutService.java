@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -132,8 +133,8 @@ public class TicketCheckoutService {
         List<Integer> dbHeldSeatIds = ticketRepository.findHeldSeatIdsByShowtime(
                 showtime.getShowtimeId(),
                 pendingSince);
-        SeatLayoutRules.assertNoSingleSeatOrphanInRows(allRoomSeats,
-                SeatLayoutRules.mergeBlocked(dbHeldSeatIds, seatIdSet));
+        SeatLayoutRules.assertNoNewSingleSeatOrphanInRows(allRoomSeats,
+                new HashSet<>(dbHeldSeatIds), seatIdSet);
 
         String clientHoldId = req.getClientHoldId();
         if (clientHoldId != null && !clientHoldId.isBlank()) {
@@ -269,7 +270,7 @@ public class TicketCheckoutService {
         }
 
         if (clientHoldId != null && !clientHoldId.isBlank()) {
-            ephemeralSeatHoldService.releaseSeats(showtime.getShowtimeId(), seatIdSet);
+            ephemeralSeatHoldService.releaseSeats(showtime.getShowtimeId(), seatIdSet, userId);
         }
 
         String description = truncate(
@@ -425,7 +426,8 @@ public class TicketCheckoutService {
         }
 
         if (stId != null && !seatIds.isEmpty()) {
-            ephemeralSeatHoldService.releaseSeats(stId, seatIds);
+            // Khách tự huỷ (không phải hết hạn tự động) — không tính vi phạm chống phá.
+            ephemeralSeatHoldService.releaseSeats(stId, seatIds, userId);
         }
         return false;
     }

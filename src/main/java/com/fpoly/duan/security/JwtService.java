@@ -96,6 +96,17 @@ public class JwtService {
         return extractClaim(token, this::resolveAccountType);
     }
 
+    /** Trả userId (claim "userId") nếu token thuộc về tài khoản khách hàng — null nếu không có claim này. */
+    public Integer extractUserId(String token) {
+        return extractClaim(token, claims -> {
+            Object v = claims.get("userId");
+            if (v instanceof Number n) {
+                return n.intValue();
+            }
+            return null;
+        });
+    }
+
     public String extractAccountTypeAllowExpired(String token) {
         return extractClaimAllowExpired(token, this::resolveAccountType);
     }
