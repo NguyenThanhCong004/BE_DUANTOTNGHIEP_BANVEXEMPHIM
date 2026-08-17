@@ -13,10 +13,14 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.SeatHoldRefreshRequest;
+import com.fpoly.duan.dto.SeatHoldRefreshResponse;
+import com.fpoly.duan.security.JwtService;
 import com.fpoly.duan.service.EphemeralSeatHoldService;
+import com.fpoly.duan.service.SeatHoldAbuseService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -27,14 +31,20 @@ import lombok.RequiredArgsConstructor;
 public class ShowtimeSeatHoldController {
 
     private final EphemeralSeatHoldService ephemeralSeatHoldService;
+    private final SeatHoldAbuseService seatHoldAbuseService;
+    private final JwtService jwtService;
 
     @PostMapping("/refresh")
     @Operation(summary = "Gia hạn ghế đang chọn (~45s)")
-    public ResponseEntity<ApiResponse<Void>> refresh(@Valid @RequestBody SeatHoldRefreshRequest body) {
-        ephemeralSeatHoldService.refresh(body.showtimeId(), body.holderId(), body.seatIds());
-        return ResponseEntity.ok(ApiResponse.<Void>builder()
+    public ResponseEntity<ApiResponse<SeatHoldRefreshResponse>> refresh(
+            @Valid @RequestBody SeatHoldRefreshRequest body, HttpServletRequest request) {
+        Integer userId = resolveCustomerUserId(request);
+        ephemeralSeatHoldService.refresh(body.showtimeId(), body.holderId(), body.seatIds(), userId);
+        boolean warning = seatHoldAbuseService.shouldWarn(userId);
+        return ResponseEntity.ok(ApiResponse.<SeatHoldRefreshResponse>builder()
                 .status(HttpStatus.OK.value())
                 .message("OK")
+                .data(new SeatHoldRefreshResponse(warning))
                 .build());
     }
 
@@ -49,5 +59,28 @@ public class ShowtimeSeatHoldController {
                 .message("OK")
                 .data(ids)
                 .build());
+    }
+
+    /**
+     * Nhận diện khách hàng đã đăng nhập một cách "best-effort" từ JWT (nếu FE có gửi kèm) — chỉ để
+     * theo dõi chống phá (giữ ghế/đơn hàng bất thường), KHÔNG dùng để chặn truy cập endpoint này
+     * (endpoint vẫn công khai như thiết kế ban đầu). Token thiếu/hết hạn/không hợp lệ → coi như ẩn danh,
+     * không tính vào bộ đếm, không ảnh hưởng request. Chỉ tính tài khoản khách hàng, bỏ qua nhân viên.
+     */
+    private Integer resolveCustomerUserId(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return null;
+        }
+        String token = authHeader.substring(7);
+        try {
+            String accountType = jwtService.extractAccountType(token);
+            if (accountType != null && !"USER".equalsIgnoreCase(accountType)) {
+                return null;
+            }
+            return jwtService.extractUserId(token);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

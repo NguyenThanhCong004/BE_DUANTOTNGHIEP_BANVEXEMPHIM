@@ -16,9 +16,12 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -131,6 +134,18 @@ public class CounterCheckoutService {
 
                 totalTicketsPrice += (ticketBasePrice + showtimeSurcharge + seatTypeSurcharge);
                 selectedSeats.add(seat);
+            }
+
+            if (showtimeRoomId != null) {
+                List<Seat> allRoomSeats = seatRepository.findByRoom_RoomId(showtimeRoomId);
+                LocalDateTime pendingSince = nowInAppZone().minusMinutes(PENDING_SEAT_HOLD_MINUTES);
+                List<Integer> dbHeldSeatIds = ticketRepository.findHeldSeatIdsByShowtime(
+                        showtime.getShowtimeId(), pendingSince);
+                Set<Integer> newlySelectedSeatIds = selectedSeats.stream()
+                        .map(Seat::getSeatId)
+                        .collect(Collectors.toSet());
+                SeatLayoutRules.assertNoNewSingleSeatOrphanInRows(allRoomSeats,
+                        new HashSet<>(dbHeldSeatIds), newlySelectedSeatIds);
             }
         }
 
