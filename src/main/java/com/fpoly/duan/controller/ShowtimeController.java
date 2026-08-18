@@ -108,6 +108,7 @@ public class ShowtimeController {
 
         List<ShowtimeSlotResponse> slotList = showtimes.stream()
                 .filter(s -> canSeeLockedCinema || isShowtimeCinemaOperational(s))
+                .filter(s -> canSeeLockedCinema || isShowtimeRoomOperational(s))
                 .filter(s -> s.getStartTime() != null)
                 .filter(s -> !s.getStartTime().toLocalDate().isBefore(now.toLocalDate()))
                 .filter(s -> !s.getStartTime().toLocalDate().isAfter(maxDate))
@@ -135,7 +136,7 @@ public class ShowtimeController {
     public ResponseEntity<ApiResponse<ShowtimeSlotResponse>> getShowtimeById(Authentication authentication, @PathVariable Integer id) {
         Showtime s = showtimeRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy suất chiếu với id: " + id));
-        if (!isSuperAdmin(authentication) && !isShowtimeCinemaOperational(s)) {
+        if (!isSuperAdmin(authentication) && (!isShowtimeCinemaOperational(s) || !isShowtimeRoomOperational(s))) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy suất chiếu với id: " + id);
         }
 
@@ -164,6 +165,7 @@ public class ShowtimeController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phòng với mã: " + request.getRoomId()));
         cinemaScopeService.requireCinemaAccess(room.getCinema());
         cinemaScopeService.requireCinemaOperational(room.getCinema());
+        cinemaScopeService.requireRoomOperational(room);
 
         Showtime s = new Showtime();
         s.setMovie(movie);
@@ -203,6 +205,7 @@ public class ShowtimeController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phòng với mã: " + request.getRoomId()));
         cinemaScopeService.requireCinemaAccess(room.getCinema());
         cinemaScopeService.requireCinemaOperational(room.getCinema());
+        cinemaScopeService.requireRoomOperational(room);
 
         s.setMovie(movie);
         s.setRoom(room);
@@ -353,6 +356,10 @@ public class ShowtimeController {
         return showtime != null
                 && showtime.getRoom() != null
                 && cinemaScopeService.isCinemaOperational(showtime.getRoom().getCinema());
+    }
+
+    private boolean isShowtimeRoomOperational(Showtime showtime) {
+        return showtime != null && cinemaScopeService.isRoomOperational(showtime.getRoom());
     }
 
     private boolean isSuperAdmin(Authentication authentication) {

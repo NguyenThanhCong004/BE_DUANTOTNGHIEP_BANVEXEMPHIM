@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.fpoly.duan.entity.Cinema;
+import com.fpoly.duan.entity.Room;
 import com.fpoly.duan.entity.Staff;
 import com.fpoly.duan.repository.ShowtimeRepository;
 import com.fpoly.duan.security.CustomUserDetails;
@@ -71,6 +72,22 @@ public class CinemaScopeService {
         if (!isCinemaOperational(cinema)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Rạp đang tạm ngừng hoạt động, không thể tạo nghiệp vụ mới");
+        }
+    }
+
+    /** status: 0 = Ngừng hoạt động, 1 = Hoạt động, 2 = Đóng tạm thời (bảo trì/hỏng ghế). */
+    public boolean isRoomOperational(Room room) {
+        return room != null && (room.getStatus() == null || room.getStatus() == 1);
+    }
+
+    public void requireRoomOperational(Room room) {
+        if (room != null && room.getStatus() != null && room.getStatus() == 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Phòng chiếu đang tạm đóng để bảo trì, không thể tạo/bán vé cho phòng này");
+        }
+        if (!isRoomOperational(room)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Phòng chiếu đang ngừng hoạt động, không thể tạo/bán vé cho phòng này");
         }
     }
 
