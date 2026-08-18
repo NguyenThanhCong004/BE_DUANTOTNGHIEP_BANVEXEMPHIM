@@ -19,7 +19,9 @@ public interface StaffService {
 
     StaffDTO updateStaff(Integer id, StaffDTO staffDTO);
 
-    void changePassword(Integer staffId, String currentPassword, String newPassword);
+    void sendPasswordChangeOtp(Integer staffId);
+
+    void changePassword(Integer staffId, String currentPassword, String newPassword, String otpCode);
 
     /** Đặt lại mật khẩu không cần mật khẩu hiện tại (dùng cho luồng quên mật khẩu qua OTP). */
     void resetPasswordByStaffId(Integer staffId, String newPassword);

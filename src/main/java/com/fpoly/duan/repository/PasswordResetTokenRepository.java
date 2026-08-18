@@ -1,5 +1,6 @@
 package com.fpoly.duan.repository;
 
+import java.time.Instant;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -22,4 +23,7 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
     @Modifying(flushAutomatically = true)
     @Query("DELETE FROM PasswordResetToken p WHERE p.staff.staffId = :staffId AND p.usedAt IS NULL")
     void deleteUnusedByStaffId(@Param("staffId") Integer staffId);
+
+    @Query("SELECT p FROM PasswordResetToken p WHERE p.staff.staffId = :staffId AND p.usedAt IS NULL AND p.expiresAt > :now ORDER BY p.expiresAt DESC")
+    Optional<PasswordResetToken> findLatestActiveByStaffId(@Param("staffId") Integer staffId, @Param("now") Instant now);
 }
