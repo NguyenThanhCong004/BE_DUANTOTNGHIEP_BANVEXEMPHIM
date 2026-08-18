@@ -73,10 +73,20 @@ public class StaffController {
                 .build());
     }
 
+    @PostMapping("/me/password/send-otp")
+    @Operation(summary = "Gửi mã OTP xác nhận đổi mật khẩu về email nhân viên")
+    public ResponseEntity<ApiResponse<Void>> sendPasswordChangeOtp() {
+        staffService.sendPasswordChangeOtp(currentStaffId());
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .status(HttpStatus.OK.value())
+                .message("Mã xác nhận đã được gửi về email của bạn")
+                .build());
+    }
+
     @PutMapping("/me/password")
-    @Operation(summary = "Đổi mật khẩu nhân viên đang đăng nhập")
+    @Operation(summary = "Đổi mật khẩu nhân viên đang đăng nhập (yêu cầu OTP)")
     public ResponseEntity<ApiResponse<Void>> changeMyPassword(@Valid @RequestBody UserPasswordChangeRequest body) {
-        staffService.changePassword(currentStaffId(), body.getCurrentPassword(), body.getNewPassword());
+        staffService.changePassword(currentStaffId(), body.getCurrentPassword(), body.getNewPassword(), body.getOtpCode());
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
                 .message("Đổi mật khẩu thành công")
@@ -191,7 +201,7 @@ public class StaffController {
     @PutMapping("/{id}/password")
     public ResponseEntity<ApiResponse<Void>> changePassword(@PathVariable Integer id,
             @Valid @RequestBody UserPasswordChangeRequest body) {
-        staffService.changePassword(id, body.getCurrentPassword(), body.getNewPassword());
+        staffService.resetPasswordByStaffId(id, body.getNewPassword());
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
                 .message("Đổi mật khẩu thành công")

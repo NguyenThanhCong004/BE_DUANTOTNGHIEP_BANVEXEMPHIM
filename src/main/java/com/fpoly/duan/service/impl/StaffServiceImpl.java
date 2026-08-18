@@ -1,21 +1,27 @@
 package com.fpoly.duan.service.impl;
 
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.fpoly.duan.dto.StaffDTO;
+import com.fpoly.duan.entity.PasswordResetToken;
 import com.fpoly.duan.security.CustomUserDetails;
 import com.fpoly.duan.entity.Cinema;
 import com.fpoly.duan.entity.Staff;
 import com.fpoly.duan.repository.CinemaRepository;
+import com.fpoly.duan.repository.PasswordResetTokenRepository;
 import com.fpoly.duan.repository.StaffRepository;
 import com.fpoly.duan.repository.StaffShiftRepository;
 import com.fpoly.duan.repository.UserRepository;
@@ -36,6 +42,9 @@ public class StaffServiceImpl implements StaffService {
     private static final String NEW_STAFF_EMAIL_SUBJECT = "[MovieZone] Tài khoản nhân viên mới";
     private static final String PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
 
+    private static final int OTP_VALIDITY_MINUTES = 10;
+    private final SecureRandom secureRandom = new SecureRandom();
+
     private final StaffRepository staffRepository;
     private final CinemaRepository cinemaRepository;
     private final PasswordEncoder passwordEncoder;
@@ -43,6 +52,7 @@ public class StaffServiceImpl implements StaffService {
     private final EmailService emailService;
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
@@ -347,7 +357,42 @@ public class StaffServiceImpl implements StaffService {
     }
 
     @Override
-    public void changePassword(Integer staffId, String currentPassword, String newPassword) {
+    public void sendPasswordChangeOtp(Integer staffId) {
+        Staff staff = staffRepository.findById(staffId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy nhân viên"));
+        if (staff.getEmail() == null || staff.getEmail().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tài khoản chưa có email để gửi mã xác nhận");
+        }
+        passwordResetTokenRepository.deleteUnusedByStaffId(staffId);
+
+        String otp = String.format("%06d", secureRandom.nextInt(900_000) + 100_000);
+        Instant expiresAt = Instant.now().plusSeconds(OTP_VALIDITY_MINUTES * 60L);
+        PasswordResetToken token = PasswordResetToken.builder()
+                .token(UUID.randomUUID().toString().replace("-", ""))
+                .staff(staff)
+                .expiresAt(expiresAt)
+                .otpHash(passwordEncoder.encode(otp))
+                .build();
+        passwordResetTokenRepository.save(token);
+
+        String body = """
+                <p style="margin:0 0 16px;">Xin chào <strong>%s</strong>,</p>
+                <p style="margin:0 0 20px;">Có yêu cầu đổi mật khẩu cho tài khoản nhân viên MovieZone của bạn. Nhập mã bên dưới để xác nhận:</p>
+                <div style="text-align:center;margin:0 0 20px;">
+                  <span style="display:inline-block;padding:14px 28px;background:rgba(212,255,0,0.1);border:1px solid rgba(212,255,0,0.4);border-radius:10px;font-size:30px;font-weight:800;letter-spacing:8px;color:#d4ff00;">%s</span>
+                </div>
+                <p style="margin:0;color:rgba(240,240,255,0.5);font-size:12px;">Mã có hiệu lực trong %d phút. Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>
+                """.formatted(staff.getFullname() != null ? staff.getFullname() : "bạn", otp, OTP_VALIDITY_MINUTES);
+        try {
+            emailService.sendHtml(staff.getEmail(), "[MovieZone] Mã xác nhận đổi mật khẩu", EmailBrandKit.wrap("Mã xác nhận đổi mật khẩu: " + otp, body));
+        } catch (Exception e) {
+            log.error("Không gửi được email OTP đổi mật khẩu tới {}: {}", staff.getEmail(), e.getMessage());
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Không gửi được email, vui lòng thử lại");
+        }
+    }
+
+    @Override
+    public void changePassword(Integer staffId, String currentPassword, String newPassword, String otpCode) {
         if (staffId == null) {
             throw new RuntimeException("Mã nhân viên không hợp lệ");
         }
@@ -361,6 +406,16 @@ public class StaffServiceImpl implements StaffService {
         if (details.getStaff() == null || !details.getStaff().getStaffId().equals(staffId)) {
             throw new RuntimeException("Chỉ được đổi mật khẩu của chính bạn");
         }
+
+        // Xác minh OTP
+        PasswordResetToken otpToken = passwordResetTokenRepository
+                .findLatestActiveByStaffId(staffId, Instant.now())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Mã xác nhận đã hết hạn hoặc chưa được gửi. Vui lòng nhấn 'Gửi mã' lại."));
+        if (otpCode == null || otpCode.isBlank() || !passwordEncoder.matches(otpCode.trim(), otpToken.getOtpHash())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mã xác nhận không đúng");
+        }
+
         Staff staff = staffRepository.findById(staffId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân viên với mã: " + staffId));
         if (currentPassword == null || !passwordEncoder.matches(currentPassword, staff.getPassword())) {
@@ -368,6 +423,9 @@ public class StaffServiceImpl implements StaffService {
         }
         staff.setPassword(passwordEncoder.encode(newPassword));
         staffRepository.save(staff);
+
+        otpToken.setUsedAt(Instant.now());
+        passwordResetTokenRepository.save(otpToken);
     }
 
     @Override

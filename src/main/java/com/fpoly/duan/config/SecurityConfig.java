@@ -130,6 +130,8 @@ public class SecurityConfig {
                         .hasAnyAuthority("ROLE_STAFF", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/v1/staff/me", "/api/v1/staff/me/password")
                         .hasAnyAuthority("ROLE_STAFF", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/staff/me/password/send-otp")
+                        .hasAnyAuthority("ROLE_STAFF", "ROLE_ADMIN", "ROLE_SUPER_ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/v1/staff/super-admin-view")
                         .hasAuthority("ROLE_SUPER_ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/staff/**")
