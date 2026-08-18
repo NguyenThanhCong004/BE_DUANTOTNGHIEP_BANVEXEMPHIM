@@ -27,8 +27,9 @@ public class EphemeralSeatHoldService {
     private record Hold(String holderId, long expiresAtEpochMs) {
     }
 
-    /** Theo dõi thời điểm 1 user bắt đầu giữ ghế liên tục cho 1 suất chiếu, để phát hiện giữ-rồi-bỏ. */
-    private record HoldSession(Integer userId, long firstHeldAtMs, long lastRefreshAtMs) {
+    /** Theo dõi thời điểm 1 actor (khách hàng hoặc nhân viên) bắt đầu giữ ghế liên tục cho 1 suất
+     * chiếu, để phát hiện giữ-rồi-bỏ. Chỉ 1 trong hai (userId/staffId) khác null cho mỗi phiên. */
+    private record HoldSession(Integer userId, Integer staffId, long firstHeldAtMs, long lastRefreshAtMs) {
     }
 
     private final SeatHoldAbuseService seatHoldAbuseService;
@@ -40,13 +41,15 @@ public class EphemeralSeatHoldService {
         return showtimeId + ":" + seatId;
     }
 
-    private static String sessionKey(Integer userId, int showtimeId) {
-        return userId + ":" + showtimeId;
+    private static String sessionKey(Integer userId, Integer staffId, int showtimeId) {
+        String actorTag = userId != null ? "U" + userId : "S" + staffId;
+        return actorTag + ":" + showtimeId;
     }
 
     /** Gia hạn ghế cho holder; bỏ giữ các ghế cũ của holder không còn trong danh sách.
-     * @param userId id khách hàng đang đăng nhập (từ JWT) — null nếu không xác định được (không theo dõi chống phá). */
-    public void refresh(int showtimeId, String holderId, Collection<Integer> seatIds, Integer userId) {
+     * @param userId id khách hàng đang đăng nhập (từ JWT) — null nếu không xác định được (không theo dõi chống phá).
+     * @param staffId id nhân viên đang đăng nhập tại quầy bán vé (từ JWT) — null nếu là khách hàng/ẩn danh. */
+    public void refresh(int showtimeId, String holderId, Collection<Integer> seatIds, Integer userId, Integer staffId) {
         if (holderId == null || holderId.isBlank()) {
             return;
         }
@@ -82,23 +85,31 @@ public class EphemeralSeatHoldService {
             });
         }
 
-        trackHoldSession(showtimeId, userId, seatIds, now);
+        trackHoldSession(showtimeId, userId, staffId, seatIds, now);
     }
 
-    private void trackHoldSession(int showtimeId, Integer userId, Collection<Integer> seatIds, long now) {
-        if (userId == null) {
+    private void trackHoldSession(int showtimeId, Integer userId, Integer staffId, Collection<Integer> seatIds, long now) {
+        if (userId == null && staffId == null) {
             return;
         }
-        String sKey = sessionKey(userId, showtimeId);
+        String sKey = sessionKey(userId, staffId, showtimeId);
         if (seatIds == null || seatIds.isEmpty()) {
             HoldSession sess = sessions.remove(sKey);
             if (sess != null && now - sess.firstHeldAtMs() >= HOLD_ABANDON_THRESHOLD_MS) {
-                seatHoldAbuseService.recordViolation(userId, SeatHoldAbuseService.ViolationType.HOLD_ABANDONED);
+                recordAbandonViolation(sess);
             }
         } else {
             sessions.compute(sKey, (k, existing) -> existing != null
-                    ? new HoldSession(userId, existing.firstHeldAtMs(), now)
-                    : new HoldSession(userId, now, now));
+                    ? new HoldSession(userId, staffId, existing.firstHeldAtMs(), now)
+                    : new HoldSession(userId, staffId, now, now));
+        }
+    }
+
+    private void recordAbandonViolation(HoldSession sess) {
+        if (sess.userId() != null) {
+            seatHoldAbuseService.recordViolation(sess.userId(), SeatHoldAbuseService.ViolationType.HOLD_ABANDONED);
+        } else if (sess.staffId() != null) {
+            seatHoldAbuseService.recordStaffViolation(sess.staffId(), SeatHoldAbuseService.ViolationType.HOLD_ABANDONED);
         }
     }
 
@@ -136,17 +147,21 @@ public class EphemeralSeatHoldService {
 
     /** Nhả ghế do luồng thành công (đã tạo đơn PENDING / đơn bị huỷ) — không tính là "bỏ giữ để phá". */
     public void releaseSeats(int showtimeId, Collection<Integer> seatIds) {
-        releaseSeats(showtimeId, seatIds, null);
+        releaseSeats(showtimeId, seatIds, null, null);
     }
 
     public void releaseSeats(int showtimeId, Collection<Integer> seatIds, Integer userId) {
+        releaseSeats(showtimeId, seatIds, userId, null);
+    }
+
+    public void releaseSeats(int showtimeId, Collection<Integer> seatIds, Integer userId, Integer staffId) {
         for (Integer sid : seatIds) {
             if (sid != null) {
                 map.remove(key(showtimeId, sid));
             }
         }
-        if (userId != null) {
-            sessions.remove(sessionKey(userId, showtimeId));
+        if (userId != null || staffId != null) {
+            sessions.remove(sessionKey(userId, staffId, showtimeId));
         }
     }
 
@@ -162,7 +177,7 @@ public class EphemeralSeatHoldService {
             }
             // Không còn gia hạn trong suốt TTL — coi như bị bỏ rơi (đóng tab/mất mạng).
             if (now - sess.firstHeldAtMs() >= HOLD_ABANDON_THRESHOLD_MS) {
-                seatHoldAbuseService.recordViolation(sess.userId(), SeatHoldAbuseService.ViolationType.HOLD_ABANDONED);
+                recordAbandonViolation(sess);
             }
             return true;
         });
