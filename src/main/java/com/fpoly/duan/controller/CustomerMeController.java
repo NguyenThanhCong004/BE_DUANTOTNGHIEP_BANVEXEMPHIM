@@ -58,9 +58,7 @@ public class CustomerMeController {
         Integer userId = details.getUser().getUserId();
         // Reload hạng rank mỗi khi truy cập web
         try {
-            java.lang.reflect.Method method = ticketCheckoutService.getClass().getDeclaredMethod("recalculateUserRankFromPaidOrders", com.fpoly.duan.entity.User.class);
-            method.setAccessible(true);
-            method.invoke(ticketCheckoutService, details.getUser());
+            ticketCheckoutService.recalculateUserRankFromPaidOrders(details.getUser());
         } catch (Exception e) {
             System.err.println("Error reloading rank: " + e.getMessage());
         }

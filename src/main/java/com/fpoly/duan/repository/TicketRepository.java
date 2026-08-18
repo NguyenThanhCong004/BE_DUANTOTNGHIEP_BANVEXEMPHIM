@@ -121,6 +121,18 @@ public interface TicketRepository extends JpaRepository<Ticket, Integer> {
 
     List<Ticket> findByOrderOnline_OrderOnlineId(Integer orderOnlineId);
 
+    /** Lấy vé của nhiều đơn cùng lúc (1 query, JOIN FETCH đầy đủ showtime/movie/room/cinema/seat) —
+     * tránh N+1 khi liệt kê lịch sử giao dịch (mỗi user có thể có hàng trăm đơn). */
+    @Query("SELECT t FROM Ticket t " +
+           "JOIN FETCH t.orderOnline " +
+           "LEFT JOIN FETCH t.showtime s " +
+           "LEFT JOIN FETCH s.movie " +
+           "LEFT JOIN FETCH s.room r " +
+           "LEFT JOIN FETCH r.cinema " +
+           "LEFT JOIN FETCH t.seat " +
+           "WHERE t.orderOnline.orderOnlineId IN :orderIds")
+    List<Ticket> findByOrderOnline_OrderOnlineIdInWithDetails(@Param("orderIds") Collection<Integer> orderIds);
+
     /** Vé đang hoạt động (đơn chưa hủy) của các suất "Sắp chiếu" trong 1 phòng — dùng cho luồng đóng phòng/dời vé. */
     @Query("SELECT t FROM Ticket t " +
            "JOIN t.orderOnline o " +

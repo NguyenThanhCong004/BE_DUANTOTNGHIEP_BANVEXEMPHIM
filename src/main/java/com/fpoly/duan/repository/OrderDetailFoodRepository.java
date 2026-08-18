@@ -1,5 +1,6 @@
 package com.fpoly.duan.repository;
 
+import java.util.Collection;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -14,6 +15,11 @@ import java.time.LocalDateTime;
 public interface OrderDetailFoodRepository extends JpaRepository<OrderDetailFood, Integer> {
 
     List<OrderDetailFood> findByOrderOnline_OrderOnlineId(Integer orderOnlineId);
+
+    /** Lấy bắp nước của nhiều đơn cùng lúc (1 query, JOIN FETCH product) — tránh N+1 khi liệt kê lịch sử giao dịch. */
+    @Query("SELECT f FROM OrderDetailFood f JOIN FETCH f.orderOnline LEFT JOIN FETCH f.product " +
+           "WHERE f.orderOnline.orderOnlineId IN :orderIds")
+    List<OrderDetailFood> findByOrderOnline_OrderOnlineIdInWithProduct(@Param("orderIds") Collection<Integer> orderIds);
 
     @Query("SELECT COALESCE(SUM(od.quantity), 0) FROM OrderDetailFood od " +
            "JOIN od.orderOnline o " +

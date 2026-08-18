@@ -1060,7 +1060,11 @@ public class TicketCheckoutService {
         }
     }
 
-    private void recalculateUserRankFromPaidOrders(User user) {
+    /** Cộng khai (không private) để {@code CustomerMeController} gọi trực tiếp — trước đây gọi qua
+     * reflection vào bean proxy CGLIB, {@code getDeclaredMethod} không tìm thấy method private của lớp
+     * cha nên LUÔN ném NoSuchMethodException (bị nuốt lỗi), khiến việc cập nhật hạng không bao giờ
+     * chạy và tốn chi phí reflection+exception vô ích trên mọi request /api/v1/me/*. */
+    public void recalculateUserRankFromPaidOrders(User user) {
         int currentYear = todayInAppZone().getYear();
         double completedRevenue = orderOnlineRepository
                 .sumCompletedRevenueByUserAndYear(user.getUserId(), currentYear);

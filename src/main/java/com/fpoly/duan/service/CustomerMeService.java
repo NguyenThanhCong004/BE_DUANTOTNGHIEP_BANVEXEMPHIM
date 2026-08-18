@@ -6,6 +6,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
@@ -67,10 +68,34 @@ public class CustomerMeService {
     private final UserRepository userRepository;
     private final TicketQrService ticketQrService;
 
+    /** Không đánh dấu @Transactional readOnly ở đây vì bước backfill QR bên dưới cần ghi (saveAll). */
     public List<MeTransactionDto> listTransactions(Integer userId) {
+        List<OrderOnline> orders = orderOnlineRepository.findByUser_UserIdOrderByCreatedAtDesc(userId);
+        List<Integer> orderIds = orders.stream().map(OrderOnline::getOrderOnlineId).collect(Collectors.toList());
+
+        // Lấy vé + bắp nước của TẤT CẢ đơn trong 2 query duy nhất (thay vì 2 query/đơn) — user có thể
+        // có hàng trăm đơn (dữ liệu demo), N+1 ở đây từng làm trang lịch sử giao dịch tải rất chậm.
+        Map<Integer, List<Ticket>> ticketsByOrder = orderIds.isEmpty() ? Map.of()
+                : ticketRepository.findByOrderOnline_OrderOnlineIdInWithDetails(orderIds).stream()
+                        .collect(Collectors.groupingBy(t -> t.getOrderOnline().getOrderOnlineId()));
+        Map<Integer, List<OrderDetailFood>> foodsByOrder = orderIds.isEmpty() ? Map.of()
+                : orderDetailFoodRepository.findByOrderOnline_OrderOnlineIdInWithProduct(orderIds).stream()
+                        .collect(Collectors.groupingBy(f -> f.getOrderOnline().getOrderOnlineId()));
+
+        List<Ticket> ticketsMissingQr = ticketsByOrder.values().stream().flatMap(List::stream)
+                .filter(t -> t.getTicketCode() == null || t.getTicketCode().isBlank()
+                        || t.getQrToken() == null || t.getQrToken().isBlank())
+                .collect(Collectors.toList());
+        if (!ticketsMissingQr.isEmpty()) {
+            ticketQrService.assignSecureCodes(ticketsMissingQr);
+            ticketRepository.saveAll(ticketsMissingQr);
+        }
+
         List<MeTransactionDto> out = new ArrayList<>();
-        for (OrderOnline o : orderOnlineRepository.findByUser_UserIdOrderByCreatedAtDesc(userId)) {
-            out.add(orderToTransaction(o));
+        for (OrderOnline o : orders) {
+            out.add(orderToTransaction(o,
+                    ticketsByOrder.getOrDefault(o.getOrderOnlineId(), List.of()),
+                    foodsByOrder.getOrDefault(o.getOrderOnlineId(), List.of())));
         }
         for (PointsHistory ph : pointsHistoryRepository.findByUser_UserIdOrderByDateDescPointHistoryIdDesc(userId)) {
             out.add(pointsToTransaction(ph));
@@ -80,19 +105,9 @@ public class CustomerMeService {
         return out;
     }
 
-    private MeTransactionDto orderToTransaction(OrderOnline o) {
-        List<Ticket> tickets = ticketRepository.findByOrderOnline_OrderOnlineId(o.getOrderOnlineId());
-        List<OrderDetailFood> foods = orderDetailFoodRepository.findByOrderOnline_OrderOnlineId(o.getOrderOnlineId());
+    private MeTransactionDto orderToTransaction(OrderOnline o, List<Ticket> tickets, List<OrderDetailFood> foods) {
+        // Backfill QR còn thiếu đã được xử lý theo lô ở listTransactions() — không lặp lại ở đây.
         List<MeTransactionItemDto> items = new ArrayList<>();
-
-        List<Ticket> ticketsMissingQr = tickets.stream()
-                .filter(t -> t.getTicketCode() == null || t.getTicketCode().isBlank()
-                        || t.getQrToken() == null || t.getQrToken().isBlank())
-                .collect(Collectors.toList());
-        if (!ticketsMissingQr.isEmpty()) {
-            ticketQrService.assignSecureCodes(ticketsMissingQr);
-            ticketRepository.saveAll(ticketsMissingQr);
-        }
 
         for (Ticket t : tickets) {
             Showtime st = t.getShowtime();
