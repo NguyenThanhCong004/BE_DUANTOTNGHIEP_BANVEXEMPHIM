@@ -100,12 +100,16 @@ public class OrderCleanupService {
                 }
 
                 Integer orderUserId = o.getUser() != null ? o.getUser().getUserId() : null;
+                Integer orderStaffId = o.getStaff() != null ? o.getStaff().getStaffId() : null;
                 if (stId != null && !seatIds.isEmpty()) {
-                    ephemeralSeatHoldService.releaseSeats(stId, seatIds, orderUserId);
+                    ephemeralSeatHoldService.releaseSeats(stId, seatIds, orderUserId, orderStaffId);
                 }
 
-                // Chỉ tính vi phạm cho đơn khách tự đặt online (không tính đơn nhân viên tạo tại quầy).
-                if (orderUserId != null && o.getStaff() == null) {
+                if (orderStaffId != null) {
+                    // Đơn tạo tại quầy (POS) hết hạn không thanh toán — nghi tài khoản nhân viên bị lộ/lợi
+                    // dụng để giữ ghế không cho khách mua (tạo đơn rồi bỏ, lặp lại nhiều lần).
+                    seatHoldAbuseService.recordStaffViolation(orderStaffId, SeatHoldAbuseService.ViolationType.ORDER_ABANDONED);
+                } else if (orderUserId != null) {
                     seatHoldAbuseService.recordViolation(orderUserId, SeatHoldAbuseService.ViolationType.ORDER_ABANDONED);
                 }
 

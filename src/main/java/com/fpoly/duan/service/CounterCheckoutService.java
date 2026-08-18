@@ -48,6 +48,7 @@ public class CounterCheckoutService {
     private final PointsHistoryRepository pointsHistoryRepository;
     private final TicketQrService ticketQrService;
     private final TicketEmailService ticketEmailService;
+    private final EphemeralSeatHoldService ephemeralSeatHoldService;
 
     public CounterCheckoutService(
             OrderOnlineRepository orderOnlineRepository,
@@ -63,7 +64,8 @@ public class CounterCheckoutService {
             MembershipRankRepository membershipRankRepository,
             PointsHistoryRepository pointsHistoryRepository,
             TicketQrService ticketQrService,
-            TicketEmailService ticketEmailService) {
+            TicketEmailService ticketEmailService,
+            EphemeralSeatHoldService ephemeralSeatHoldService) {
         this.orderOnlineRepository = orderOnlineRepository;
         this.ticketRepository = ticketRepository;
         this.orderDetailFoodRepository = orderDetailFoodRepository;
@@ -78,6 +80,7 @@ public class CounterCheckoutService {
         this.pointsHistoryRepository = pointsHistoryRepository;
         this.ticketQrService = ticketQrService;
         this.ticketEmailService = ticketEmailService;
+        this.ephemeralSeatHoldService = ephemeralSeatHoldService;
     }
 
     @Transactional
@@ -225,6 +228,13 @@ public class CounterCheckoutService {
             detail.setOrderOnline(savedOrder);
         }
         orderDetailFoodRepository.saveAll(foodDetails);
+
+        // Bán thành công (đã tạo đơn/vé thật) — nhả các ghế "giữ tạm" ephemeral của nhân viên này khỏi
+        // bộ đếm chống phá, tránh bị tính nhầm là "giữ ghế rồi bỏ" khi ca bán vé kéo dài lâu hơn ngưỡng.
+        if (hasSeats) {
+            Set<Integer> soldSeatIds = selectedSeats.stream().map(Seat::getSeatId).collect(Collectors.toSet());
+            ephemeralSeatHoldService.releaseSeats(showtime.getShowtimeId(), soldSeatIds, null, staffId);
+        }
 
         if (!isTransfer) {
             ticketEmailService.sendPaidTicketEmailIfNeeded(savedOrder);
@@ -453,6 +463,19 @@ public class CounterCheckoutService {
         for (Ticket t : tickets) {
             t.setStatus(2); // 2: CANCELLED
             ticketRepository.save(t);
+        }
+
+        // Huỷ chủ động của nhân viên — không tính là "giữ ghế rồi bỏ" (khác với đơn bị hệ thống tự huỷ).
+        Integer stId = tickets.stream()
+                .filter(t -> t.getShowtime() != null)
+                .map(t -> t.getShowtime().getShowtimeId())
+                .findFirst().orElse(null);
+        if (stId != null) {
+            Set<Integer> seatIds = tickets.stream()
+                    .filter(t -> t.getSeat() != null)
+                    .map(t -> t.getSeat().getSeatId())
+                    .collect(Collectors.toSet());
+            ephemeralSeatHoldService.releaseSeats(stId, seatIds, null, staffId);
         }
     }
 

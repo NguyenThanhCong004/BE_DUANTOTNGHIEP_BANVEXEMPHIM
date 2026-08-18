@@ -39,8 +39,9 @@ public class ShowtimeSeatHoldController {
     public ResponseEntity<ApiResponse<SeatHoldRefreshResponse>> refresh(
             @Valid @RequestBody SeatHoldRefreshRequest body, HttpServletRequest request) {
         Integer userId = resolveCustomerUserId(request);
-        ephemeralSeatHoldService.refresh(body.showtimeId(), body.holderId(), body.seatIds(), userId);
-        boolean warning = seatHoldAbuseService.shouldWarn(userId);
+        Integer staffId = resolveStaffId(request);
+        ephemeralSeatHoldService.refresh(body.showtimeId(), body.holderId(), body.seatIds(), userId, staffId);
+        boolean warning = seatHoldAbuseService.shouldWarn(userId) || seatHoldAbuseService.shouldWarnStaff(staffId);
         return ResponseEntity.ok(ApiResponse.<SeatHoldRefreshResponse>builder()
                 .status(HttpStatus.OK.value())
                 .message("OK")
@@ -76,6 +77,28 @@ public class ShowtimeSeatHoldController {
         try {
             String accountType = jwtService.extractAccountType(token);
             if (accountType != null && !"USER".equalsIgnoreCase(accountType)) {
+                return null;
+            }
+            return jwtService.extractUserId(token);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Nhận diện nhân viên bán vé đã đăng nhập (best-effort, từ JWT nếu FE máy POS có gửi kèm) — chỉ để
+     * theo dõi chống phá (nghi tài khoản nhân viên bị lộ/bị lợi dụng giữ ghế chặn khách), KHÔNG dùng
+     * để chặn truy cập endpoint. Token thiếu/hết hạn/không hợp lệ → coi như ẩn danh, không tính vào bộ đếm.
+     */
+    private Integer resolveStaffId(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return null;
+        }
+        String token = authHeader.substring(7);
+        try {
+            String accountType = jwtService.extractAccountType(token);
+            if (accountType == null || !"STAFF".equalsIgnoreCase(accountType)) {
                 return null;
             }
             return jwtService.extractUserId(token);
