@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.fpoly.duan.config.OpenApiConfig;
@@ -21,6 +22,7 @@ import com.fpoly.duan.dto.TicketCheckoutResponse;
 import com.fpoly.duan.dto.TicketQuoteResponse;
 import com.fpoly.duan.security.CustomUserDetails;
 import com.fpoly.duan.service.TicketCheckoutService;
+import com.fpoly.duan.service.TicketQrService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -36,6 +38,7 @@ import lombok.RequiredArgsConstructor;
 public class TicketOrderController {
 
     private final TicketCheckoutService ticketCheckoutService;
+    private final TicketQrService ticketQrService;
 
     @GetMapping(value = "/qr/{qrToken}", produces = MediaType.IMAGE_PNG_VALUE)
     @Operation(summary = "Ảnh QR vé", description = "Trả ảnh QR PNG chứa qrToken bảo mật để app/web hiển thị cho nhân viên quét.")
@@ -44,6 +47,40 @@ public class TicketOrderController {
                 .cacheControl(CacheControl.noStore())
                 .contentType(MediaType.IMAGE_PNG)
                 .body(ticketCheckoutService.getTicketQrPng(qrToken));
+    }
+
+    @GetMapping(value = "/payment-qr", produces = MediaType.IMAGE_PNG_VALUE)
+    @Operation(summary = "Ảnh QR thanh toán PayOS", description = "BE tự sinh ảnh QR PNG từ payload PayOS (payos.qrCode) để app hiển thị ngay trong app, không cần mở trình duyệt ngoài.")
+    public ResponseEntity<byte[]> paymentQr(Authentication authentication, @RequestParam("data") String qrCode) {
+        requireCustomer(authentication);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .contentType(MediaType.IMAGE_PNG)
+                .body(ticketQrService.toPaymentQrPng(qrCode));
+    }
+
+    @GetMapping("/payos/{payosOrderCode}/status")
+    @Operation(summary = "Kiểm tra trạng thái đơn PayOS (dùng để poll trong khi hiển thị QR trong app)")
+    public ResponseEntity<ApiResponse<TicketCheckoutResponse>> payosStatus(
+            Authentication authentication, @PathVariable Long payosOrderCode) {
+        CustomUserDetails details = requireCustomer(authentication);
+        TicketCheckoutResponse data = ticketCheckoutService.checkPayosStatus(details.getUser().getUserId(), payosOrderCode);
+        return ResponseEntity.ok(ApiResponse.<TicketCheckoutResponse>builder()
+                .status(HttpStatus.OK.value())
+                .message("OK")
+                .data(data)
+                .build());
+    }
+
+    private CustomUserDetails requireCustomer(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED, "Chưa đăng nhập");
+        }
+        if (details.getStaff() != null || details.getUser() == null) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Chỉ tài khoản khách hàng được thao tác");
+        }
+        return details;
     }
 
     @PostMapping("/quote")
