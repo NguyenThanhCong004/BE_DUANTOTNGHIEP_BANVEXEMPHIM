@@ -541,6 +541,56 @@ public class TicketCheckoutService {
                 .build();
     }
 
+    /**
+     * Kiểm tra trạng thái đơn PayOS để FE poll trong khi hiển thị QR trong app — KHÔNG throw khi đơn
+     * còn đang chờ thanh toán (khác {@link #confirmPaidOrderByPayosCode}), tiện cho việc gọi lặp lại
+     * mỗi vài giây mà không tạo lỗi/exception noise. Nếu PayOS đã báo PAID thì chốt đơn luôn.
+     */
+    @Transactional
+    public TicketCheckoutResponse checkPayosStatus(Integer userId, Long payosOrderCode) {
+        if (payosOrderCode == null || payosOrderCode <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mã PayOS không hợp lệ");
+        }
+        OrderOnline order = orderOnlineRepository.findByOrderCode(String.valueOf(payosOrderCode))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn với mã PayOS"));
+        if (order.getUser() == null || !order.getUser().getUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Đơn không thuộc tài khoản của bạn");
+        }
+
+        int expected = (int) Math.round(order.getFinalAmount() != null ? order.getFinalAmount() : 0.0);
+        String status;
+        if (order.getStatus() != null && order.getStatus() == ORDER_STATUS_PAID) {
+            status = "PAID";
+        } else if (order.getStatus() != null && order.getStatus() == ORDER_STATUS_PENDING) {
+            status = "PENDING";
+            try {
+                PayOSCheckoutData payosInfo = payOSService.getPaymentInformation(payosOrderCode);
+                if ("PAID".equalsIgnoreCase(payosInfo.getStatus())) {
+                    assertPayosAmountMatches(payosInfo, expected);
+                    finalizePaidOrder(order);
+                    rewardPaidOrder(order);
+                    status = "PAID";
+                }
+            } catch (Exception e) {
+                log.warn("Không kiểm tra được trạng thái PayOS cho đơn {}: {}", payosOrderCode, e.getMessage());
+            }
+        } else {
+            status = "CANCELLED";
+        }
+
+        return TicketCheckoutResponse.builder()
+                .orderOnlineId(order.getOrderOnlineId())
+                .payosOrderCode(payosOrderCode)
+                .amountVnd(expected)
+                .payos(PayOSCheckoutData.builder()
+                        .orderCode(payosOrderCode)
+                        .amount((long) expected)
+                        .currency("VND")
+                        .status(status)
+                        .build())
+                .build();
+    }
+
     @Transactional
     public TicketCheckoutResponse checkoutFoodOnly(Integer userId, FoodOnlyCheckoutRequest req) {
         User user = loadUser(userId);
