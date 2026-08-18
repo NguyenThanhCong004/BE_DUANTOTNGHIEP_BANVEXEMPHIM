@@ -56,4 +56,8 @@ public class OrderOnline {
     /** Mã HMAC bất đối xứng dùng để sinh mã vạch hóa đơn tại quầy, không lộ mã đơn hoặc thông tin rạp. */
     @Column(name = "receipt_token", length = 1500, unique = true)
     private String receiptToken;
+
+    /** Mốc xử lý đơn do phòng chiếu bị đóng (đã dời sang suất khác hoặc đã hủy để hoàn tiền). */
+    @Column(name = "rescheduled_at")
+    private LocalDateTime rescheduledAt;
 }

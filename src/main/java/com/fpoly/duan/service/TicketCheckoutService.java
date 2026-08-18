@@ -96,6 +96,7 @@ public class TicketCheckoutService {
     private final PointsHistoryRepository pointsHistoryRepository;
     private final TicketQrService ticketQrService;
     private final TicketEmailService ticketEmailService;
+    private final CinemaScopeService cinemaScopeService;
 
     @Transactional
     public TicketCheckoutResponse checkout(Integer userId, TicketCheckoutRequest req) {
@@ -114,6 +115,7 @@ public class TicketCheckoutService {
         if (showtime.getRoom() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Suất chiếu chưa gắn phòng");
         }
+        cinemaScopeService.requireRoomOperational(showtime.getRoom());
         Integer roomId = showtime.getRoom().getRoomId();
         Integer cinemaId = showtime.getRoom().getCinema() != null ? showtime.getRoom().getCinema().getCinemaId() : null;
         Cinema cinema = requireCustomerCinemaAvailable(cinemaId);

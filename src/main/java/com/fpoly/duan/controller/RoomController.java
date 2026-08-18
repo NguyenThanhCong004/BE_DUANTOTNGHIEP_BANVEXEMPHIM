@@ -182,6 +182,8 @@ public class RoomController {
                 .name(r.getName())
                 .status(r.getStatus())
                 .cinemaId(c != null ? c.getCinemaId() : null)
+                .closeReason(r.getCloseReason())
+                .closedAt(r.getClosedAt())
                 .build();
     }
 }

@@ -121,6 +121,14 @@ public interface TicketRepository extends JpaRepository<Ticket, Integer> {
 
     List<Ticket> findByOrderOnline_OrderOnlineId(Integer orderOnlineId);
 
+    /** Vé đang hoạt động (đơn chưa hủy) của các suất "Sắp chiếu" trong 1 phòng — dùng cho luồng đóng phòng/dời vé. */
+    @Query("SELECT t FROM Ticket t " +
+           "JOIN t.orderOnline o " +
+           "WHERE t.showtime.room.roomId = :roomId AND t.showtime.startTime > :now " +
+           "AND o.status IN (0, 1) " +
+           "ORDER BY o.orderOnlineId")
+    List<Ticket> findActiveTicketsInRoomForFutureShowtimes(@Param("roomId") Integer roomId, @Param("now") LocalDateTime now);
+
     Optional<Ticket> findByQrToken(String qrToken);
 
     @Query("SELECT t FROM Ticket t " +

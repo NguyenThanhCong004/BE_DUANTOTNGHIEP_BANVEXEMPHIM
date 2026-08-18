@@ -49,6 +49,7 @@ public class CounterCheckoutService {
     private final TicketQrService ticketQrService;
     private final TicketEmailService ticketEmailService;
     private final EphemeralSeatHoldService ephemeralSeatHoldService;
+    private final CinemaScopeService cinemaScopeService;
 
     public CounterCheckoutService(
             OrderOnlineRepository orderOnlineRepository,
@@ -65,7 +66,8 @@ public class CounterCheckoutService {
             PointsHistoryRepository pointsHistoryRepository,
             TicketQrService ticketQrService,
             TicketEmailService ticketEmailService,
-            EphemeralSeatHoldService ephemeralSeatHoldService) {
+            EphemeralSeatHoldService ephemeralSeatHoldService,
+            CinemaScopeService cinemaScopeService) {
         this.orderOnlineRepository = orderOnlineRepository;
         this.ticketRepository = ticketRepository;
         this.orderDetailFoodRepository = orderDetailFoodRepository;
@@ -81,6 +83,7 @@ public class CounterCheckoutService {
         this.ticketQrService = ticketQrService;
         this.ticketEmailService = ticketEmailService;
         this.ephemeralSeatHoldService = ephemeralSeatHoldService;
+        this.cinemaScopeService = cinemaScopeService;
     }
 
     @Transactional
@@ -104,6 +107,7 @@ public class CounterCheckoutService {
             showtime = showtimeRepository.findByIdForUpdate(request.getShowtimeId())
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy suất chiếu"));
             assertSameCinema(staffCinemaId, showtimeCinemaId(showtime), "Suất chiếu không thuộc rạp của nhân viên");
+            cinemaScopeService.requireRoomOperational(showtime.getRoom());
         }
 
         User customer = null;
