@@ -136,7 +136,8 @@ public class RoomClosureService {
                 .findByMovie_MovieIdAndRoom_Cinema_CinemaId(movie.getMovieId(), originalRoom.getCinema().getCinemaId())
                 .stream()
                 .filter(s -> !s.getShowtimeId().equals(originalShowtime.getShowtimeId()))
-                .filter(s -> s.getStartTime() != null && s.getStartTime().isAfter(nowInAppZone()))
+                // Chỉ gợi ý suất TRỄ HƠN suất khách đã đặt — không đề xuất giờ sớm hơn (khách có thể không kịp đến).
+                .filter(s -> s.getStartTime() != null && s.getStartTime().isAfter(originalShowtime.getStartTime()))
                 .filter(s -> cinemaScopeService.isRoomOperational(s.getRoom()))
                 .sorted(Comparator.comparing(Showtime::getStartTime))
                 .collect(Collectors.toList());
