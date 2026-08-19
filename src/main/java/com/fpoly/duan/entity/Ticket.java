@@ -25,6 +25,10 @@ public class Ticket {
     @Column(name = "checked_in_at")
     private LocalDateTime checkedInAt;
 
+    /** Lý do hủy vé (vd. đóng phòng bảo trì) — hiển thị rõ cho nhân viên khi quét QR vé đã hủy. */
+    @Column(name = "cancel_reason", length = 500)
+    private String cancelReason;
+
     @Column(name = "original_price")
     private Double originalPrice;
 

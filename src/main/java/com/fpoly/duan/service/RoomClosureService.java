@@ -212,8 +212,13 @@ public class RoomClosureService {
                 .map(this::toSnapshot)
                 .collect(Collectors.toList());
 
+        Room closedRoom = orderTickets.get(0).getShowtime().getRoom();
+        String cancelReason = "Đóng phòng bảo trì"
+                + (closedRoom.getCloseReason() != null && !closedRoom.getCloseReason().isBlank()
+                        ? ": " + closedRoom.getCloseReason() : "");
         for (Ticket ticket : orderTickets) {
             ticket.setStatus(TICKET_STATUS_CANCELLED);
+            ticket.setCancelReason(cancelReason);
         }
         ticketRepository.saveAll(orderTickets);
 

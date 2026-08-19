@@ -58,4 +58,8 @@
          orders_online.rescheduled_at. rooms.status tai dung gia tri 2 = "Dong tam thoi". -->
     <include file="changes/2026-08-18-add-room-closure.xml" relativeToChangelogFile="true"/>
 
+    <!-- Ly do huy ve (vd. dong phong bao tri): tickets.cancel_reason, de nhan vien soat ve
+         thay ro nguyen nhan khi quet QR ve da huy. -->
+    <include file="changes/2026-08-19-add-ticket-cancel-reason.xml" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>
