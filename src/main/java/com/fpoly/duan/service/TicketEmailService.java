@@ -131,7 +131,7 @@ public class TicketEmailService {
         }
     }
 
-    /** Đơn bị hủy do phòng chiếu đóng và không tìm được suất thay thế phù hợp — hoàn tiền xử lý thủ công ngoài hệ thống. */
+    /** Đơn bị hủy do phòng chiếu đóng và không tìm được suất thay thế phù hợp — khách hoàn tiền trực tiếp tại quầy rạp. */
     public void sendOrderCancelledForClosureEmail(OrderOnline order, List<TicketRescheduleSnapshotDTO> oldSnapshots) {
         if (order.getUser() == null || order.getUser().getEmail() == null || order.getUser().getEmail().isBlank()) return;
         if (!emailService.isConfigured()) {
@@ -150,7 +150,8 @@ public class TicketEmailService {
                     + "<p style=\"margin:0 0 16px;\">Do sự cố kỹ thuật ngoài ý muốn tại phòng chiếu, MovieZone <strong>thành thật xin lỗi</strong> "
                     + "và rất tiếc phải hủy đơn <strong>" + escape(order.getOrderCode()) + "</strong> dưới đây vì không còn suất chiếu phù hợp để thay thế:</p>"
                     + rows
-                    + "<p style=\"margin:20px 0 0;\">Rạp sẽ chủ động liên hệ với Quý khách để hoàn lại số tiền đã thanh toán trong thời gian sớm nhất. "
+                    + "<p style=\"margin:20px 0 0;\">Vui lòng mang theo mã đơn hàng <strong>" + escape(order.getOrderCode()) + "</strong> và giấy tờ tùy thân "
+                    + "đến quầy vé của rạp để được <strong>hoàn tiền trực tiếp</strong>. "
                     + "Rất mong Quý khách thông cảm cho sự bất tiện này.</p>";
             String html = EmailBrandKit.wrap("Đơn " + order.getOrderCode() + " đã được hủy do sự cố phòng chiếu", body);
             emailService.sendHtml(order.getUser().getEmail(),
