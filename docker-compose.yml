@@ -10,7 +10,10 @@ services:
       MSSQL_SA_PASSWORD: ${DB_PASSWORD:-Java6_Docker@12345}
       MSSQL_PID: ${MSSQL_PID:-Developer}
     ports:
-      - "${DB_PORT:-1433}:1433"
+      # Chỉ bind localhost — SQL Server không bao giờ cần lộ ra internet, backend đọc qua
+      # mạng nội bộ java6_backend (tên host "sqlserver"). Vẫn truy cập được qua SSH tunnel
+      # nếu cần debug trực tiếp bằng SSMS/Azure Data Studio.
+      - "127.0.0.1:${DB_PORT:-1433}:1433"
     volumes:
       - sqlserver_data:/var/opt/mssql
       - sqlserver_backup:/var/opt/mssql/backup
@@ -51,7 +54,10 @@ services:
       context: .
     container_name: java6_backend_app
     ports:
-      - "${BACKEND_PORT:-18080}:8080"
+      # Chỉ bind localhost — frontend gọi qua mạng chung moviezone_shared (tên host
+      # "java6_backend_app"), không cần vòng ra host nữa. Cổng này chỉ còn để SSH vào
+      # VPS tự curl kiểm tra sức khỏe, không public ra internet.
+      - "127.0.0.1:${BACKEND_PORT:-18080}:8080"
     environment:
       DB_URL: jdbc:sqlserver://sqlserver:1433;databaseName=${DB_NAME:-JAVA6};encrypt=true;trustServerCertificate=true;sendStringParametersAsUnicode=true
       DB_USERNAME: ${DB_USERNAME:-sa}
@@ -99,6 +105,7 @@ services:
     networks:
       - java6_backend
       - java6_public
+      - moviezone_shared
 
 networks:
   java6_backend:
@@ -106,6 +113,11 @@ networks:
     internal: true
   java6_public:
     driver: bridge
+  # Mạng dùng chung giữa 2 project compose riêng biệt (backend + frontend) để container
+  # frontend gọi thẳng container backend qua tên host nội bộ, không cần vòng ra host nữa.
+  # Tạo 1 lần bằng `docker network create moviezone_shared` trước khi deploy.
+  moviezone_shared:
+    external: true
 
 volumes:
   sqlserver_data:
