@@ -34,4 +34,12 @@ public interface ReviewRepository extends JpaRepository<Review, Integer> {
             "JOIN t.showtime s " +
             "WHERE s.movie.movieId = :movieId AND o.status = 1 AND (t.status IS NULL OR t.status = 1)")
     Double findAverageRatingByMovieId(@Param("movieId") Integer movieId);
+
+    @Query("SELECT s.movie.movieId, AVG(r.rating) FROM Review r " +
+            "JOIN r.ticket t " +
+            "JOIN t.orderOnline o " +
+            "JOIN t.showtime s " +
+            "WHERE o.status = 1 AND (t.status IS NULL OR t.status = 1) " +
+            "GROUP BY s.movie.movieId")
+    List<Object[]> findAllAverageRatings();
 }

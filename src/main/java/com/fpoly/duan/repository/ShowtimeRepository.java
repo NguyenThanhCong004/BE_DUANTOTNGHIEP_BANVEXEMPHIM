@@ -39,6 +39,8 @@ public interface ShowtimeRepository extends JpaRepository<Showtime, Integer> {
 
     boolean existsByRoom_Cinema_CinemaIdAndStartTimeGreaterThanEqual(Integer cinemaId, java.time.LocalDateTime startTime);
 
+    boolean existsByMovie_MovieId(Integer movieId);
+
     @Query("SELECT DISTINCT s FROM Showtime s " +
             "JOIN FETCH s.movie m " +
             "JOIN FETCH s.room r " +
