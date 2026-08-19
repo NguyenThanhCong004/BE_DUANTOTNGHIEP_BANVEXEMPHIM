@@ -4,11 +4,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +24,7 @@ import com.fpoly.duan.dto.me.MeTransactionDto;
 import com.fpoly.duan.dto.me.MeTransactionItemDto;
 import com.fpoly.duan.dto.me.MeUserVoucherRowDto;
 import com.fpoly.duan.dto.me.MovieReviewRequest;
+import com.fpoly.duan.dto.me.PagedResponse;
 import com.fpoly.duan.entity.Favorite;
 import com.fpoly.duan.entity.Movie;
 import com.fpoly.duan.entity.OrderDetailFood;
@@ -68,13 +69,42 @@ public class CustomerMeService {
     private final UserRepository userRepository;
     private final TicketQrService ticketQrService;
 
-    /** Không đánh dấu @Transactional readOnly ở đây vì bước backfill QR bên dưới cần ghi (saveAll). */
-    public List<MeTransactionDto> listTransactions(Integer userId) {
-        List<OrderOnline> orders = orderOnlineRepository.findByUser_UserIdOrderByCreatedAtDesc(userId);
-        List<Integer> orderIds = orders.stream().map(OrderOnline::getOrderOnlineId).collect(Collectors.toList());
+    private static final int MAX_PAGE_SIZE = 50;
 
-        // Lấy vé + bắp nước của TẤT CẢ đơn trong 2 query duy nhất (thay vì 2 query/đơn) — user có thể
-        // có hàng trăm đơn (dữ liệu demo), N+1 ở đây từng làm trang lịch sử giao dịch tải rất chậm.
+    /**
+     * Phân trang thật ở DB: "Giao dịch" gộp 2 nguồn (đơn hàng + sự kiện điểm) — lấy đúng
+     * (source_type,id) của 1 trang qua UNION ALL native query (xem OrderOnlineRepository), rồi chỉ
+     * fetch chi tiết vé/bắp nước cho ĐÚNG số đơn trong trang đó (không phải toàn bộ lịch sử).
+     * Không đánh dấu @Transactional readOnly vì bước backfill QR bên dưới cần ghi (saveAll).
+     */
+    public PagedResponse<MeTransactionDto> listTransactions(Integer userId, int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        int offset = safePage * safeSize;
+
+        List<Object[]> refs = orderOnlineRepository.findTransactionPageRefs(userId, offset, safeSize);
+        long total = orderOnlineRepository.countTransactionRefs(userId);
+
+        List<Integer> orderIds = new ArrayList<>();
+        List<Integer> pointIds = new ArrayList<>();
+        for (Object[] ref : refs) {
+            Integer id = ((Number) ref[1]).intValue();
+            if ("ORDER".equals(ref[0])) {
+                orderIds.add(id);
+            } else {
+                pointIds.add(id);
+            }
+        }
+
+        Map<Integer, OrderOnline> ordersById = orderIds.isEmpty() ? Map.of()
+                : orderOnlineRepository.findAllById(orderIds).stream()
+                        .collect(Collectors.toMap(OrderOnline::getOrderOnlineId, o -> o));
+        Map<Integer, PointsHistory> pointsById = pointIds.isEmpty() ? Map.of()
+                : pointsHistoryRepository.findAllById(pointIds).stream()
+                        .collect(Collectors.toMap(PointsHistory::getPointHistoryId, p -> p));
+
+        // Lấy vé + bắp nước CHỈ cho các đơn trong trang này (không phải toàn bộ lịch sử) — đây chính
+        // là phần giảm tải so với trước (từng tải hết vé/bắp nước của mọi đơn dù chỉ hiển thị 10 dòng).
         Map<Integer, List<Ticket>> ticketsByOrder = orderIds.isEmpty() ? Map.of()
                 : ticketRepository.findByOrderOnline_OrderOnlineIdInWithDetails(orderIds).stream()
                         .collect(Collectors.groupingBy(t -> t.getOrderOnline().getOrderOnlineId()));
@@ -91,18 +121,25 @@ public class CustomerMeService {
             ticketRepository.saveAll(ticketsMissingQr);
         }
 
-        List<MeTransactionDto> out = new ArrayList<>();
-        for (OrderOnline o : orders) {
-            out.add(orderToTransaction(o,
-                    ticketsByOrder.getOrDefault(o.getOrderOnlineId(), List.of()),
-                    foodsByOrder.getOrDefault(o.getOrderOnlineId(), List.of())));
+        // Ghép DTO theo ĐÚNG thứ tự trả về của UNION query (findAllById không giữ thứ tự truyền vào).
+        List<MeTransactionDto> content = new ArrayList<>();
+        for (Object[] ref : refs) {
+            Integer id = ((Number) ref[1]).intValue();
+            if ("ORDER".equals(ref[0])) {
+                OrderOnline o = ordersById.get(id);
+                if (o != null) {
+                    content.add(orderToTransaction(o,
+                            ticketsByOrder.getOrDefault(id, List.of()),
+                            foodsByOrder.getOrDefault(id, List.of())));
+                }
+            } else {
+                PointsHistory ph = pointsById.get(id);
+                if (ph != null) {
+                    content.add(pointsToTransaction(ph));
+                }
+            }
         }
-        for (PointsHistory ph : pointsHistoryRepository.findByUser_UserIdOrderByDateDescPointHistoryIdDesc(userId)) {
-            out.add(pointsToTransaction(ph));
-        }
-        out.sort(Comparator.comparing(MeTransactionDto::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
-                .reversed());
-        return out;
+        return PagedResponse.of(content, safePage, safeSize, total);
     }
 
     private MeTransactionDto orderToTransaction(OrderOnline o, List<Ticket> tickets, List<OrderDetailFood> foods) {
@@ -245,10 +282,11 @@ public class CustomerMeService {
         return st.getStartTime().toLocalDate() + " " + st.getStartTime().toLocalTime().format(TIME_FMT);
     }
 
-    public List<MeFavoriteMovieDto> listFavorites(Integer userId) {
-        return favoriteRepository.findByUser_UserIdOrderByFavoriteIdDesc(userId).stream()
-                .map(f -> toFavoriteDto(userId, f))
-                .collect(Collectors.toList());
+    public PagedResponse<MeFavoriteMovieDto> listFavorites(Integer userId, int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        var favPage = favoriteRepository.findByUser_UserIdOrderByFavoriteIdDesc(userId, PageRequest.of(safePage, safeSize));
+        return PagedResponse.of(favPage.map(f -> toFavoriteDto(userId, f)));
     }
 
     private MeFavoriteMovieDto toFavoriteDto(Integer userId, Favorite f) {
@@ -388,14 +426,15 @@ public class CustomerMeService {
                 .build();
     }
 
-    public List<MeUserVoucherRowDto> listUserVouchers(Integer userId) {
-        return userVoucherRepository.findByUser_UserIdOrderByUserVoucherIdDesc(userId).stream()
-                .map(uv -> MeUserVoucherRowDto.builder()
-                        .userVoucherId(uv.getUserVoucherId())
-                        .status(uv.getStatus() != null ? uv.getStatus() : 1)
-                        .voucher(toVoucherDto(uv.getVoucher()))
-                        .build())
-                .collect(Collectors.toList());
+    public PagedResponse<MeUserVoucherRowDto> listUserVouchers(Integer userId, int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        var uvPage = userVoucherRepository.findByUser_UserIdOrderByUserVoucherIdDesc(userId, PageRequest.of(safePage, safeSize));
+        return PagedResponse.of(uvPage.map(uv -> MeUserVoucherRowDto.builder()
+                .userVoucherId(uv.getUserVoucherId())
+                .status(uv.getStatus() != null ? uv.getStatus() : 1)
+                .voucher(toVoucherDto(uv.getVoucher()))
+                .build()));
     }
 
     private VoucherDTO toVoucherDto(Voucher v) {
@@ -426,15 +465,16 @@ public class CustomerMeService {
         return "PERCENT";
     }
 
-    public List<MePointsHistoryDto> listPointsHistory(Integer userId) {
-        return pointsHistoryRepository.findByUser_UserIdOrderByDateDescPointHistoryIdDesc(userId).stream()
-                .map(ph -> MePointsHistoryDto.builder()
-                        .pointHistoryId(ph.getPointHistoryId())
-                        .date(ph.getDate())
-                        .description(ph.getDescription())
-                        .points(ph.getPoints())
-                        .build())
-                .collect(Collectors.toList());
+    public PagedResponse<MePointsHistoryDto> listPointsHistory(Integer userId, int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        var phPage = pointsHistoryRepository.findByUser_UserIdOrderByDateDescPointHistoryIdDesc(userId, PageRequest.of(safePage, safeSize));
+        return PagedResponse.of(phPage.map(ph -> MePointsHistoryDto.builder()
+                .pointHistoryId(ph.getPointHistoryId())
+                .date(ph.getDate())
+                .description(ph.getDescription())
+                .points(ph.getPoints())
+                .build()));
     }
 
     @Transactional

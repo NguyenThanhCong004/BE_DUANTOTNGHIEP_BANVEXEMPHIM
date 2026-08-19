@@ -108,6 +108,24 @@ public interface OrderOnlineRepository extends JpaRepository<OrderOnline, Intege
        @Query("SELECT COALESCE(SUM(o.finalAmount), 0.0) FROM OrderOnline o WHERE o.user.userId = :userId AND o.status = 1 AND YEAR(o.createdAt) = :year")
        Double sumCompletedRevenueByUserAndYear(@Param("userId") Integer userId, @Param("year") int year);
 
+    /**
+     * Phân trang "lịch sử giao dịch" — gộp 2 nguồn (đơn hàng + sự kiện điểm) sắp theo thời gian giảm
+     * dần, trả về (source_type, id) của đúng 1 trang. JPQL không hỗ trợ UNION nên phải dùng native SQL.
+     * Service sẽ tách orderIds/pointIds rồi fetch chi tiết theo lô (không N+1), giữ đúng thứ tự này.
+     */
+    @Query(value = "SELECT source_type, id, created_at FROM (" +
+           "  SELECT 'ORDER' AS source_type, order_online_id AS id, created_at FROM orders_online WHERE user_id = :userId " +
+           "  UNION ALL " +
+           "  SELECT 'POINTS' AS source_type, point_history_id AS id, CAST(date AS datetime2) AS created_at FROM points_histories WHERE user_id = :userId" +
+           ") t ORDER BY created_at DESC " +
+           "OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY", nativeQuery = true)
+    List<Object[]> findTransactionPageRefs(@Param("userId") Integer userId, @Param("offset") int offset, @Param("limit") int limit);
+
+    @Query(value = "SELECT " +
+           "(SELECT COUNT(*) FROM orders_online WHERE user_id = :userId) + " +
+           "(SELECT COUNT(*) FROM points_histories WHERE user_id = :userId)", nativeQuery = true)
+    long countTransactionRefs(@Param("userId") Integer userId);
+
     @Query(value = "SELECT COALESCE(c_ticket.name, c_staff.name) as cinema_name, " +
            "SUM(o.final_amount) as revenue, " +
            "COALESCE(SUM(t_count.c), 0) as total_tickets " +
