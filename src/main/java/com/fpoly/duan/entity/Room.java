@@ -22,6 +22,10 @@ public class Room {
     @JoinColumn(name = "cinema_id")
     private Cinema cinema;
 
+    @ManyToOne
+    @JoinColumn(name = "room_type_id")
+    private RoomType roomType;
+
     /** Lý do đóng phòng tạm thời — hiển thị cho admin và đưa vào email xin lỗi khách hàng. */
     @Column(name = "close_reason", columnDefinition = "NVARCHAR(500)")
     private String closeReason;
