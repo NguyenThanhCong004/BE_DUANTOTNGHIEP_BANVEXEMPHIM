@@ -1,6 +1,7 @@
 package com.fpoly.duan.controller;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -27,6 +29,7 @@ import com.fpoly.duan.dto.SeatLayoutItem;
 import com.fpoly.duan.dto.SeatLayoutRequest;
 import com.fpoly.duan.dto.SeatTypeDTO;
 import com.fpoly.duan.entity.Room;
+import com.fpoly.duan.entity.RoomType;
 import com.fpoly.duan.entity.Seat;
 import com.fpoly.duan.entity.SeatType;
 import com.fpoly.duan.repository.RoomRepository;
@@ -246,6 +249,36 @@ public class SeatController {
             }
             String key = item.getX() + "," + item.getY();
             wanted.put(key, item);
+        }
+
+        if (room.getRoomType() != null) {
+            Map<String, Integer> counts = new HashMap<>();
+            counts.put("standard", 0);
+            counts.put("vip", 0);
+            counts.put("couple", 0);
+            for (SeatLayoutItem item : wanted.values()) {
+                SeatType st = resolveSeatType(item.getSeatTypeName());
+                String cat;
+                if (Boolean.TRUE.equals(st.getCoupleSeat())) {
+                    cat = "couple";
+                } else if (st.getName() != null && st.getName().toLowerCase().contains("vip")) {
+                    cat = "vip";
+                } else {
+                    cat = "standard";
+                }
+                counts.merge(cat, 1, Integer::sum);
+            }
+            RoomType rt = room.getRoomType();
+            int stdGot = counts.get("standard");
+            int vipGot = counts.get("vip");
+            int coupleGot = counts.get("couple");
+            if (stdGot != rt.getStandardSeatCount() || vipGot != rt.getVipSeatCount() || coupleGot != rt.getCoupleSeatCount()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        String.format("Sơ đồ ghế chưa đúng theo loại phòng \"%s\": cần %d ghế thường, %d ghế VIP, %d ghế đôi. Hiện có: %d thường, %d VIP, %d đôi.",
+                                rt.getName(),
+                                rt.getStandardSeatCount(), rt.getVipSeatCount(), rt.getCoupleSeatCount(),
+                                stdGot, vipGot, coupleGot));
+            }
         }
 
         List<Seat> toPersist = new ArrayList<>();

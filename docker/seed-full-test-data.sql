@@ -1,5 +1,21 @@
 SET NOCOUNT ON;
 
+-- ========== Loại phòng chiếu (room_types) ==========
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'room_types')
+CREATE TABLE room_types (
+    room_type_id INT IDENTITY(1,1) PRIMARY KEY,
+    name NVARCHAR(100) NOT NULL,
+    standard_seat_count INT NOT NULL,
+    vip_seat_count INT NOT NULL,
+    couple_seat_count INT NOT NULL
+);
+IF NOT EXISTS (SELECT 1 FROM room_types WHERE name = N'Phòng Nhỏ')
+    INSERT INTO room_types (name, standard_seat_count, vip_seat_count, couple_seat_count) VALUES (N'Phòng Nhỏ', 60, 24, 16);
+IF NOT EXISTS (SELECT 1 FROM room_types WHERE name = N'Phòng Vừa')
+    INSERT INTO room_types (name, standard_seat_count, vip_seat_count, couple_seat_count) VALUES (N'Phòng Vừa', 76, 36, 18);
+IF NOT EXISTS (SELECT 1 FROM room_types WHERE name = N'Phòng Lớn')
+    INSERT INTO room_types (name, standard_seat_count, vip_seat_count, couple_seat_count) VALUES (N'Phòng Lớn', 90, 50, 20);
+
 DECLARE @today date = CONVERT(date, GETDATE());
 DECLARE @firstDate date = DATEADD(day, 1, @today);
 DECLARE @passwordHash nvarchar(255) = N'$2a$10$7ysMsfH7.Aa5qurepWcavObcmPnBh39I24sPLm3WcV085H.76dpJq'; -- Admin@123

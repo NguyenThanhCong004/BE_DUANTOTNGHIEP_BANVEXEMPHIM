@@ -24,8 +24,10 @@ import com.fpoly.duan.dto.ApiResponse;
 import com.fpoly.duan.dto.RoomDTO;
 import com.fpoly.duan.entity.Cinema;
 import com.fpoly.duan.entity.Room;
+import com.fpoly.duan.entity.RoomType;
 import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.RoomRepository;
+import com.fpoly.duan.repository.RoomTypeRepository;
 import com.fpoly.duan.service.CinemaScopeService;
 import com.fpoly.duan.util.SearchUtils;
 
@@ -46,6 +48,7 @@ public class RoomController {
 
     private final RoomRepository roomRepository;
     private final CinemaRepository cinemaRepository;
+    private final RoomTypeRepository roomTypeRepository;
     private final CinemaScopeService cinemaScopeService;
 
     @GetMapping
@@ -106,10 +109,17 @@ public class RoomController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tên phòng chiếu '" + roomName + "' đã tồn tại trong rạp này");
         }
 
+        if (roomDTO.getRoomTypeId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng chọn loại phòng chiếu");
+        }
+        RoomType roomType = roomTypeRepository.findById(roomDTO.getRoomTypeId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy loại phòng với id: " + roomDTO.getRoomTypeId()));
+
         Room room = new Room();
         room.setName(roomName);
         room.setStatus(roomDTO.getStatus() != null ? roomDTO.getStatus() : 1);
         room.setCinema(cinema);
+        room.setRoomType(roomType);
 
         Room created = roomRepository.save(room);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<RoomDTO>builder()
@@ -151,6 +161,11 @@ public class RoomController {
         if (targetCinema != null) {
             room.setCinema(targetCinema);
         }
+        if (roomDTO.getRoomTypeId() != null) {
+            RoomType roomType = roomTypeRepository.findById(roomDTO.getRoomTypeId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy loại phòng với id: " + roomDTO.getRoomTypeId()));
+            room.setRoomType(roomType);
+        }
 
         Room updated = roomRepository.save(room);
         return ResponseEntity.ok(ApiResponse.<RoomDTO>builder()
@@ -177,6 +192,7 @@ public class RoomController {
 
     private RoomDTO toDTO(Room r) {
         Cinema c = r.getCinema();
+        RoomType rt = r.getRoomType();
         return RoomDTO.builder()
                 .id(r.getRoomId())
                 .name(r.getName())
@@ -184,6 +200,11 @@ public class RoomController {
                 .cinemaId(c != null ? c.getCinemaId() : null)
                 .closeReason(r.getCloseReason())
                 .closedAt(r.getClosedAt())
+                .roomTypeId(rt != null ? rt.getRoomTypeId() : null)
+                .roomTypeName(rt != null ? rt.getName() : null)
+                .standardSeatCount(rt != null ? rt.getStandardSeatCount() : null)
+                .vipSeatCount(rt != null ? rt.getVipSeatCount() : null)
+                .coupleSeatCount(rt != null ? rt.getCoupleSeatCount() : null)
                 .build();
     }
 }

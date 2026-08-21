@@ -62,4 +62,8 @@
          thay ro nguyen nhan khi quet QR ve da huy. -->
     <include file="changes/2026-08-19-add-ticket-cancel-reason.xml" relativeToChangelogFile="true"/>
 
+    <!-- Loai phong chieu: bang room_types (3 loai co dinh, seed san), FK room_type_id vao rooms.
+         Admin chon loai phong khi tao phong; SeatManagement validate dung so ghe khi luu so do. -->
+    <include file="changes/2026-08-19-add-room-types.xml" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>
