@@ -281,6 +281,9 @@ public class ShiftController {
         // Chuyển startTime và endTime từ string sang LocalDateTime
         LocalDate date = request.getDate();
         LocalDateTime[] range = resolveTimeRange(request.getShiftType(), date);
+        if (range[0].isBefore(nowInAppZone())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không thể tạo ca làm đã qua");
+        }
 
         StaffShift shift = new StaffShift();
         shift.setDate(date);
@@ -311,6 +314,9 @@ public class ShiftController {
         StaffShift shift = staffShiftRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy ca làm với id: " + id));
         requireShiftScope(shift);
+        if (shift.getStartTime() != null && shift.getStartTime().isBefore(nowInAppZone())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không thể sửa ca làm đã qua");
+        }
 
         Staff staff = staffRepository.findById(request.getStaffId())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân viên"));
@@ -343,6 +349,9 @@ public class ShiftController {
 
         LocalDate date = request.getDate();
         LocalDateTime[] range = resolveTimeRange(request.getShiftType(), date);
+        if (range[0].isBefore(nowInAppZone())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không thể tạo ca làm đã qua");
+        }
 
         Staff stBanve = staffRepository.findById(request.getStaffBanveId())
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy staff Bán vé"));
@@ -376,6 +385,9 @@ public class ShiftController {
         StaffShift rep = staffShiftRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy ca làm với id: " + id));
         requireShiftScope(rep);
+        if (rep.getStartTime() != null && rep.getStartTime().isBefore(nowInAppZone())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không thể sửa ca làm đã qua");
+        }
         Integer repCinemaId = shiftCinemaId(rep);
 
         LocalDate date = request.getDate() != null ? request.getDate() : rep.getDate();

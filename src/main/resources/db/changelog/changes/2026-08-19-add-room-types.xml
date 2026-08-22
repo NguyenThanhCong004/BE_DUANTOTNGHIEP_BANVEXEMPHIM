@@ -1,0 +1,66 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Bảng loại phòng chiếu: 3 loại cố định, seed trực tiếp, admin chỉ xem. -->
+    <changeSet id="2026-08-19-add-room-types-1" author="claude">
+        <createTable tableName="room_types">
+            <column name="room_type_id" type="int" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="nvarchar(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="standard_seat_count" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column name="vip_seat_count" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column name="couple_seat_count" type="int">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <!-- Seed 3 loại phòng mặc định -->
+    <changeSet id="2026-08-19-add-room-types-2" author="claude">
+        <insert tableName="room_types">
+            <column name="name" value="Phòng Nhỏ"/>
+            <column name="standard_seat_count" valueNumeric="60"/>
+            <column name="vip_seat_count" valueNumeric="24"/>
+            <column name="couple_seat_count" valueNumeric="16"/>
+        </insert>
+        <insert tableName="room_types">
+            <column name="name" value="Phòng Vừa"/>
+            <column name="standard_seat_count" valueNumeric="76"/>
+            <column name="vip_seat_count" valueNumeric="36"/>
+            <column name="couple_seat_count" valueNumeric="18"/>
+        </insert>
+        <insert tableName="room_types">
+            <column name="name" value="Phòng Lớn"/>
+            <column name="standard_seat_count" valueNumeric="90"/>
+            <column name="vip_seat_count" valueNumeric="50"/>
+            <column name="couple_seat_count" valueNumeric="20"/>
+        </insert>
+    </changeSet>
+
+    <!-- Thêm FK room_type_id vào bảng rooms (nullable — phòng cũ chưa có loại) -->
+    <changeSet id="2026-08-19-add-room-types-3" author="claude">
+        <addColumn tableName="rooms">
+            <column name="room_type_id" type="int">
+                <constraints nullable="true"
+                    foreignKeyName="fk_rooms_room_type_id"
+                    references="room_types(room_type_id)"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="2026-08-19-add-room-types-4" author="claude">
+        <createIndex tableName="rooms" indexName="ix_rooms_room_type_id">
+            <column name="room_type_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

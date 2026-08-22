@@ -313,16 +313,14 @@ public class StaffServiceImpl implements StaffService {
             Integer nextStatus = staffDTO.getStatus();
             staff.setStatus(nextStatus);
 
-            // Logic xử lý ca làm khi khóa tài khoản (chuyển từ 1 -> 0)
-            if (oldStatus == 1 && nextStatus == 0) {
-                List<com.fpoly.duan.entity.StaffShift> futureShifts = staffShiftRepository.findByStaffStaffIdOrderByDateDescStartTimeAsc(id);
+            // Khi khóa tài khoản (1→0): xóa ca tương lai, giữ lịch sử
+            if (Integer.valueOf(1).equals(oldStatus) && Integer.valueOf(0).equals(nextStatus)) {
                 java.time.LocalDate today = java.time.LocalDate.now();
-                for (com.fpoly.duan.entity.StaffShift ss : futureShifts) {
-                    if (ss.getDate() != null && !ss.getDate().isBefore(today)) {
-                        ss.setStaff(null);
-                        staffShiftRepository.save(ss);
-                    }
-                }
+                java.time.LocalDateTime now = java.time.LocalDateTime.now();
+                // Xóa tất cả ca từ ngày mai trở đi
+                staffShiftRepository.deleteByStaffIdAndDateAfterOrEqual(id, today.plusDays(1));
+                // Xóa ca hôm nay chưa bắt đầu (startTime > now)
+                staffShiftRepository.deleteTodayUnstartedByStaffId(id, today, now);
             }
         }
 
