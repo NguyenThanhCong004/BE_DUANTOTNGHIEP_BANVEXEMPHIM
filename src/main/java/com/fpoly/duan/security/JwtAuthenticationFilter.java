@@ -25,8 +25,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtService jwtService;
     private final CustomUserDetailsService userDetailsService;
     private final com.fpoly.duan.repository.RevokedTokenRepository revokedTokenRepository;
+    // Luu y: "/api/v1/cinemas" KHONG nam trong danh sach nay (khac cac prefix con lai o duoi).
+    // CinemaController.list()/getById() can phan biet Super Admin (thay ca rap bi khoa) voi
+    // khach cong khai (chi thay rap dang hoat dong) qua chinh Authentication cua request - neu
+    // dua vao day, filter se bo qua JWT hoan toan cho GET /api/v1/cinemas/** (ke ca khi co
+    // Bearer token Super Admin hop le), khien Super Admin cung bi coi nhu khach vang lai.
+    // SecurityConfig da permitAll() rieng cho GET /api/v1/cinemas/** nen khach van vao binh
+    // thuong khi khong co token; chi khac la filter se van doc token NEU co de xac thuc dung.
     private static final List<String> PUBLIC_GET_PREFIXES = List.of(
-            "/api/v1/cinemas",
             "/api/v1/genres",
             "/api/v1/membership-ranks",
             "/api/v1/movies",
