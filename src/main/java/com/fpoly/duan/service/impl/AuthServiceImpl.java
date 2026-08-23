@@ -77,6 +77,7 @@ public class AuthServiceImpl implements AuthService {
             throw new BadCredentialsException("Sai tài khoản hoặc mật khẩu");
         }
         authenticatePassword(loginRequest.getPassword(), userDetails);
+        assertStaffCinemaOperational(userDetails);
         rotateSessionVersion(userDetails);
 
         String token = jwtService.generateToken(userDetails);

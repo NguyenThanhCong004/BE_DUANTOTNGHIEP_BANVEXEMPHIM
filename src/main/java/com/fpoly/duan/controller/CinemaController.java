@@ -158,11 +158,13 @@ public class CinemaController {
             hasChanges = true;
         }
 
+        boolean cinemaLockedNow = false;
         if (dto.getStatus() != null) {
             if (!VALID_STATUSES.contains(dto.getStatus())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Trạng thái không hợp lệ. Chỉ chấp nhận: 0 (tạm ngưng), 1 (hoạt động), 2 (sắp khai trương)");
             }
+            cinemaLockedNow = dto.getStatus() != 1;
             c.setStatus(dto.getStatus());
             hasChanges = true;
         }
@@ -178,6 +180,17 @@ public class CinemaController {
         Cinema saved = cinemaRepository.save(c);
         auditLogService.log(currentActorStaff(), "UPDATE_CINEMA", "CINEMA", saved.getCinemaId(),
                 "Cập nhật rạp \"" + saved.getName() + "\"");
+
+        // Rạp vừa bị khóa/tạm ngưng: thu hồi ngay phiên đăng nhập hiện tại của toàn bộ nhân
+        // viên thuộc rạp (đổi session_version — tái dùng cơ chế giới hạn 1 thiết bị) để họ
+        // không thể tiếp tục thao tác cho tới khi Super Admin mở lại rạp và họ đăng nhập lại.
+        if (cinemaLockedNow) {
+            List<Staff> staffOfCinema = staffRepository.findByCinema_CinemaId(id);
+            for (Staff s : staffOfCinema) {
+                s.setSessionVersion(java.util.UUID.randomUUID().toString());
+            }
+            staffRepository.saveAll(staffOfCinema);
+        }
         return ResponseEntity.ok(ApiResponse.<CinemaDTO>builder()
                 .status(HttpStatus.OK.value())
                 .message("Cập nhật rạp thành công")
