@@ -52,7 +52,8 @@ public class TicketEmailService {
                 String address = st != null && st.getRoom() != null && st.getRoom().getCinema() != null
                         ? st.getRoom().getCinema().getAddress() : "";
                 String showtime = st != null && st.getStartTime() != null ? TIME_FORMAT.format(st.getStartTime()) : "";
-                String seat = ticket.getSeat() == null ? "" : safe(ticket.getSeat().getRow()) + safe(ticket.getSeat().getNumber());
+                String seat = ticket.getSeatLabel() != null ? ticket.getSeatLabel()
+                        : ticket.getSeat() == null ? "" : safe(ticket.getSeat().getRow()) + safe(ticket.getSeat().getNumber());
                 rows.append("<table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='margin:0 0 18px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;'><tr>")
                         .append("<td style='padding:18px;vertical-align:top;'>")
                         .append("<p style='margin:0 0 10px;font-size:15px;font-weight:800;color:#d4ff00;'>Vé ").append(index++).append(" &middot; ").append(escape(movie)).append("</p>")
@@ -100,7 +101,8 @@ public class TicketEmailService {
                 Showtime st = ticket.getShowtime();
                 String movie = st != null && st.getMovie() != null ? st.getMovie().getTitle() : "Vé xem phim";
                 String newShowtime = st != null && st.getStartTime() != null ? TIME_FORMAT.format(st.getStartTime()) : "";
-                String newSeat = ticket.getSeat() == null ? "" : safe(ticket.getSeat().getRow()) + safe(ticket.getSeat().getNumber());
+                String newSeat = ticket.getSeatLabel() != null ? ticket.getSeatLabel()
+                        : ticket.getSeat() == null ? "" : safe(ticket.getSeat().getRow()) + safe(ticket.getSeat().getNumber());
                 TicketRescheduleSnapshotDTO old = oldByTicketId.get(ticket.getTicketId());
                 String oldShowtime = old != null ? safe(old.getShowtimeStart()) : "";
                 String oldSeat = old != null ? safe(old.getSeatLabel()) : "";

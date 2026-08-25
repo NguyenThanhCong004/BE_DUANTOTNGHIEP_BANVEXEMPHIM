@@ -161,8 +161,8 @@ public class OrderOnlineController {
                             .roomName(t.getShowtime() != null && t.getShowtime().getRoom() != null
                                     ? t.getShowtime().getRoom().getName()
                                     : "N/A")
-                            .seatNumber(t.getSeat() != null
-                                    ? (t.getSeat().getRow() + t.getSeat().getNumber())
+                            .seatNumber(t.getSeatLabel() != null ? t.getSeatLabel()
+                                    : t.getSeat() != null ? (t.getSeat().getRow() + t.getSeat().getNumber())
                                     : "N/A")
                             .seatTypeName(t.getSeat() != null && t.getSeat().getSeatType() != null
                                     ? t.getSeat().getSeatType().getName()

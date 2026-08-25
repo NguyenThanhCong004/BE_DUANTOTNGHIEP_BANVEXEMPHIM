@@ -69,4 +69,8 @@
     <!-- Them 2 loai phong khop dung cau hinh ghe thuc te dang chay (xem comment trong file) -->
     <include file="changes/2026-08-21-add-real-room-type-profiles.xml" relativeToChangelogFile="true"/>
 
+    <!-- Snapshot ten ghe tren ve (tach khoi bang seats) - cho phep xoa ghe het suat chieu
+         ma khong mat ten ghe tren hoa don cu (xem comment trong file) -->
+    <include file="changes/2026-08-25-add-ticket-seat-label.xml" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

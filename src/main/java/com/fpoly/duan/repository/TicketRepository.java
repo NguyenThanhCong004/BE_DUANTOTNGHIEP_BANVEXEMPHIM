@@ -160,6 +160,16 @@ public interface TicketRepository extends JpaRepository<Ticket, Integer> {
 
     long countBySeat_SeatId(Integer seatId);
 
+    /** Toàn bộ vé (mọi trạng thái) đang tham chiếu 1 ghế — dùng để gỡ FK (seat_id = NULL, giữ seat_label)
+     * trước khi xóa ghế khỏi sơ đồ. */
+    List<Ticket> findBySeat_SeatId(Integer seatId);
+
+    /** Vé chưa hủy (status 0/1) của 1 ghế, kèm showtime+movie — dùng để tính ghế có còn suất chiếu
+     * đang diễn ra/sắp tới hay không (chặn xóa ghế theo yêu cầu giảng viên). */
+    @Query("SELECT t FROM Ticket t LEFT JOIN FETCH t.showtime s LEFT JOIN FETCH s.movie " +
+           "WHERE t.seat.seatId = :seatId AND t.status IN (0, 1)")
+    List<Ticket> findActiveTicketsBySeatId(@Param("seatId") Integer seatId);
+
     /** Trùng ghế theo vé (trạng thái vé trên Ticket), không dùng derived name ...AndStatus vì Seat cũng có `status`. */
     @Query("SELECT CASE WHEN COUNT(t) > 0 THEN true ELSE false END FROM Ticket t " +
            "WHERE t.showtime.showtimeId = :showtimeId AND t.seat.seatId = :seatId AND t.status = :status")

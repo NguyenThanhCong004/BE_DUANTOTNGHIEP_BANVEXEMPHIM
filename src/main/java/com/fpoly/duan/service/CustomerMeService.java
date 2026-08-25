@@ -152,7 +152,8 @@ public class CustomerMeService {
             String moviePoster = st != null && st.getMovie() != null ? st.getMovie().getPoster() : null;
             String when = formatShowtime(st);
             Seat seat = t.getSeat();
-            String seatLabel = seat != null ? (String.valueOf(seat.getRow()) + String.valueOf(seat.getNumber())) : "";
+            String seatLabel = t.getSeatLabel() != null ? t.getSeatLabel()
+                    : seat != null ? (String.valueOf(seat.getRow()) + String.valueOf(seat.getNumber())) : "";
             String showDate = st != null && st.getStartTime() != null ? st.getStartTime().toLocalDate().toString() : null;
             String showTime = st != null && st.getStartTime() != null ? st.getStartTime().toLocalTime().format(TIME_FMT) : null;
             String roomName = st != null && st.getRoom() != null ? st.getRoom().getName() : null;
