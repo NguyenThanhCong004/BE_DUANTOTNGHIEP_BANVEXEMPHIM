@@ -16,6 +16,8 @@ import com.fpoly.duan.config.OpenApiConfig;
 import com.fpoly.duan.dto.AffectedOrderDTO;
 import com.fpoly.duan.dto.AlternateShowtimeSuggestionDTO;
 import com.fpoly.duan.dto.ApiResponse;
+import com.fpoly.duan.dto.AutoMoveResultDTO;
+import com.fpoly.duan.dto.AutoMoveToSpareRoomRequest;
 import com.fpoly.duan.dto.RoomCloseRequest;
 import com.fpoly.duan.dto.RoomClosureMoveRequest;
 import com.fpoly.duan.dto.RoomDTO;
@@ -65,6 +67,20 @@ public class RoomClosureController {
                         ? "Đã mở lại phòng — còn " + remaining + " đơn chưa xử lý dời/hủy"
                         : "Đã mở lại phòng")
                 .data(remaining)
+                .build());
+    }
+
+    @PostMapping("/closure/auto-move-to-spare-type")
+    @Operation(summary = "Dời hàng loạt suất chiếu (trong khoảng thời gian chọn) sang phòng trống cùng Loại phòng chiếu",
+            description = "Admin chủ động bấm nút — không tự động khi đóng phòng. Suất nào không tìm được phòng phù hợp vẫn giữ nguyên, lộ ra ở /closure/affected-orders để xử lý thủ công.")
+    public ResponseEntity<ApiResponse<AutoMoveResultDTO>> autoMoveToSpareRoomType(
+            @PathVariable Integer roomId, @RequestBody AutoMoveToSpareRoomRequest request) {
+        AutoMoveResultDTO result = roomClosureService.autoMoveMatchingRoomShowtimes(roomId,
+                request != null ? request.getWindowEnd() : null);
+        return ResponseEntity.ok(ApiResponse.<AutoMoveResultDTO>builder()
+                .status(HttpStatus.OK.value())
+                .message(result.getSummary())
+                .data(result)
                 .build());
     }
 
