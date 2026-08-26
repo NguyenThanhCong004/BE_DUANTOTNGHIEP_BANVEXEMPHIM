@@ -130,9 +130,20 @@ public class OrderOnlineController {
         String voucherDiscountType = voucher != null ? voucher.getDiscountType() : null;
         Double voucherValue = voucher != null ? voucher.getValue() : null;
 
-        MembershipRank rank = u != null && u.getRankId() != null
-                ? membershipRankRepository.findById(u.getRankId()).orElse(null)
-                : null;
+        MembershipRank rank = null;
+        if (u != null) {
+            if (u.getRankId() != null) {
+                rank = membershipRankRepository.findById(u.getRankId()).orElse(null);
+            }
+            // Fallback: user tồn tại nhưng rank_id chưa được gán → dùng hạng thấp nhất
+            if (rank == null) {
+                rank = membershipRankRepository.findAll().stream()
+                        .filter(r -> r.getStatus() == null || r.getStatus() == 1)
+                        .min(java.util.Comparator.comparingDouble(
+                                r -> r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                        .orElse(null);
+            }
+        }
         String rankName = rank != null ? rank.getRankName() : null;
         Double rankDiscountPercent = rank != null ? rank.getDiscountPercent() : null;
 

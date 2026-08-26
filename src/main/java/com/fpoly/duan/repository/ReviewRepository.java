@@ -42,4 +42,13 @@ public interface ReviewRepository extends JpaRepository<Review, Integer> {
             "WHERE o.status = 1 AND (t.status IS NULL OR t.status = 1) " +
             "GROUP BY s.movie.movieId")
     List<Object[]> findAllAverageRatings();
+
+    /** Thống kê rating và số lượt đánh giá theo phim — dùng cho trang thống kê phim. */
+    @Query("SELECT s.movie.movieId, AVG(r.rating), COUNT(r) FROM Review r " +
+            "JOIN r.ticket t " +
+            "JOIN t.orderOnline o " +
+            "JOIN t.showtime s " +
+            "WHERE o.status = 1 AND (t.status IS NULL OR t.status = 1) " +
+            "GROUP BY s.movie.movieId")
+    List<Object[]> findAllRatingStats();
 }

@@ -126,6 +126,31 @@ public interface OrderOnlineRepository extends JpaRepository<OrderOnline, Intege
            "(SELECT COUNT(*) FROM points_histories WHERE user_id = :userId)", nativeQuery = true)
     long countTransactionRefs(@Param("userId") Integer userId);
 
+    @Query("SELECT o.user.userId, COUNT(o) FROM OrderOnline o WHERE o.status = 1 AND o.user IS NOT NULL GROUP BY o.user.userId")
+    List<Object[]> countCompletedOrdersPerUser();
+
+    /** Tổng chi tiêu toàn thời gian mỗi user (status=1) */
+    @Query("SELECT o.user.userId, COALESCE(SUM(o.finalAmount), 0.0) FROM OrderOnline o WHERE o.status = 1 AND o.user IS NOT NULL GROUP BY o.user.userId")
+    List<Object[]> sumAllTimeSpendingPerUser();
+
+    /** Tổng chi tiêu trong năm hiện tại mỗi user (để tính hạng) */
+    @Query("SELECT o.user.userId, COALESCE(SUM(o.finalAmount), 0.0) FROM OrderOnline o WHERE o.status = 1 AND o.user IS NOT NULL AND YEAR(o.createdAt) = :year GROUP BY o.user.userId")
+    List<Object[]> sumCurrentYearSpendingPerUser(@Param("year") int year);
+
+    /** Số đơn + doanh thu mỗi nhân viên xử lý (status=1) */
+    @Query("SELECT o.staff.staffId, COUNT(o), COALESCE(SUM(o.finalAmount), 0.0) FROM OrderOnline o WHERE o.status = 1 AND o.staff IS NOT NULL GROUP BY o.staff.staffId")
+    List<Object[]> getStaffOrderStats();
+
+    /** Thống kê khách hàng theo rạp: cinemaId, cinemaName, unique customers, total orders, total revenue */
+    @Query("SELECT o.cinema.cinemaId, o.cinema.name, COUNT(DISTINCT o.user.userId), COUNT(o), COALESCE(SUM(o.finalAmount), 0.0) " +
+           "FROM OrderOnline o WHERE o.status = 1 AND o.cinema IS NOT NULL " +
+           "GROUP BY o.cinema.cinemaId, o.cinema.name")
+    List<Object[]> getCustomerStatsByCinema();
+
+    /** Danh sách userId đã đặt tại rạp cụ thể (status=1) */
+    @Query("SELECT DISTINCT o.user.userId FROM OrderOnline o WHERE o.status = 1 AND o.cinema IS NOT NULL AND o.cinema.cinemaId = :cinemaId AND o.user IS NOT NULL")
+    List<Integer> getUserIdsByCinema(@Param("cinemaId") Integer cinemaId);
+
     @Query(value = "SELECT COALESCE(c_ticket.name, c_staff.name) as cinema_name, " +
            "SUM(o.final_amount) as revenue, " +
            "COALESCE(SUM(t_count.c), 0) as total_tickets " +

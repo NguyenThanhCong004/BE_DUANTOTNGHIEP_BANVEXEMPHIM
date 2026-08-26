@@ -1,9 +1,17 @@
 package com.fpoly.duan.controller;
 
 import com.fpoly.duan.dto.AuditLogDTO;
+import com.fpoly.duan.dto.CinemaCustomerStatDTO;
 import com.fpoly.duan.dto.CinemaRankingDTO;
 import com.fpoly.duan.dto.CinemaDetailDTO;
+import com.fpoly.duan.dto.CustomerStatDTO;
 import com.fpoly.duan.dto.DashboardSummaryDTO;
+import com.fpoly.duan.dto.InvoiceStatDTO;
+import com.fpoly.duan.dto.ProductStatDTO;
+import com.fpoly.duan.dto.StaffStatDTO;
+import com.fpoly.duan.dto.CinemaStatDTO;
+import com.fpoly.duan.dto.MovieCinemaRevenueDTO;
+import com.fpoly.duan.dto.MovieStatDTO;
 import com.fpoly.duan.dto.RevenueBreakdownDTO;
 import com.fpoly.duan.dto.RevenueChartDTO;
 import com.fpoly.duan.dto.SeatOccupancyDTO;
@@ -17,6 +25,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/super-admin/dashboard")
@@ -86,6 +95,73 @@ public class DashboardController {
     @GetMapping("/payment-method-revenue")
     public ResponseEntity<List<RevenueBreakdownDTO>> getPaymentMethodRevenue() {
         return ResponseEntity.ok(dashboardService.getPaymentMethodRevenue());
+    }
+
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    @GetMapping("/movie-stats")
+    public ResponseEntity<List<MovieStatDTO>> getMovieStats() {
+        return ResponseEntity.ok(dashboardService.getMovieStats());
+    }
+
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    @GetMapping("/movie-cinema-revenue")
+    public ResponseEntity<List<MovieCinemaRevenueDTO>> getMovieCinemaRevenue(
+            @RequestParam Integer movieId) {
+        return ResponseEntity.ok(dashboardService.getMovieCinemaRevenue(movieId));
+    }
+
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    @GetMapping("/cinema-movie-revenue")
+    public ResponseEntity<List<TopMovieDTO>> getCinemaMovieRevenue(
+            @RequestParam Integer cinemaId) {
+        return ResponseEntity.ok(dashboardService.getCinemaMovieRevenue(cinemaId));
+    }
+
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    @GetMapping("/cinema-stats")
+    public ResponseEntity<List<CinemaStatDTO>> getCinemaStats() {
+        return ResponseEntity.ok(dashboardService.getCinemaStats());
+    }
+
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    @GetMapping("/customer-stats")
+    public ResponseEntity<List<CustomerStatDTO>> getCustomerStats(
+            @RequestParam(required = false) Integer cinemaId) {
+        return ResponseEntity.ok(dashboardService.getCustomerStats(cinemaId));
+    }
+
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    @GetMapping("/staff-stats")
+    public ResponseEntity<List<StaffStatDTO>> getStaffStats() {
+        return ResponseEntity.ok(dashboardService.getStaffStats());
+    }
+
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    @GetMapping("/customer-stats/by-cinema")
+    public ResponseEntity<List<CinemaCustomerStatDTO>> getCustomerStatsByCinema() {
+        return ResponseEntity.ok(dashboardService.getCustomerStatsByCinema());
+    }
+
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    @GetMapping("/product-stats")
+    public ResponseEntity<List<ProductStatDTO>> getProductStats() {
+        return ResponseEntity.ok(dashboardService.getProductStats());
+    }
+
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    @GetMapping("/product-stats/category-revenue")
+    public ResponseEntity<Map<String, Double>> getCategoryRevenue(
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false, defaultValue = "0") Integer month) {
+        int targetYear = (year != null && year > 0) ? year : java.time.LocalDate.now().getYear();
+        int targetMonth = (month != null) ? month : 0;
+        return ResponseEntity.ok(dashboardService.getCategoryRevenueByMonth(targetYear, targetMonth));
+    }
+
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    @GetMapping("/invoice-stats")
+    public ResponseEntity<List<InvoiceStatDTO>> getInvoiceStats() {
+        return ResponseEntity.ok(dashboardService.getInvoiceStats());
     }
 
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
