@@ -1,7 +1,5 @@
 package com.fpoly.duan.controller;
 
-import java.util.List;
-
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -25,6 +23,7 @@ import com.fpoly.duan.dto.me.MePointsHistoryDto;
 import com.fpoly.duan.dto.me.MeTransactionDto;
 import com.fpoly.duan.dto.me.MeUserVoucherRowDto;
 import com.fpoly.duan.dto.me.MovieReviewRequest;
+import com.fpoly.duan.dto.me.PagedResponse;
 import com.fpoly.duan.dto.me.VoucherRedeemRequest;
 import com.fpoly.duan.security.CustomUserDetails;
 import com.fpoly.duan.service.CustomerMeService;
@@ -66,22 +65,27 @@ public class CustomerMeController {
     }
 
     @GetMapping("/transactions")
-    @Operation(summary = "Lịch sử giao dịch (đơn + điểm)")
-    public ResponseEntity<ApiResponse<List<MeTransactionDto>>> transactions(
+    @Operation(summary = "Lịch sử giao dịch (đơn + điểm) — phân trang, page 0-based")
+    public ResponseEntity<ApiResponse<PagedResponse<MeTransactionDto>>> transactions(
             Authentication authentication,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String q) {
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
         Integer uid = requireCustomerUserId(authentication);
         String term = SearchUtils.pick(search, keyword, q);
-        List<MeTransactionDto> data = customerMeService.listTransactions(uid).stream()
-                .filter(tx -> SearchUtils.matches(term,
-                        tx.getId(), tx.getOrderCode(), tx.getType(), tx.getStatus(), tx.getFinalAmount(),
-                        tx.getVoucherCode(), tx.getItems() != null ? tx.getItems().stream()
-                                .map(i -> String.join(" ", String.valueOf(i.getLabel()), String.valueOf(i.getSub())))
-                                .toList() : null))
-                .toList();
-        return ResponseEntity.ok(ApiResponse.<List<MeTransactionDto>>builder()
+        PagedResponse<MeTransactionDto> data = customerMeService.listTransactions(uid, page, size);
+        if (term != null && !term.isBlank()) {
+            data.setContent(data.getContent().stream()
+                    .filter(tx -> SearchUtils.matches(term,
+                            tx.getId(), tx.getOrderCode(), tx.getType(), tx.getStatus(), tx.getFinalAmount(),
+                            tx.getVoucherCode(), tx.getItems() != null ? tx.getItems().stream()
+                                    .map(i -> String.join(" ", String.valueOf(i.getLabel()), String.valueOf(i.getSub())))
+                                    .toList() : null))
+                    .toList());
+        }
+        return ResponseEntity.ok(ApiResponse.<PagedResponse<MeTransactionDto>>builder()
                 .status(HttpStatus.OK.value())
                 .message("OK")
                 .data(data)
@@ -89,20 +93,26 @@ public class CustomerMeController {
     }
 
     @GetMapping("/favorites")
-    @Operation(summary = "Phim yêu thích")
-    public ResponseEntity<ApiResponse<List<MeFavoriteMovieDto>>> favorites(
+    @Operation(summary = "Phim yêu thích — phân trang, page 0-based")
+    public ResponseEntity<ApiResponse<PagedResponse<MeFavoriteMovieDto>>> favorites(
             Authentication authentication,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String q) {
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
         Integer uid = requireCustomerUserId(authentication);
         String term = SearchUtils.pick(search, keyword, q);
-        return ResponseEntity.ok(ApiResponse.<List<MeFavoriteMovieDto>>builder()
+        PagedResponse<MeFavoriteMovieDto> data = customerMeService.listFavorites(uid, page, size);
+        if (term != null && !term.isBlank()) {
+            data.setContent(data.getContent().stream()
+                    .filter(f -> SearchUtils.matches(term, f.getFavoriteId(), f.getMovieId(), f.getTitle(), f.getStatus()))
+                    .toList());
+        }
+        return ResponseEntity.ok(ApiResponse.<PagedResponse<MeFavoriteMovieDto>>builder()
                 .status(HttpStatus.OK.value())
                 .message("OK")
-                .data(customerMeService.listFavorites(uid).stream()
-                        .filter(f -> SearchUtils.matches(term, f.getFavoriteId(), f.getMovieId(), f.getTitle(), f.getStatus()))
-                        .toList())
+                .data(data)
                 .build());
     }
 
@@ -158,24 +168,30 @@ public class CustomerMeController {
     }
 
     @GetMapping("/vouchers")
-    @Operation(summary = "Voucher trong ví")
-    public ResponseEntity<ApiResponse<List<MeUserVoucherRowDto>>> myVouchers(
+    @Operation(summary = "Voucher trong ví — phân trang, page 0-based")
+    public ResponseEntity<ApiResponse<PagedResponse<MeUserVoucherRowDto>>> myVouchers(
             Authentication authentication,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String q) {
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
         Integer uid = requireCustomerUserId(authentication);
         String term = SearchUtils.pick(search, keyword, q);
-        return ResponseEntity.ok(ApiResponse.<List<MeUserVoucherRowDto>>builder()
+        PagedResponse<MeUserVoucherRowDto> data = customerMeService.listUserVouchers(uid, page, size);
+        if (term != null && !term.isBlank()) {
+            data.setContent(data.getContent().stream()
+                    .filter(v -> SearchUtils.matches(term,
+                            v.getUserVoucherId(), v.getStatus(),
+                            v.getVoucher() != null ? v.getVoucher().getCode() : null,
+                            v.getVoucher() != null ? v.getVoucher().getValue() : null,
+                            v.getVoucher() != null ? v.getVoucher().getPointVoucher() : null))
+                    .toList());
+        }
+        return ResponseEntity.ok(ApiResponse.<PagedResponse<MeUserVoucherRowDto>>builder()
                 .status(HttpStatus.OK.value())
                 .message("OK")
-                .data(customerMeService.listUserVouchers(uid).stream()
-                        .filter(v -> SearchUtils.matches(term,
-                                v.getUserVoucherId(), v.getStatus(),
-                                v.getVoucher() != null ? v.getVoucher().getCode() : null,
-                                v.getVoucher() != null ? v.getVoucher().getValue() : null,
-                                v.getVoucher() != null ? v.getVoucher().getPointVoucher() : null))
-                        .toList())
+                .data(data)
                 .build());
     }
 
@@ -192,13 +208,16 @@ public class CustomerMeController {
     }
 
     @GetMapping("/points-history")
-    @Operation(summary = "Lịch sử điểm")
-    public ResponseEntity<ApiResponse<List<MePointsHistoryDto>>> pointsHistory(Authentication authentication) {
+    @Operation(summary = "Lịch sử điểm — phân trang, page 0-based")
+    public ResponseEntity<ApiResponse<PagedResponse<MePointsHistoryDto>>> pointsHistory(
+            Authentication authentication,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
         Integer uid = requireCustomerUserId(authentication);
-        return ResponseEntity.ok(ApiResponse.<List<MePointsHistoryDto>>builder()
+        return ResponseEntity.ok(ApiResponse.<PagedResponse<MePointsHistoryDto>>builder()
                 .status(HttpStatus.OK.value())
                 .message("OK")
-                .data(customerMeService.listPointsHistory(uid))
+                .data(customerMeService.listPointsHistory(uid, page, size))
                 .build());
     }
 }

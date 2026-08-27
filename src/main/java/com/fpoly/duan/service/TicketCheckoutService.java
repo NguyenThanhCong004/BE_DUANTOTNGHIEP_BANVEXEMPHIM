@@ -55,6 +55,7 @@ import com.fpoly.duan.repository.ShowtimeRepository;
 import com.fpoly.duan.repository.TicketRepository;
 import com.fpoly.duan.repository.UserRepository;
 import com.fpoly.duan.repository.UserVoucherRepository;
+import com.fpoly.duan.util.SeatLabel;
 import com.fpoly.duan.entity.Promotion;
 import com.fpoly.duan.entity.UserVoucher;
 import com.fpoly.duan.entity.Voucher;
@@ -185,6 +186,7 @@ public class TicketCheckoutService {
             Ticket t = new Ticket();
             t.setShowtime(showtime);
             t.setSeat(seats.get(i));
+            t.setSeatLabel(SeatLabel.of(seats.get(i)));
             t.setOrderOnline(order);
             PricedSeatLine pl = pricedLines.get(i);
             t.setOriginalPrice(pl.originalPrice());

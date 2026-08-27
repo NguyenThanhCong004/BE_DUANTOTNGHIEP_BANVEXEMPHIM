@@ -34,4 +34,19 @@ public interface OrderDetailFoodRepository extends JpaRepository<OrderDetailFood
     List<Object[]> getProductsBreakdownByStaffBetween(@Param("staffId") Integer staffId, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
     boolean existsByProduct_ProductId(Integer productId);
+
+    /** Số lượng + doanh thu theo từng sản phẩm (đơn hoàn tất) */
+    @Query("SELECT od.product.productId, SUM(od.quantity), COALESCE(SUM(od.quantity * od.price), 0.0) " +
+           "FROM OrderDetailFood od JOIN od.orderOnline o " +
+           "WHERE o.status = 1 AND od.product IS NOT NULL " +
+           "GROUP BY od.product.productId")
+    List<Object[]> getProductSalesStats();
+
+    /** Doanh thu theo loại sản phẩm — month=0 nghĩa là cả năm */
+    @Query("SELECT cat.name, COALESCE(SUM(od.quantity * od.price), 0.0) " +
+           "FROM OrderDetailFood od JOIN od.orderOnline o JOIN od.product p LEFT JOIN p.category cat " +
+           "WHERE o.status = 1 AND YEAR(o.createdAt) = :year " +
+           "AND (:month = 0 OR MONTH(o.createdAt) = :month) " +
+           "GROUP BY cat.name")
+    List<Object[]> getCategoryRevenueByMonth(@Param("year") int year, @Param("month") int month);
 }

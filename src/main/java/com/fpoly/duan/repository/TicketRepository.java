@@ -71,6 +71,21 @@ public interface TicketRepository extends JpaRepository<Ticket, Integer> {
            "ORDER BY SUM(t.price) DESC")
     List<Object[]> getTopMoviesByRevenue();
 
+    /** Thống kê phim: movieId, title, poster, status, tickets, revenue — dùng cho trang thống kê phim. */
+    @Query("SELECT m.movieId, m.title, m.poster, m.status, COUNT(t), COALESCE(SUM(t.price), 0.0) " +
+           "FROM Ticket t JOIN t.showtime s JOIN s.movie m JOIN t.orderOnline o " +
+           "WHERE o.status = 1 " +
+           "GROUP BY m.movieId, m.title, m.poster, m.status " +
+           "ORDER BY SUM(t.price) DESC")
+    List<Object[]> getMovieStatsSortedByRevenue();
+
+    /** Thống kê rạp: cinemaId, tổng doanh thu, tổng số vé — dùng cho trang thống kê rạp. */
+    @Query("SELECT r.cinema.cinemaId, COALESCE(SUM(t.price), 0.0), COUNT(t) " +
+           "FROM Ticket t JOIN t.showtime s JOIN s.room r JOIN t.orderOnline o " +
+           "WHERE o.status = 1 " +
+           "GROUP BY r.cinema.cinemaId")
+    List<Object[]> getCinemaRevenueSummary();
+
     /** Top phim theo doanh thu vé, giới hạn theo rạp. */
     @Query("SELECT m.title, COUNT(t), COALESCE(SUM(t.price), 0.0) " +
            "FROM Ticket t JOIN t.showtime s JOIN s.movie m JOIN s.room r JOIN t.orderOnline o " +
@@ -78,6 +93,14 @@ public interface TicketRepository extends JpaRepository<Ticket, Integer> {
            "GROUP BY m.title " +
            "ORDER BY SUM(t.price) DESC")
     List<Object[]> getTopMoviesByRevenueForCinema(@Param("cinemaId") Integer cinemaId);
+
+    /** Doanh thu theo rạp cho một phim cụ thể — cinemaId, cinemaName, ticketsSold, revenue. */
+    @Query("SELECT r.cinema.cinemaId, r.cinema.name, COUNT(t), COALESCE(SUM(t.price), 0.0) " +
+           "FROM Ticket t JOIN t.showtime s JOIN s.movie m JOIN s.room r JOIN t.orderOnline o " +
+           "WHERE o.status = 1 AND m.movieId = :movieId " +
+           "GROUP BY r.cinema.cinemaId, r.cinema.name " +
+           "ORDER BY SUM(t.price) DESC")
+    List<Object[]> getCinemaRevenueByMovie(@Param("movieId") Integer movieId);
 
     /** Số vé đã bán (theo suất chiếu diễn ra trong khoảng thời gian) — dùng để tính tỷ lệ ghế đã bán hôm nay. */
     @Query("SELECT COUNT(t) FROM Ticket t JOIN t.showtime s JOIN t.orderOnline o " +
@@ -159,6 +182,16 @@ public interface TicketRepository extends JpaRepository<Ticket, Integer> {
     boolean existsPaidTicketByUserIdAndMovieId(@Param("userId") Integer userId, @Param("movieId") Integer movieId);
 
     long countBySeat_SeatId(Integer seatId);
+
+    /** Toàn bộ vé (mọi trạng thái) đang tham chiếu 1 ghế — dùng để gỡ FK (seat_id = NULL, giữ seat_label)
+     * trước khi xóa ghế khỏi sơ đồ. */
+    List<Ticket> findBySeat_SeatId(Integer seatId);
+
+    /** Vé chưa hủy (status 0/1) của 1 ghế, kèm showtime+movie — dùng để tính ghế có còn suất chiếu
+     * đang diễn ra/sắp tới hay không (chặn xóa ghế theo yêu cầu giảng viên). */
+    @Query("SELECT t FROM Ticket t LEFT JOIN FETCH t.showtime s LEFT JOIN FETCH s.movie " +
+           "WHERE t.seat.seatId = :seatId AND t.status IN (0, 1)")
+    List<Ticket> findActiveTicketsBySeatId(@Param("seatId") Integer seatId);
 
     /** Trùng ghế theo vé (trạng thái vé trên Ticket), không dùng derived name ...AndStatus vì Seat cũng có `status`. */
     @Query("SELECT CASE WHEN COUNT(t) > 0 THEN true ELSE false END FROM Ticket t " +

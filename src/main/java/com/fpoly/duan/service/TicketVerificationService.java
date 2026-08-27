@@ -67,7 +67,12 @@ public class TicketVerificationService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Vé không thuộc rạp bạn đang làm việc");
         }
         if (ticket.getStatus() == null || ticket.getStatus() != 1) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vé chưa thanh toán hoặc đã bị hủy");
+            boolean cancelled = ticket.getStatus() != null && ticket.getStatus() == 2;
+            String reason = ticket.getCancelReason();
+            String message = cancelled
+                    ? (reason != null && !reason.isBlank() ? "Vé đã bị hủy (" + reason + ")" : "Vé đã bị hủy")
+                    : "Vé chưa thanh toán hoặc đã bị hủy";
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
         }
         if (ticket.getCheckedInAt() != null) {
             String usedAt = ticket.getCheckedInAt().format(DISPLAY_FORMAT);

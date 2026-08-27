@@ -1,6 +1,8 @@
 package com.fpoly.duan.controller;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -27,14 +30,17 @@ import com.fpoly.duan.dto.SeatLayoutItem;
 import com.fpoly.duan.dto.SeatLayoutRequest;
 import com.fpoly.duan.dto.SeatTypeDTO;
 import com.fpoly.duan.entity.Room;
+import com.fpoly.duan.entity.RoomType;
 import com.fpoly.duan.entity.Seat;
 import com.fpoly.duan.entity.SeatType;
+import com.fpoly.duan.entity.Ticket;
 import com.fpoly.duan.repository.RoomRepository;
 import com.fpoly.duan.repository.SeatRepository;
 import com.fpoly.duan.repository.SeatTypeRepository;
 import com.fpoly.duan.repository.TicketRepository;
 import com.fpoly.duan.service.CinemaScopeService;
 import com.fpoly.duan.util.SearchUtils;
+import com.fpoly.duan.util.SeatLabel;
 import com.fpoly.duan.util.SeatTypeNaming;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -224,10 +230,12 @@ public class SeatController {
 
         if (request.getSeats() == null || request.getSeats().isEmpty()) {
             for (Seat old : new ArrayList<>(existing)) {
-                if (ticketRepository.countBySeat_SeatId(old.getSeatId()) > 0) {
+                if (seatHasOngoingOrFutureShowtime(old.getSeatId())) {
                     throw new RuntimeException(
-                            "Không thể xóa hết sơ đồ: phòng vẫn có ghế đã gắn vé. Giữ ít nhất một ghế hoặc xử lý vé trước.");
+                            "Không thể xóa hết sơ đồ: ghế " + SeatLabel.of(old)
+                                    + " đang có vé ở suất chiếu hiện tại hoặc sắp tới. Xử lý/dời các suất đó trước.");
                 }
+                detachSeatFromTickets(old);
                 seatRepository.delete(old);
             }
             return ResponseEntity.ok(ApiResponse.<Void>builder()
@@ -246,6 +254,36 @@ public class SeatController {
             }
             String key = item.getX() + "," + item.getY();
             wanted.put(key, item);
+        }
+
+        if (room.getRoomType() != null) {
+            Map<String, Integer> counts = new HashMap<>();
+            counts.put("standard", 0);
+            counts.put("vip", 0);
+            counts.put("couple", 0);
+            for (SeatLayoutItem item : wanted.values()) {
+                SeatType st = resolveSeatType(item.getSeatTypeName());
+                String cat;
+                if (Boolean.TRUE.equals(st.getCoupleSeat())) {
+                    cat = "couple";
+                } else if (st.getName() != null && st.getName().toLowerCase().contains("vip")) {
+                    cat = "vip";
+                } else {
+                    cat = "standard";
+                }
+                counts.merge(cat, 1, Integer::sum);
+            }
+            RoomType rt = room.getRoomType();
+            int stdGot = counts.get("standard");
+            int vipGot = counts.get("vip");
+            int coupleGot = counts.get("couple");
+            if (stdGot != rt.getStandardSeatCount() || vipGot != rt.getVipSeatCount() || coupleGot != rt.getCoupleSeatCount()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        String.format("Sơ đồ ghế chưa đúng theo loại phòng \"%s\": cần %d ghế thường, %d ghế VIP, %d ghế đôi. Hiện có: %d thường, %d VIP, %d đôi.",
+                                rt.getName(),
+                                rt.getStandardSeatCount(), rt.getVipSeatCount(), rt.getCoupleSeatCount(),
+                                stdGot, vipGot, coupleGot));
+            }
         }
 
         List<Seat> toPersist = new ArrayList<>();
@@ -275,12 +313,12 @@ public class SeatController {
             if (payloadKeys.contains(key)) {
                 continue;
             }
-            long refs = ticketRepository.countBySeat_SeatId(old.getSeatId());
-            if (refs > 0) {
+            if (seatHasOngoingOrFutureShowtime(old.getSeatId())) {
                 throw new RuntimeException(
-                        "Không thể bỏ ghế tại ô (" + old.getX() + "," + old.getY()
-                                + "): đã có " + refs + " vé. Giữ ghế trên sơ đồ hoặc hủy/xử lý vé trước.");
+                        "Không thể bỏ ghế " + SeatLabel.of(old) + " tại ô (" + old.getX() + "," + old.getY()
+                                + "): đang có vé ở suất chiếu hiện tại hoặc sắp tới. Xử lý/dời các suất đó trước.");
             }
+            detachSeatFromTickets(old);
             seatRepository.delete(old);
         }
 
@@ -306,6 +344,37 @@ public class SeatController {
                 .seatTypeSurcharge(st != null && st.getSurcharge() != null ? st.getSurcharge() : 0.0)
                 .status(s.getStatus() != null ? s.getStatus() : "available")
                 .build();
+    }
+
+    /** true nếu ghế còn vé chưa hủy ở suất chiếu đang diễn ra hoặc sắp tới (chưa kết thúc) —
+     * chặn xóa ghế trong trường hợp này. Vé của suất đã kết thúc (quá khứ) KHÔNG chặn xóa. */
+    private boolean seatHasOngoingOrFutureShowtime(Integer seatId) {
+        LocalDateTime now = LocalDateTime.now();
+        for (Ticket t : ticketRepository.findActiveTicketsBySeatId(seatId)) {
+            var showtime = t.getShowtime();
+            if (showtime == null || showtime.getStartTime() == null) continue;
+            int durationMin = showtime.getMovie() != null && showtime.getMovie().getDuration() != null
+                    ? showtime.getMovie().getDuration() : 120;
+            if (showtime.getStartTime().plusMinutes(durationMin).isAfter(now)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Gỡ ghế khỏi mọi vé còn tham chiếu (kể cả vé đã hủy/suất đã qua) trước khi xóa ghế —
+     * tránh vi phạm khóa ngoại. seat_label đã được snapshot từ lúc gắn ghế nên hóa đơn cũ
+     * vẫn hiển thị đúng tên ghế dù seat_id bị gán NULL. */
+    private void detachSeatFromTickets(Seat seat) {
+        List<Ticket> tickets = ticketRepository.findBySeat_SeatId(seat.getSeatId());
+        if (tickets.isEmpty()) return;
+        for (Ticket t : tickets) {
+            if (t.getSeatLabel() == null) {
+                t.setSeatLabel(SeatLabel.of(seat));
+            }
+            t.setSeat(null);
+        }
+        ticketRepository.saveAll(tickets);
     }
 
     /** Chỉ tra cứu — không tự tạo loại ghế mới. Danh sách loại ghế đã cố định (3 loại), quản lý qua trang Loại ghế. */

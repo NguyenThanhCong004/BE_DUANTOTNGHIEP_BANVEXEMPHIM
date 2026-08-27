@@ -3,7 +3,15 @@ package com.fpoly.duan.service;
 import com.fpoly.duan.dto.AuditLogDTO;
 import com.fpoly.duan.dto.CinemaRankingDTO;
 import com.fpoly.duan.dto.CinemaDetailDTO;
+import com.fpoly.duan.dto.CinemaCustomerStatDTO;
+import com.fpoly.duan.dto.CustomerStatDTO;
 import com.fpoly.duan.dto.DashboardSummaryDTO;
+import com.fpoly.duan.dto.InvoiceStatDTO;
+import com.fpoly.duan.dto.ProductStatDTO;
+import com.fpoly.duan.dto.StaffStatDTO;
+import com.fpoly.duan.dto.CinemaStatDTO;
+import com.fpoly.duan.dto.MovieCinemaRevenueDTO;
+import com.fpoly.duan.dto.MovieStatDTO;
 import com.fpoly.duan.dto.RevenueBreakdownDTO;
 import com.fpoly.duan.dto.RevenueChartDTO;
 import com.fpoly.duan.dto.SeatOccupancyDTO;
@@ -12,7 +20,10 @@ import com.fpoly.duan.entity.AuditLog;
 import com.fpoly.duan.entity.Cinema;
 import com.fpoly.duan.repository.AuditLogRepository;
 import com.fpoly.duan.repository.CinemaRepository;
+import com.fpoly.duan.repository.MembershipRankRepository;
 import com.fpoly.duan.repository.MovieRepository;
+import com.fpoly.duan.repository.OrderDetailFoodRepository;
+import com.fpoly.duan.repository.ProductRepository;
 import com.fpoly.duan.repository.OrderOnlineRepository;
 import com.fpoly.duan.repository.RoomRepository;
 import com.fpoly.duan.repository.SeatRepository;
@@ -49,6 +60,9 @@ public class DashboardService {
     private final ShowtimeRepository showtimeRepository;
     private final SeatRepository seatRepository;
     private final AuditLogRepository auditLogRepository;
+    private final MembershipRankRepository membershipRankRepository;
+    private final OrderDetailFoodRepository orderDetailFoodRepository;
+    private final ProductRepository productRepository;
 
     public DashboardSummaryDTO getSummary() {
         try {
@@ -344,6 +358,346 @@ public class DashboardService {
                 .description(a.getDescription())
                 .createdAt(a.getCreatedAt())
                 .build();
+    }
+
+    public List<MovieStatDTO> getMovieStats() {
+        try {
+            // Build a map of ticket stats for movies that have sales
+            Map<Integer, long[]> statsMap = new java.util.HashMap<>();
+            for (Object[] row : ticketRepository.getMovieStatsSortedByRevenue()) {
+                Integer movieId = row[0] instanceof Number ? ((Number) row[0]).intValue() : null;
+                if (movieId == null) continue;
+                long tickets = row[4] instanceof Number ? ((Number) row[4]).longValue() : 0L;
+                long revenueCents = row[5] instanceof Number ? Math.round(((Number) row[5]).doubleValue() * 100) : 0L;
+                statsMap.put(movieId, new long[]{tickets, revenueCents});
+            }
+
+            // All movies — kể cả phim chưa có vé nào
+            return movieRepository.findAll().stream()
+                    .map(m -> {
+                        long[] s = statsMap.getOrDefault(m.getMovieId(), new long[]{0L, 0L});
+                        return MovieStatDTO.builder()
+                                .movieId(m.getMovieId())
+                                .title(m.getTitle())
+                                .poster(m.getPoster())
+                                .status(m.getStatus())
+                                .ticketsSold(s[0])
+                                .revenue(s[1] / 100.0)
+                                .build();
+                    })
+                    .sorted(Comparator.comparingDouble(MovieStatDTO::getRevenue).reversed())
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error generating Movie Stats: ", e);
+            return new ArrayList<>();
+        }
+    }
+
+    public List<CinemaStatDTO> getCinemaStats() {
+        try {
+            // Revenue + ticket count per cinema
+            Map<Integer, double[]> revenueMap = new java.util.HashMap<>();
+            for (Object[] row : ticketRepository.getCinemaRevenueSummary()) {
+                Integer cinemaId = row[0] instanceof Number ? ((Number) row[0]).intValue() : null;
+                if (cinemaId == null) continue;
+                double revenue = row[1] instanceof Number ? ((Number) row[1]).doubleValue() : 0.0;
+                long tickets  = row[2] instanceof Number ? ((Number) row[2]).longValue()  : 0L;
+                revenueMap.put(cinemaId, new double[]{revenue, tickets});
+            }
+
+            // Rooms per cinema
+            Map<Integer, Long> roomMap = new java.util.HashMap<>();
+            for (com.fpoly.duan.entity.Room r : roomRepository.findAll()) {
+                if (r.getCinema() != null)
+                    roomMap.merge(r.getCinema().getCinemaId(), 1L, Long::sum);
+            }
+
+            // Staff per cinema (exclude SUPER_ADMIN)
+            Map<Integer, Long> staffMap = new java.util.HashMap<>();
+            for (com.fpoly.duan.entity.Staff s : staffRepository.findAllExceptSuperAdmin()) {
+                if (s.getCinema() != null)
+                    staffMap.merge(s.getCinema().getCinemaId(), 1L, Long::sum);
+            }
+
+            return cinemaRepository.findAll().stream()
+                    .map(c -> {
+                        double[] rev = revenueMap.getOrDefault(c.getCinemaId(), new double[]{0.0, 0.0});
+                        return CinemaStatDTO.builder()
+                                .cinemaId(c.getCinemaId())
+                                .name(c.getName())
+                                .address(c.getAddress())
+                                .status(c.getStatus())
+                                .totalRooms(roomMap.getOrDefault(c.getCinemaId(), 0L))
+                                .totalStaff(staffMap.getOrDefault(c.getCinemaId(), 0L))
+                                .revenue(rev[0])
+                                .ticketCount((long) rev[1])
+                                .build();
+                    })
+                    .sorted(Comparator.comparingDouble(CinemaStatDTO::getRevenue).reversed())
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error generating Cinema Stats: ", e);
+            return new ArrayList<>();
+        }
+    }
+
+    public List<CustomerStatDTO> getCustomerStats(Integer cinemaId) {
+        try {
+            // Đếm đơn hàng hoàn tất mỗi user
+            Map<Integer, Long> orderCountMap = new java.util.HashMap<>();
+            for (Object[] row : orderOnlineRepository.countCompletedOrdersPerUser()) {
+                Integer uid = row[0] instanceof Number ? ((Number) row[0]).intValue() : null;
+                if (uid == null) continue;
+                orderCountMap.put(uid, row[1] instanceof Number ? ((Number) row[1]).longValue() : 0L);
+            }
+
+            // Tổng chi tiêu toàn thời gian mỗi user (hiển thị)
+            Map<Integer, Double> allTimeSpendMap = new java.util.HashMap<>();
+            for (Object[] row : orderOnlineRepository.sumAllTimeSpendingPerUser()) {
+                Integer uid = row[0] instanceof Number ? ((Number) row[0]).intValue() : null;
+                if (uid == null) continue;
+                allTimeSpendMap.put(uid, row[1] instanceof Number ? ((Number) row[1]).doubleValue() : 0.0);
+            }
+
+            // Chi tiêu năm hiện tại mỗi user (để tính hạng — khớp business logic)
+            int currentYear = java.time.LocalDate.now().getYear();
+            Map<Integer, Double> yearSpendMap = new java.util.HashMap<>();
+            for (Object[] row : orderOnlineRepository.sumCurrentYearSpendingPerUser(currentYear)) {
+                Integer uid = row[0] instanceof Number ? ((Number) row[0]).intValue() : null;
+                if (uid == null) continue;
+                yearSpendMap.put(uid, row[1] instanceof Number ? ((Number) row[1]).doubleValue() : 0.0);
+            }
+
+            // Nếu lọc theo rạp, chỉ lấy user đã đặt tại rạp đó
+            java.util.Set<Integer> cinemaUserIds = null;
+            if (cinemaId != null) {
+                cinemaUserIds = new java.util.HashSet<>(orderOnlineRepository.getUserIdsByCinema(cinemaId));
+            }
+            final java.util.Set<Integer> cinemaFilter = cinemaUserIds;
+
+            // Sắp xếp hạng theo minSpending giảm dần để dùng cho tìm hạng phù hợp
+            List<com.fpoly.duan.entity.MembershipRank> activeRanks = membershipRankRepository.findAll().stream()
+                    .filter(r -> r.getStatus() == null || r.getStatus() == 1)
+                    .sorted(Comparator.comparingDouble(
+                            r -> -(r.getMinSpending() != null ? r.getMinSpending() : 0.0)))
+                    .collect(Collectors.toList());
+
+            return userRepository.findAll().stream()
+                    .filter(u -> cinemaFilter == null || cinemaFilter.contains(u.getUserId()))
+                    .map(u -> {
+                        double yearSpend = yearSpendMap.getOrDefault(u.getUserId(), 0.0);
+                        // Tìm hạng cao nhất mà yearSpend đạt được
+                        String rankName = activeRanks.stream()
+                                .filter(r -> yearSpend >= (r.getMinSpending() != null ? r.getMinSpending() : 0.0))
+                                .findFirst()
+                                .map(com.fpoly.duan.entity.MembershipRank::getRankName)
+                                .orElse(activeRanks.isEmpty() ? "Chưa xác định"
+                                        : activeRanks.get(activeRanks.size() - 1).getRankName());
+                        return CustomerStatDTO.builder()
+                                .userId(u.getUserId())
+                                .fullName(u.getFullname())
+                                .email(u.getEmail())
+                                .phone(u.getPhone())
+                                .membershipRank(rankName)
+                                .totalOrders(orderCountMap.getOrDefault(u.getUserId(), 0L))
+                                .totalSpending(allTimeSpendMap.getOrDefault(u.getUserId(), 0.0))
+                                .points(u.getPoints() != null ? u.getPoints() : 0)
+                                .status(u.getStatus())
+                                .build();
+                    })
+                    .sorted(Comparator.comparingDouble(CustomerStatDTO::getTotalSpending).reversed())
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error generating Customer Stats: ", e);
+            return new ArrayList<>();
+        }
+    }
+
+    public List<CinemaCustomerStatDTO> getCustomerStatsByCinema() {
+        try {
+            // Build stats map từ orders (chỉ rạp có đơn)
+            Map<Integer, CinemaCustomerStatDTO> statsMap = new java.util.HashMap<>();
+            for (Object[] row : orderOnlineRepository.getCustomerStatsByCinema()) {
+                Integer cid = row[0] instanceof Number ? ((Number) row[0]).intValue() : null;
+                if (cid == null) continue;
+                statsMap.put(cid, CinemaCustomerStatDTO.builder()
+                    .cinemaId(cid)
+                    .cinemaName(row[1] != null ? row[1].toString() : "—")
+                    .uniqueCustomers(row[2] instanceof Number ? ((Number) row[2]).longValue() : 0L)
+                    .totalOrders(row[3] instanceof Number ? ((Number) row[3]).longValue() : 0L)
+                    .totalRevenue(row[4] instanceof Number ? ((Number) row[4]).doubleValue() : 0.0)
+                    .build());
+            }
+            // Lấy tất cả rạp, fill 0 cho rạp chưa có khách
+            return cinemaRepository.findAll().stream()
+                .map(c -> statsMap.getOrDefault(c.getCinemaId(), CinemaCustomerStatDTO.builder()
+                    .cinemaId(c.getCinemaId())
+                    .cinemaName(c.getName())
+                    .uniqueCustomers(0L)
+                    .totalOrders(0L)
+                    .totalRevenue(0.0)
+                    .build()))
+                .sorted(Comparator.comparingDouble(CinemaCustomerStatDTO::getTotalRevenue).reversed())
+                .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error generating Cinema Customer Stats: ", e);
+            return new ArrayList<>();
+        }
+    }
+
+    public List<TopMovieDTO> getCinemaMovieRevenue(Integer cinemaId) {
+        try {
+            return ticketRepository.getTopMoviesByRevenueForCinema(cinemaId).stream()
+                .map(this::toTopMovieDTO)
+                .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error generating Cinema Movie Revenue: ", e);
+            return new ArrayList<>();
+        }
+    }
+
+    public List<MovieCinemaRevenueDTO> getMovieCinemaRevenue(Integer movieId) {
+        try {
+            return ticketRepository.getCinemaRevenueByMovie(movieId).stream()
+                .map(row -> MovieCinemaRevenueDTO.builder()
+                    .cinemaId(row[0] instanceof Number ? ((Number) row[0]).intValue() : null)
+                    .cinemaName(row[1] != null ? row[1].toString() : "—")
+                    .ticketsSold(row[2] instanceof Number ? ((Number) row[2]).longValue() : 0L)
+                    .revenue(row[3] instanceof Number ? ((Number) row[3]).doubleValue() : 0.0)
+                    .build())
+                .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error generating Movie Cinema Revenue: ", e);
+            return new ArrayList<>();
+        }
+    }
+
+    public List<ProductStatDTO> getProductStats() {
+        try {
+            // Số lượng + doanh thu theo sản phẩm từ đơn hoàn tất
+            Map<Integer, long[]> salesMap = new java.util.HashMap<>();
+            for (Object[] row : orderDetailFoodRepository.getProductSalesStats()) {
+                Integer pid = row[0] instanceof Number ? ((Number) row[0]).intValue() : null;
+                if (pid == null) continue;
+                long qty     = row[1] instanceof Number ? ((Number) row[1]).longValue()  : 0L;
+                long revCents = row[2] instanceof Number ? Math.round(((Number) row[2]).doubleValue() * 100) : 0L;
+                salesMap.put(pid, new long[]{qty, revCents});
+            }
+
+            return productRepository.findAll().stream()
+                    .map(p -> {
+                        long[] s = salesMap.getOrDefault(p.getProductId(), new long[]{0L, 0L});
+                        return ProductStatDTO.builder()
+                                .productId(p.getProductId())
+                                .productName(p.getName())
+                                .categoryName(p.getCategory() != null ? p.getCategory().getName() : "—")
+                                .unitPrice(p.getPrice() != null ? p.getPrice() : 0.0)
+                                .quantitySold(s[0])
+                                .totalRevenue(s[1] / 100.0)
+                                .status(p.getStatus())
+                                .build();
+                    })
+                    .sorted(Comparator.comparingLong(ProductStatDTO::getQuantitySold).reversed())
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error generating Product Stats: ", e);
+            return new ArrayList<>();
+        }
+    }
+
+    public Map<String, Double> getCategoryRevenueByMonth(int year, int month) {
+        try {
+            Map<String, Double> result = new LinkedHashMap<>();
+            for (Object[] row : orderDetailFoodRepository.getCategoryRevenueByMonth(year, month)) {
+                String cat = row[0] != null ? row[0].toString() : "—";
+                double rev = row[1] instanceof Number ? ((Number) row[1]).doubleValue() : 0.0;
+                result.merge(cat, rev, Double::sum);
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("Error generating Category Revenue by Month: ", e);
+            return new LinkedHashMap<>();
+        }
+    }
+
+    public List<InvoiceStatDTO> getInvoiceStats() {
+        try {
+            return orderOnlineRepository.findAll().stream()
+                .sorted((a, b) -> {
+                    if (a.getCreatedAt() == null) return 1;
+                    if (b.getCreatedAt() == null) return -1;
+                    return b.getCreatedAt().compareTo(a.getCreatedAt());
+                })
+                .map(o -> {
+                    String customerName = "Khách vãng lai";
+                    if (o.getUser() != null) {
+                        String fn = o.getUser().getFullname();
+                        customerName = (fn != null && !fn.isBlank()) ? fn : o.getUser().getEmail();
+                    }
+                    Integer cinemaId = null;
+                    String cinemaName = "—";
+                    if (o.getCinema() != null) {
+                        cinemaId = o.getCinema().getCinemaId();
+                        cinemaName = o.getCinema().getName();
+                    } else if (o.getStaff() != null && o.getStaff().getCinema() != null) {
+                        cinemaId = o.getStaff().getCinema().getCinemaId();
+                        cinemaName = o.getStaff().getCinema().getName();
+                    }
+                    return InvoiceStatDTO.builder()
+                        .orderId(o.getOrderOnlineId())
+                        .orderCode(o.getOrderCode())
+                        .customerName(customerName)
+                        .cinemaId(cinemaId)
+                        .cinemaName(cinemaName)
+                        .isCounter(o.getStaff() != null)
+                        .paymentMethod(o.getPaymentMethod())
+                        .originalAmount(o.getOriginalAmount())
+                        .discountAmount(o.getDiscountAmount())
+                        .finalAmount(o.getFinalAmount())
+                        .status(o.getStatus())
+                        .createdAt(o.getCreatedAt())
+                        .build();
+                })
+                .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error generating Invoice Stats: ", e);
+            return new ArrayList<>();
+        }
+    }
+
+    public List<StaffStatDTO> getStaffStats() {
+        try {
+            // Số đơn + doanh thu mỗi staff
+            Map<Integer, long[]> orderMap = new java.util.HashMap<>();
+            for (Object[] row : orderOnlineRepository.getStaffOrderStats()) {
+                Integer sid = row[0] instanceof Number ? ((Number) row[0]).intValue() : null;
+                if (sid == null) continue;
+                long orders  = row[1] instanceof Number ? ((Number) row[1]).longValue()  : 0L;
+                long revCents = row[2] instanceof Number ? Math.round(((Number) row[2]).doubleValue() * 100) : 0L;
+                orderMap.put(sid, new long[]{orders, revCents});
+            }
+
+            return staffRepository.findAllExceptSuperAdmin().stream()
+                    .map(s -> {
+                        long[] stats = orderMap.getOrDefault(s.getStaffId(), new long[]{0L, 0L});
+                        return StaffStatDTO.builder()
+                                .staffId(s.getStaffId())
+                                .fullName(s.getFullname())
+                                .email(s.getEmail())
+                                .phone(s.getPhone())
+                                .role(s.getRole())
+                                .cinemaName(s.getCinema() != null ? s.getCinema().getName() : "—")
+                                .totalOrders(stats[0])
+                                .totalRevenue(stats[1] / 100.0)
+                                .status(s.getStatus())
+                                .build();
+                    })
+                    .sorted(Comparator.comparingDouble(StaffStatDTO::getTotalRevenue).reversed())
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error generating Staff Stats: ", e);
+            return new ArrayList<>();
+        }
     }
 
     // --- Helper Methods for Safe Parsing ---

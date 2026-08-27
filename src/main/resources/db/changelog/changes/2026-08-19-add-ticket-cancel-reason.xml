@@ -1,0 +1,14 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Ly do huy ve (vd. dong phong bao tri) de nhan vien soat ve thay ro nguyen nhan
+         khi quet QR ve da huy, thay vi thong bao chung chung "chua thanh toan hoac da huy". -->
+    <changeSet id="2026-08-19-add-ticket-cancel-reason-1" author="claude">
+        <addColumn tableName="tickets">
+            <column name="cancel_reason" type="nvarchar(500)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

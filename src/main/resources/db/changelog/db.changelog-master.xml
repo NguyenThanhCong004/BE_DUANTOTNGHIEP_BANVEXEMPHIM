@@ -58,4 +58,22 @@
          orders_online.rescheduled_at. rooms.status tai dung gia tri 2 = "Dong tam thoi". -->
     <include file="changes/2026-08-18-add-room-closure.xml" relativeToChangelogFile="true"/>
 
+    <!-- Ly do huy ve (vd. dong phong bao tri): tickets.cancel_reason, de nhan vien soat ve
+         thay ro nguyen nhan khi quet QR ve da huy. -->
+    <include file="changes/2026-08-19-add-ticket-cancel-reason.xml" relativeToChangelogFile="true"/>
+
+    <!-- Loai phong chieu: bang room_types (3 loai co dinh, seed san), FK room_type_id vao rooms.
+         Admin chon loai phong khi tao phong; SeatManagement validate dung so ghe khi luu so do. -->
+    <include file="changes/2026-08-19-add-room-types.xml" relativeToChangelogFile="true"/>
+
+    <!-- Them 2 loai phong khop dung cau hinh ghe thuc te dang chay (xem comment trong file) -->
+    <include file="changes/2026-08-21-add-real-room-type-profiles.xml" relativeToChangelogFile="true"/>
+
+    <!-- Snapshot ten ghe tren ve (tach khoi bang seats) - cho phep xoa ghe het suat chieu
+         ma khong mat ten ghe tren hoa don cu (xem comment trong file) -->
+    <include file="changes/2026-08-25-add-ticket-seat-label.xml" relativeToChangelogFile="true"/>
+
+    <!-- Cap nhat so ghe Nho/Vua/Lon, xoa Phong Tieu Chuan/Phong Mini (xem comment trong file) -->
+    <include file="changes/2026-08-27-update-room-type-profiles.xml" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

@@ -25,6 +25,10 @@ public class Ticket {
     @Column(name = "checked_in_at")
     private LocalDateTime checkedInAt;
 
+    /** Lý do hủy vé (vd. đóng phòng bảo trì) — hiển thị rõ cho nhân viên khi quét QR vé đã hủy. */
+    @Column(name = "cancel_reason", length = 500)
+    private String cancelReason;
+
     @Column(name = "original_price")
     private Double originalPrice;
 
@@ -46,6 +50,11 @@ public class Ticket {
     @ManyToOne
     @JoinColumn(name = "seat_id")
     private Seat seat;
+
+    /** Snapshot tên ghế (VD "A1") tại thời điểm gắn ghế — giữ lại trên hóa đơn kể cả khi
+     * ghế bị admin xóa khỏi sơ đồ sau này (seat_id lúc đó sẽ bị gán NULL). */
+    @Column(name = "seat_label", length = 20)
+    private String seatLabel;
 
     @ManyToOne
     @JoinColumn(name = "order_online_id")

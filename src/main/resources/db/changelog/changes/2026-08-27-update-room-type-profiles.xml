@@ -1,0 +1,27 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Cap nhat lai so ghe cua 3 loai phong Nho/Vua/Lon theo yeu cau moi nhat, va bo 2 loai
+         "Phong Tieu Chuan"/"Phong Mini" duoc them tam truoc do lam workaround. Phong Lon (60/180/10)
+         trung voi Phong Tieu Chuan cu nen cac phong dang gan Phong Tieu Chuan duoc chuyen thang sang
+         Phong Lon. Phong dang gan Phong Mini (121 ghe that, khong khop bat ky loai moi nao) duoc go
+         ve NULL (chua gan loai) de khong pha layout ghe/ve that dang co. Khong dung toi bang seats/tickets. -->
+    <changeSet id="2026-08-27-update-room-type-profiles-1" author="claude">
+        <sql>
+            UPDATE room_types SET standard_seat_count = 32, vip_seat_count = 32, couple_seat_count = 8 WHERE name = N'Phòng Nhỏ';
+            UPDATE room_types SET standard_seat_count = 40, vip_seat_count = 60, couple_seat_count = 10 WHERE name = N'Phòng Vừa';
+            UPDATE room_types SET standard_seat_count = 60, vip_seat_count = 180, couple_seat_count = 10 WHERE name = N'Phòng Lớn';
+
+            UPDATE rooms SET room_type_id = (SELECT room_type_id FROM room_types WHERE name = N'Phòng Lớn')
+            WHERE room_type_id = (SELECT room_type_id FROM room_types WHERE name = N'Phòng Tiêu Chuẩn');
+
+            UPDATE rooms SET room_type_id = NULL
+            WHERE room_type_id = (SELECT room_type_id FROM room_types WHERE name = N'Phòng Mini');
+
+            DELETE FROM room_types WHERE name IN (N'Phòng Tiêu Chuẩn', N'Phòng Mini');
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

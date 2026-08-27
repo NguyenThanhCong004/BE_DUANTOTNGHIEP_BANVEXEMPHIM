@@ -111,8 +111,16 @@ public class StaffDashboardService {
         List<OrderDetailFood> foods = orderDetailFoodRepository.findByOrderOnline_OrderOnlineId(order.getOrderOnlineId());
 
         List<OrderDetailDTO.TicketInfo> ticketInfos = tickets.stream().map(t -> {
-            String row = (t.getSeat().getRow() != null) ? t.getSeat().getRow() : "";
-            String num = (t.getSeat().getNumber() != null) ? t.getSeat().getNumber() : "";
+            String seatLabel;
+            if (t.getSeatLabel() != null) {
+                seatLabel = t.getSeatLabel();
+            } else if (t.getSeat() != null) {
+                String row = (t.getSeat().getRow() != null) ? t.getSeat().getRow() : "";
+                String num = (t.getSeat().getNumber() != null) ? t.getSeat().getNumber() : "";
+                seatLabel = row + num;
+            } else {
+                seatLabel = "";
+            }
             String qrToken = t.getQrToken();
             return OrderDetailDTO.TicketInfo.builder()
                 .ticketId(t.getTicketId())
@@ -123,8 +131,8 @@ public class StaffDashboardService {
                 .showtime(t.getShowtime().getStartTime())
                 .showtimeStart(t.getShowtime().getStartTime())
                 .roomName(t.getShowtime().getRoom().getName())
-                .seatNumber(row + num)
-                .seatTypeName(t.getSeat().getSeatType() != null ? t.getSeat().getSeatType().getName() : "Ghế thường")
+                .seatNumber(seatLabel)
+                .seatTypeName(t.getSeat() != null && t.getSeat().getSeatType() != null ? t.getSeat().getSeatType().getName() : "Ghế thường")
                 .originalPrice(t.getOriginalPrice() != null ? t.getOriginalPrice() : t.getPrice())
                 .promotionDiscount(t.getPromotionDiscount() != null ? t.getPromotionDiscount() : 0.0)
                 .price(t.getPrice())

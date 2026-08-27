@@ -27,5 +27,9 @@ public interface StaffShiftRepository extends JpaRepository<StaffShift, Integer>
     @Modifying
     @Query("DELETE FROM StaffShift s WHERE s.staff.staffId = :staffId AND s.date >= :date")
     void deleteByStaffIdAndDateAfterOrEqual(@Param("staffId") Integer staffId, @Param("date") LocalDate date);
+
+    @Modifying
+    @Query("DELETE FROM StaffShift s WHERE s.staff.staffId = :staffId AND s.date = :date AND s.startTime > :now")
+    void deleteTodayUnstartedByStaffId(@Param("staffId") Integer staffId, @Param("date") LocalDate date, @Param("now") LocalDateTime now);
 }
 

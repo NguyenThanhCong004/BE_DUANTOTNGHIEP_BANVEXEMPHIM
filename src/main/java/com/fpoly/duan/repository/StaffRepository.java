@@ -33,5 +33,9 @@ public interface StaffRepository extends JpaRepository<Staff, Integer> {
 
     List<Staff> findByCinema_CinemaIdAndRoleAndStatus(Integer cinemaId, String role, Integer status);
 
+    List<Staff> findByCinema_CinemaId(Integer cinemaId);
+
+    boolean existsByCinema_CinemaId(Integer cinemaId);
+
     long countByRoleIgnoreCase(String role);
 }

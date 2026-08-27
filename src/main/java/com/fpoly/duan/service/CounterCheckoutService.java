@@ -5,6 +5,7 @@ import com.fpoly.duan.dto.payos.PayOSCheckoutData;
 import com.fpoly.duan.dto.payos.PayOSCreatePaymentLinkRequest;
 import com.fpoly.duan.entity.*;
 import com.fpoly.duan.repository.*;
+import com.fpoly.duan.util.SeatLabel;
 import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -212,6 +213,7 @@ public class CounterCheckoutService {
             Ticket ticket = new Ticket();
             ticket.setShowtime(showtime);
             ticket.setSeat(seat);
+            ticket.setSeatLabel(SeatLabel.of(seat));
             ticket.setOrderOnline(savedOrder);
 
             double ticketBasePrice = (showtime.getMovie() != null && showtime.getMovie().getBasePrice() != null)

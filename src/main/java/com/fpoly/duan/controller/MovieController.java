@@ -91,12 +91,18 @@ public class MovieController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String q) {
         String term = SearchUtils.pick(search, keyword, q);
+        Map<Integer, Double> ratingMap = reviewRepository.findAllAverageRatings().stream()
+                .filter(row -> row != null && row.length >= 2 && row[0] != null)
+                .collect(Collectors.toMap(
+                        row -> ((Number) row[0]).intValue(),
+                        row -> row[1] instanceof Number ? ((Number) row[1]).doubleValue() : null,
+                        (a, b) -> a));
         List<MovieDTO> movies = movieRepository.findAll()
                 .stream()
                 .filter(m -> SearchUtils.matches(term,
                         m.getMovieId(), m.getTitle(), m.getAuthor(), m.getNation(), m.getDescription(),
                         m.getContent(), m.getStatus(), genreNames(m)))
-                .map(this::toDTO)
+                .map(m -> toDTO(m, ratingMap))
                 .collect(Collectors.toList());
 
         return ResponseEntity.status(HttpStatus.OK).body(ApiResponse.<List<MovieDTO>>builder()
@@ -281,6 +287,10 @@ public class MovieController {
         if (!movieRepository.existsById(id)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy phim với id: " + id);
         }
+        if (showtimeRepository.existsByMovie_MovieId(id)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Không thể xóa phim này vì đang có suất chiếu liên kết. Vui lòng xóa các suất chiếu trước.");
+        }
         movieRepository.deleteById(id);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
                 .status(HttpStatus.OK.value())
@@ -326,9 +336,16 @@ public class MovieController {
     }
 
     private MovieDTO toDTO(Movie m) {
+        return buildMovieDTO(m, reviewRepository.findAverageRatingByMovieId(m.getMovieId()));
+    }
+
+    private MovieDTO toDTO(Movie m, Map<Integer, Double> ratingMap) {
+        return buildMovieDTO(m, ratingMap.getOrDefault(m.getMovieId(), null));
+    }
+
+    private MovieDTO buildMovieDTO(Movie m, Double avgRating) {
         List<String> genreNames = m.getGenres() == null ? List.of()
                 : m.getGenres().stream().map(Genre::getName).collect(Collectors.toList());
-        Double avgRating = reviewRepository.findAverageRatingByMovieId(m.getMovieId());
         return MovieDTO.builder()
                 .id(m.getMovieId())
                 .title(m.getTitle())

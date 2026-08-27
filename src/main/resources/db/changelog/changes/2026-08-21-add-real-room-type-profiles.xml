@@ -1,0 +1,25 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- 3 loai phong seed truoc (Nho/Vua/Lon, toi da 160 ghe) khong khop bat ky phong thuc te
+         nao dang chay (4 phong 250 ghe, 1 phong 121 ghe) -> khong gan duoc loai phong cho phong
+         thuc te ma khong xoa ghe (vi pham FK tickets.seat_id o cac phong da co ve that). Them 2
+         loai phong moi khop dung cau hinh ghe thuc te hien co, khong dung den ghe/ve nao ca. -->
+    <changeSet id="2026-08-21-add-real-room-type-profiles-1" author="claude">
+        <insert tableName="room_types">
+            <column name="name" value="Phòng Tiêu Chuẩn"/>
+            <column name="standard_seat_count" valueNumeric="60"/>
+            <column name="vip_seat_count" valueNumeric="180"/>
+            <column name="couple_seat_count" valueNumeric="10"/>
+        </insert>
+        <insert tableName="room_types">
+            <column name="name" value="Phòng Mini"/>
+            <column name="standard_seat_count" valueNumeric="44"/>
+            <column name="vip_seat_count" valueNumeric="66"/>
+            <column name="couple_seat_count" valueNumeric="11"/>
+        </insert>
+    </changeSet>
+
+</databaseChangeLog>

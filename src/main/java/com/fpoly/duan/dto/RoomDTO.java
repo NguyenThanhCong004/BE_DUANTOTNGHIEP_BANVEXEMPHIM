@@ -30,5 +30,11 @@ public class RoomDTO {
     /** Chỉ có giá trị khi status = 2 (đóng tạm thời). */
     private String closeReason;
     private LocalDateTime closedAt;
+
+    private Integer roomTypeId;
+    private String roomTypeName;
+    private Integer standardSeatCount;
+    private Integer vipSeatCount;
+    private Integer coupleSeatCount;
 }
 
