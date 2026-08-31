@@ -18,6 +18,8 @@ import com.fpoly.duan.dto.SeatOccupancyDTO;
 import com.fpoly.duan.dto.TopMovieDTO;
 import com.fpoly.duan.entity.AuditLog;
 import com.fpoly.duan.entity.Cinema;
+import com.fpoly.duan.entity.OrderOnline;
+import com.fpoly.duan.entity.Ticket;
 import com.fpoly.duan.repository.AuditLogRepository;
 import com.fpoly.duan.repository.CinemaRepository;
 import com.fpoly.duan.repository.MembershipRankRepository;
@@ -40,6 +42,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -622,7 +625,29 @@ public class DashboardService {
 
     public List<InvoiceStatDTO> getInvoiceStats() {
         try {
-            return orderOnlineRepository.findAll().stream()
+            List<OrderOnline> orders = orderOnlineRepository.findAll();
+
+            // Load ticket discounts in bulk — tránh N+1
+            List<Integer> orderIds = orders.stream()
+                .map(OrderOnline::getOrderOnlineId)
+                .filter(id -> id != null)
+                .collect(Collectors.toList());
+
+            // ticketDiscount = originalPrice - price (bao gồm giảm khuyến mãi + hạng hội viên)
+            Map<Integer, Double> ticketDiscountByOrderId = new HashMap<>();
+            if (!orderIds.isEmpty()) {
+                ticketRepository.findByOrderOnline_OrderOnlineIdInWithDetails(orderIds)
+                    .forEach(t -> {
+                        if (t.getOrderOnline() == null) return;
+                        int oid = t.getOrderOnline().getOrderOnlineId();
+                        double orig  = t.getOriginalPrice() != null ? t.getOriginalPrice() : 0.0;
+                        double price = t.getPrice()         != null ? t.getPrice()         : 0.0;
+                        double disc  = Math.max(0.0, orig - price);
+                        ticketDiscountByOrderId.merge(oid, disc, Double::sum);
+                    });
+            }
+
+            return orders.stream()
                 .sorted((a, b) -> {
                     if (a.getCreatedAt() == null) return 1;
                     if (b.getCreatedAt() == null) return -1;
@@ -643,6 +668,11 @@ public class DashboardService {
                         cinemaId = o.getStaff().getCinema().getCinemaId();
                         cinemaName = o.getStaff().getCinema().getName();
                     }
+                    // Tổng giảm giá = giảm vé (khuyến mãi + hội viên) + giảm voucher
+                    double ticketDisc  = ticketDiscountByOrderId.getOrDefault(o.getOrderOnlineId(), 0.0);
+                    double voucherDisc = o.getDiscountAmount() != null ? o.getDiscountAmount() : 0.0;
+                    double totalDiscount = (double) Math.round(ticketDisc + voucherDisc);
+
                     return InvoiceStatDTO.builder()
                         .orderId(o.getOrderOnlineId())
                         .orderCode(o.getOrderCode())
@@ -652,7 +682,7 @@ public class DashboardService {
                         .isCounter(o.getStaff() != null)
                         .paymentMethod(o.getPaymentMethod())
                         .originalAmount(o.getOriginalAmount())
-                        .discountAmount(o.getDiscountAmount())
+                        .discountAmount(totalDiscount)
                         .finalAmount(o.getFinalAmount())
                         .status(o.getStatus())
                         .createdAt(o.getCreatedAt())
