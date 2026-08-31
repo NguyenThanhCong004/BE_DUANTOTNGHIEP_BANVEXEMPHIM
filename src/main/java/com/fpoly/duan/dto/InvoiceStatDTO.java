@@ -1,5 +1,6 @@
 package com.fpoly.duan.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -16,6 +17,7 @@ public class InvoiceStatDTO {
     private String customerName;
     private Integer cinemaId;
     private String cinemaName;
+    @JsonProperty("isCounter")
     private Boolean isCounter;
     private String paymentMethod;
     private Double originalAmount;
