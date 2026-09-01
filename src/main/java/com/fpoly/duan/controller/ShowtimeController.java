@@ -275,6 +275,7 @@ public class ShowtimeController {
         dto.setEndTime(endTimeStr);
         dto.setMovieId(movie != null ? movie.getMovieId() : null);
         dto.setMovieTitle(movie != null ? movie.getTitle() : null);
+        dto.setMovieAgeLimit(movie != null ? movie.getAgeLimit() : null);
         dto.setRoomId(room != null ? room.getRoomId() : null);
         dto.setRoomName(room != null ? room.getName() : null);
         if (room != null && room.getCinema() != null) {
