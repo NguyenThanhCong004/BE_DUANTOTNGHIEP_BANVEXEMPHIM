@@ -2,6 +2,7 @@ package com.fpoly.duan.service;
 
 import java.time.LocalDateTime;
 import java.time.LocalDate;
+import java.time.Period;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -112,6 +113,7 @@ public class TicketCheckoutService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy suất chiếu"));
 
         assertShowtimeBookable(showtime);
+        assertCustomerMeetsAgeLimit(user, showtime);
 
         if (showtime.getRoom() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Suất chiếu chưa gắn phòng");
@@ -312,6 +314,7 @@ public class TicketCheckoutService {
 
         Showtime showtime = showtimeRepository.findById(req.getShowtimeId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy suất chiếu"));
+        assertCustomerMeetsAgeLimit(user, showtime);
 
         Integer cinemaId = showtime.getRoom() != null && showtime.getRoom().getCinema() != null
                 ? showtime.getRoom().getCinema().getCinemaId()
@@ -1155,6 +1158,30 @@ public class TicketCheckoutService {
         LocalDateTime end = s.getStartTime().plusMinutes(durationMin);
         if (!now.isBefore(end)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Suất chiếu đã kết thúc — không thể đặt vé");
+        }
+    }
+
+    private static void assertCustomerMeetsAgeLimit(User user, Showtime showtime) {
+        Movie movie = showtime != null ? showtime.getMovie() : null;
+        Integer ageLimit = movie != null ? movie.getAgeLimit() : null;
+        if (ageLimit == null || ageLimit <= 0) {
+            return;
+        }
+
+        LocalDate today = todayInAppZone();
+        if (user == null || user.getBirthday() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Phim này được phân loại T" + ageLimit + ". Vui lòng cập nhật ngày sinh trong hồ sơ trước khi đặt vé.");
+        }
+        if (user.getBirthday().isAfter(today)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Ngày sinh trong hồ sơ không hợp lệ. Vui lòng cập nhật lại trước khi đặt vé.");
+        }
+
+        int customerAge = Period.between(user.getBirthday(), today).getYears();
+        if (customerAge < ageLimit) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Bạn chưa đủ " + ageLimit + " tuổi để đặt vé phim T" + ageLimit + ". Vui lòng chọn phim phù hợp độ tuổi.");
         }
     }
 

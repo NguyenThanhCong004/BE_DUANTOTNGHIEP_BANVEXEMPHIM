@@ -26,6 +26,9 @@ public class ShowtimeSlotResponse {
     @JsonProperty("movie_title")
     private String movieTitle;
 
+    @JsonProperty("movie_age_limit")
+    private Integer movieAgeLimit;
+
     @JsonProperty("room_id")
     private Integer roomId;
 
