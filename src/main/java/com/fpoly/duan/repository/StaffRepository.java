@@ -31,6 +31,9 @@ public interface StaffRepository extends JpaRepository<Staff, Integer> {
     @Query(value = "SELECT * FROM staff WHERE UPPER(role) NOT LIKE '%SUPER_ADMIN%' OR role IS NULL", nativeQuery = true)
     List<Staff> findAllExceptSuperAdmin();
 
+    @Query(value = "SELECT cinema_id, COUNT(*) FROM staff WHERE (UPPER(role) NOT LIKE '%SUPER_ADMIN%' OR role IS NULL) AND cinema_id IS NOT NULL GROUP BY cinema_id", nativeQuery = true)
+    List<Object[]> countStaffGroupByCinema();
+
     List<Staff> findByCinema_CinemaIdAndRoleAndStatus(Integer cinemaId, String role, Integer status);
 
     List<Staff> findByCinema_CinemaId(Integer cinemaId);
