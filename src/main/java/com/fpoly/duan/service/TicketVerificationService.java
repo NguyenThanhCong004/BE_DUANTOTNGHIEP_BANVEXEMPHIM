@@ -78,11 +78,15 @@ public class TicketVerificationService {
             String usedAt = ticket.getCheckedInAt().format(DISPLAY_FORMAT);
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Vé đã được sử dụng lúc " + usedAt);
         }
-        // Kiểm tra khung giờ hợp lệ: cho phép vào 30 phút trước đến 3 giờ sau suất bắt đầu (giờ VN)
+        // Kiểm tra khung giờ hợp lệ: cho phép vào 30 phút trước giờ chiếu, tới hết suất (giờ kết thúc
+        // thực tế = giờ bắt đầu + thời lượng phim) cộng thêm 15 phút trễ — trước đây đóng cổng cứng
+        // "3 giờ sau giờ bắt đầu" bất kể phim dài/ngắn, thường dài hơn hẳn thời lượng phim thật.
         LocalDateTime nowVN = LocalDateTime.now(VN);
         if (st.getStartTime() != null) {
+            int durationMin = st.getMovie() != null && st.getMovie().getDuration() != null
+                    ? st.getMovie().getDuration() : 120;
             LocalDateTime openGate  = st.getStartTime().minusMinutes(30);
-            LocalDateTime closeGate = st.getStartTime().plusHours(3);
+            LocalDateTime closeGate = st.getStartTime().plusMinutes(durationMin + 15);
             if (nowVN.isBefore(openGate)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Suất chiếu chưa đến giờ vào rạp. Cổng mở lúc " + openGate.format(DISPLAY_FORMAT));

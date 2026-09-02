@@ -3,6 +3,7 @@ package com.fpoly.duan.repository;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import com.fpoly.duan.entity.Room;
@@ -10,6 +11,9 @@ import com.fpoly.duan.entity.Room;
 @Repository
 public interface RoomRepository extends JpaRepository<Room, Integer> {
     List<Room> findByCinema_CinemaId(Integer cinemaId);
+
+    @Query("SELECT r.cinema.cinemaId, COUNT(r) FROM Room r WHERE r.cinema IS NOT NULL GROUP BY r.cinema.cinemaId")
+    List<Object[]> countRoomsGroupByCinema();
 
     boolean existsByCinema_CinemaIdAndNameIgnoreCase(Integer cinemaId, String name);
 

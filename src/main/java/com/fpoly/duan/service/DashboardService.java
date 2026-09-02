@@ -408,18 +408,20 @@ public class DashboardService {
                 revenueMap.put(cinemaId, new double[]{revenue, tickets});
             }
 
-            // Rooms per cinema
+            // Rooms per cinema — GROUP BY query avoids loading full entities
             Map<Integer, Long> roomMap = new java.util.HashMap<>();
-            for (com.fpoly.duan.entity.Room r : roomRepository.findAll()) {
-                if (r.getCinema() != null)
-                    roomMap.merge(r.getCinema().getCinemaId(), 1L, Long::sum);
+            for (Object[] row : roomRepository.countRoomsGroupByCinema()) {
+                Integer cid = row[0] instanceof Number ? ((Number) row[0]).intValue() : null;
+                if (cid != null)
+                    roomMap.put(cid, row[1] instanceof Number ? ((Number) row[1]).longValue() : 0L);
             }
 
-            // Staff per cinema (exclude SUPER_ADMIN)
+            // Staff per cinema — GROUP BY query avoids loading full entities
             Map<Integer, Long> staffMap = new java.util.HashMap<>();
-            for (com.fpoly.duan.entity.Staff s : staffRepository.findAllExceptSuperAdmin()) {
-                if (s.getCinema() != null)
-                    staffMap.merge(s.getCinema().getCinemaId(), 1L, Long::sum);
+            for (Object[] row : staffRepository.countStaffGroupByCinema()) {
+                Integer cid = row[0] instanceof Number ? ((Number) row[0]).intValue() : null;
+                if (cid != null)
+                    staffMap.put(cid, row[1] instanceof Number ? ((Number) row[1]).longValue() : 0L);
             }
 
             return cinemaRepository.findAll().stream()

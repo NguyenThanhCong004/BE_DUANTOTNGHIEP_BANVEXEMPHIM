@@ -227,6 +227,18 @@ public class MovieController {
                 .build());
     }
 
+    @PostMapping("/sync-status")
+    @Operation(summary = "Đồng bộ trạng thái phim — chuyển Sắp chiếu sang Đang chiếu nếu đến ngày")
+    @Transactional
+    public ResponseEntity<ApiResponse<Integer>> syncMovieStatus() {
+        int updated = movieRepository.activateReleasedMovies(LocalDate.now());
+        return ResponseEntity.ok(ApiResponse.<Integer>builder()
+                .status(HttpStatus.OK.value())
+                .message("Đồng bộ trạng thái phim thành công")
+                .data(updated)
+                .build());
+    }
+
     @PostMapping
     @Operation(summary = "Tạo phim")
     @Transactional
