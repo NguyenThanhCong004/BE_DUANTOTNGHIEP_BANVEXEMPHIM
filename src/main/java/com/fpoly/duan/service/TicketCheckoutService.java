@@ -113,6 +113,7 @@ public class TicketCheckoutService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy suất chiếu"));
 
         assertShowtimeBookable(showtime);
+        assertMovieOpenForOnlineBooking(showtime);
         assertCustomerMeetsAgeLimit(user, showtime);
 
         if (showtime.getRoom() == null) {
@@ -314,6 +315,7 @@ public class TicketCheckoutService {
 
         Showtime showtime = showtimeRepository.findById(req.getShowtimeId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy suất chiếu"));
+        assertMovieOpenForOnlineBooking(showtime);
         assertCustomerMeetsAgeLimit(user, showtime);
 
         Integer cinemaId = showtime.getRoom() != null && showtime.getRoom().getCinema() != null
@@ -1181,6 +1183,22 @@ public class TicketCheckoutService {
         LocalDateTime end = s.getStartTime().plusMinutes(durationMin);
         if (!now.isBefore(end)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Suất chiếu đã kết thúc — không thể đặt vé");
+        }
+    }
+
+    private static void assertMovieOpenForOnlineBooking(Showtime showtime) {
+        Movie movie = showtime != null ? showtime.getMovie() : null;
+        if (movie == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Suất chiếu chưa gắn phim");
+        }
+        Integer status = movie.getStatus();
+        if (status != null && status == 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Phim này đang ở trạng thái sắp chiếu, chưa mở đặt vé online.");
+        }
+        if (status == null || status != 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Phim này hiện không mở bán vé online.");
         }
     }
 
