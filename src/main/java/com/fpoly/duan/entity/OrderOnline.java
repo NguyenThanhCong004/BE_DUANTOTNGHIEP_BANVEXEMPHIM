@@ -60,4 +60,8 @@ public class OrderOnline {
     /** Mốc xử lý đơn do phòng chiếu bị đóng (đã dời sang suất khác hoặc đã hủy để hoàn tiền). */
     @Column(name = "rescheduled_at")
     private LocalDateTime rescheduledAt;
+
+    /** Mốc nhân viên quét QR bắp nước xác nhận khách đã nhận hàng tại quầy. */
+    @Column(name = "food_delivered_at")
+    private LocalDateTime foodDeliveredAt;
 }

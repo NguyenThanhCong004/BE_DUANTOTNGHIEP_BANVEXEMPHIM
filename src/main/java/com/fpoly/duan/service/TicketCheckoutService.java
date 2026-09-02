@@ -2,6 +2,7 @@ package com.fpoly.duan.service;
 
 import java.time.LocalDateTime;
 import java.time.LocalDate;
+import java.time.Period;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -112,6 +113,8 @@ public class TicketCheckoutService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy suất chiếu"));
 
         assertShowtimeBookable(showtime);
+        assertMovieOpenForOnlineBooking(showtime);
+        assertCustomerMeetsAgeLimit(user, showtime);
 
         if (showtime.getRoom() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Suất chiếu chưa gắn phòng");
@@ -312,6 +315,8 @@ public class TicketCheckoutService {
 
         Showtime showtime = showtimeRepository.findById(req.getShowtimeId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy suất chiếu"));
+        assertMovieOpenForOnlineBooking(showtime);
+        assertCustomerMeetsAgeLimit(user, showtime);
 
         Integer cinemaId = showtime.getRoom() != null && showtime.getRoom().getCinema() != null
                 ? showtime.getRoom().getCinema().getCinemaId()
@@ -563,6 +568,9 @@ public class TicketCheckoutService {
         String status;
         if (order.getStatus() != null && order.getStatus() == ORDER_STATUS_PAID) {
             status = "PAID";
+            // Gọi lại dù đơn đã PAID sẵn (idempotent nhờ check "alreadyRewarded" trong
+            // addPointsForOrder) — tự phục hồi nếu webhook đã chốt đơn nhưng lỡ chưa cộng điểm.
+            rewardPaidOrder(order);
         } else if (order.getStatus() != null && order.getStatus() == ORDER_STATUS_PENDING) {
             status = "PENDING";
             try {
@@ -623,6 +631,21 @@ public class TicketCheckoutService {
 
         String description = truncate("Bap nuoc #" + order.getOrderOnlineId(), 240);
         return finalizePayos(user, payosOrderCode, st.vndTotal(), description, req.getReturnUrl(), req.getCancelUrl(), order);
+    }
+
+    /** Ảnh QR hóa đơn (đơn bắp nước) để khách tự xem/xuất trình tại quầy — công khai như QR vé, bảo
+     * mật bằng chính độ khó đoán của receiptToken (HMAC), không cần đăng nhập để hiển thị ảnh. */
+    @Transactional(readOnly = true)
+    public byte[] getOrderReceiptQrPng(String receiptToken) {
+        if (receiptToken == null || receiptToken.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thiếu mã QR hóa đơn");
+        }
+        OrderOnline order = orderOnlineRepository.findByReceiptToken(receiptToken.trim())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy mã QR hóa đơn"));
+        if (order.getStatus() == null || order.getStatus() != ORDER_STATUS_PAID) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Đơn không hợp lệ");
+        }
+        return ticketQrService.toReceiptQrPng(order.getReceiptToken());
     }
 
     private TicketCheckoutResponse finalizePayos(
@@ -1007,6 +1030,11 @@ public class TicketCheckoutService {
         if (order.getPaymentMethod() == null || order.getPaymentMethod().isBlank()) {
             order.setPaymentMethod("PAYOS");
         }
+        // Mọi đơn online đã thanh toán đều có mã QR hóa đơn riêng (dùng cho bắp nước không có vé
+        // để soát/giao hàng tại quầy) — giống cách đơn tại quầy đã có từ trước.
+        if (order.getReceiptToken() == null || order.getReceiptToken().isBlank()) {
+            ticketQrService.assignReceiptToken(order);
+        }
         orderOnlineRepository.save(order);
 
         UserVoucher userVoucher = order.getUserVoucher();
@@ -1155,6 +1183,46 @@ public class TicketCheckoutService {
         LocalDateTime end = s.getStartTime().plusMinutes(durationMin);
         if (!now.isBefore(end)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Suất chiếu đã kết thúc — không thể đặt vé");
+        }
+    }
+
+    private static void assertMovieOpenForOnlineBooking(Showtime showtime) {
+        Movie movie = showtime != null ? showtime.getMovie() : null;
+        if (movie == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Suất chiếu chưa gắn phim");
+        }
+        Integer status = movie.getStatus();
+        if (status != null && status == 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Phim này đang ở trạng thái sắp chiếu, chưa mở đặt vé online.");
+        }
+        if (status == null || status != 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Phim này hiện không mở bán vé online.");
+        }
+    }
+
+    private static void assertCustomerMeetsAgeLimit(User user, Showtime showtime) {
+        Movie movie = showtime != null ? showtime.getMovie() : null;
+        Integer ageLimit = movie != null ? movie.getAgeLimit() : null;
+        if (ageLimit == null || ageLimit <= 0) {
+            return;
+        }
+
+        LocalDate today = todayInAppZone();
+        if (user == null || user.getBirthday() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Phim này được phân loại T" + ageLimit + ". Vui lòng cập nhật ngày sinh trong hồ sơ trước khi đặt vé.");
+        }
+        if (user.getBirthday().isAfter(today)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Ngày sinh trong hồ sơ không hợp lệ. Vui lòng cập nhật lại trước khi đặt vé.");
+        }
+
+        int customerAge = Period.between(user.getBirthday(), today).getYears();
+        if (customerAge < ageLimit) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Bạn chưa đủ " + ageLimit + " tuổi để đặt vé phim T" + ageLimit + ". Vui lòng chọn phim phù hợp độ tuổi.");
         }
     }
 
