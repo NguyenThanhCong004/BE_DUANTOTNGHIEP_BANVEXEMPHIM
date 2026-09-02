@@ -79,6 +79,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/payments/payos/webhook").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/counter-orders/receipt-barcode/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/ticket-orders/qr/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/food-orders/receipt-qr/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
                         // API phục vụ form khuyến mãi cần principal nhân sự để kiểm tra phạm vi rạp.

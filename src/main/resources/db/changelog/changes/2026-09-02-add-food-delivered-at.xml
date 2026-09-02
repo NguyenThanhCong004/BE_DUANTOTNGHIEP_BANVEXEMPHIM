@@ -1,0 +1,16 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Moc nhan vien quet ma QR rieng cua don bap nuoc (orders_online.receipt_token) de xac nhan
+         da giao/khach da lay hang tai quay - tranh quet lai 2 lan cho cung 1 don. -->
+    <changeSet id="2026-09-02-add-food-delivered-at-1" author="claude">
+        <addColumn tableName="orders_online">
+            <column name="food_delivered_at" type="datetime2">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

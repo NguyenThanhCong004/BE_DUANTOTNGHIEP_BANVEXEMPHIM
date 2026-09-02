@@ -49,6 +49,15 @@ public class FoodOrderController {
                 .body(ticketQrService.toPaymentQrPng(qrCode));
     }
 
+    @GetMapping(value = "/receipt-qr/{receiptToken}", produces = MediaType.IMAGE_PNG_VALUE)
+    @Operation(summary = "Ảnh QR riêng của đơn bắp nước", description = "Khách tự xem/xuất trình QR này tại quầy để nhân viên quét xác nhận giao hàng. Công khai như QR vé — bảo mật bằng chính receiptToken khó đoán.")
+    public ResponseEntity<byte[]> receiptQr(@PathVariable String receiptToken) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .contentType(MediaType.IMAGE_PNG)
+                .body(ticketCheckoutService.getOrderReceiptQrPng(receiptToken));
+    }
+
     @GetMapping("/payos/{payosOrderCode}/status")
     @Operation(summary = "Kiểm tra trạng thái đơn PayOS bắp nước (dùng để poll trong khi hiển thị QR trong app)")
     public ResponseEntity<ApiResponse<TicketCheckoutResponse>> payosStatus(

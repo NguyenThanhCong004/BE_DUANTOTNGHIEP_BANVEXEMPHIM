@@ -80,6 +80,12 @@ public class TicketQrService {
         }
     }
 
+    /** Ảnh QR của hóa đơn (đơn bắp nước không vé) — nội dung là receiptToken, dùng để nhân viên
+     * quét xác nhận giao hàng tại quầy (khác mã vạch Code128 dùng để in hóa đơn). */
+    public byte[] toReceiptQrPng(String receiptToken) {
+        return toQrPng(receiptToken, 360);
+    }
+
     /** Mã vạch Code 128 của hóa đơn; dữ liệu là HMAC ngắn, không phải orderCode đọc được. */
     public byte[] toBarcodePng(String receiptToken) {
         try {

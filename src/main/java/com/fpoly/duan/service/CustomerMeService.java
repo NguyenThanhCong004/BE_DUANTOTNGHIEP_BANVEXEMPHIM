@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -68,6 +69,7 @@ public class CustomerMeService {
     private final VoucherRepository voucherRepository;
     private final UserRepository userRepository;
     private final TicketQrService ticketQrService;
+    private final PasswordEncoder passwordEncoder;
 
     private static final int MAX_PAGE_SIZE = 50;
 
@@ -235,6 +237,7 @@ public class CustomerMeService {
                 .createdAt(o.getCreatedAt())
                 .pointsEarned(0)
                 .voucherCode(voucherCode)
+                .receiptToken(!hasTickets ? o.getReceiptToken() : null)
                 .build();
     }
 
@@ -525,5 +528,28 @@ public class CustomerMeService {
             ph.setPoints(-cost);
             pointsHistoryRepository.save(ph);
         }
+    }
+
+    /**
+     * Xóa tài khoản (khách tự yêu cầu từ app): xóa thông tin đăng ký (tên, email, SĐT, avatar,
+     * ngày sinh, mật khẩu) nhưng GIỮ NGUYÊN dòng customer để không phá vỡ liên kết với đơn/vé/điểm
+     * đã có. Khóa tài khoản (status=0, chặn đăng nhập lại) và đổi session_version để thu hồi ngay
+     * mọi token đang dùng — không cần đợi token hết hạn.
+     */
+    @Transactional
+    public void deleteAccount(Integer userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy tài khoản"));
+
+        user.setFullname("Người dùng đã xóa");
+        user.setEmail("deleted-" + userId + "@deleted.local");
+        user.setPhone("del" + userId);
+        user.setAvatar(null);
+        user.setBirthday(null);
+        user.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
+        user.setStatus(0);
+        user.setSessionVersion(java.util.UUID.randomUUID().toString());
+
+        userRepository.save(user);
     }
 }

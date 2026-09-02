@@ -76,4 +76,7 @@
     <!-- Cap nhat so ghe Nho/Vua/Lon, xoa Phong Tieu Chuan/Phong Mini (xem comment trong file) -->
     <include file="changes/2026-08-27-update-room-type-profiles.xml" relativeToChangelogFile="true"/>
 
+    <!-- Moc nhan vien quet QR bap nuoc xac nhan da giao (xem comment trong file) -->
+    <include file="changes/2026-09-02-add-food-delivered-at.xml" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>
