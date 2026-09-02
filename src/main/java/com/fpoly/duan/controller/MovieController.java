@@ -2,6 +2,7 @@ package com.fpoly.duan.controller;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -58,6 +59,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 public class MovieController {
 
     private static final Logger log = LoggerFactory.getLogger(MovieController.class);
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private final MovieRepository movieRepository;
     private final GenreRepository genreRepository;
@@ -230,6 +232,7 @@ public class MovieController {
     @Transactional
     public ResponseEntity<ApiResponse<MovieDTO>> create(@Valid @RequestBody MovieWriteDTO req) {
         validateWriteCreate(req);
+        validateMovieStatusDate(req.getStatus(), req.getReleaseDate());
         Movie m = applyWrite(new Movie(), req);
         Movie saved = movieRepository.save(m);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<MovieDTO>builder()
@@ -270,6 +273,12 @@ public class MovieController {
                     .build());
         }
 
+        if (req.getStatus() != null || req.getReleaseDate() != null) {
+            Integer nextStatus = req.getStatus() != null ? req.getStatus() : m.getStatus();
+            LocalDate nextReleaseDate = req.getReleaseDate() != null ? req.getReleaseDate() : m.getReleaseDate();
+            validateMovieStatusDate(nextStatus, nextReleaseDate);
+        }
+
         applyWrite(m, req);
         Movie saved = movieRepository.save(m);
         return ResponseEntity.ok(ApiResponse.<MovieDTO>builder()
@@ -304,6 +313,28 @@ public class MovieController {
         }
         if (req.getGenreIds() == null || req.getGenreIds().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng chọn thể loại phim");
+        }
+    }
+
+    private void validateMovieStatusDate(Integer status, LocalDate releaseDate) {
+        if (status == null || releaseDate == null) {
+            return;
+        }
+        if (status < 0 || status > 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái phim không hợp lệ");
+        }
+        if (status == 0) {
+            return;
+        }
+
+        LocalDate today = LocalDate.now(APP_ZONE);
+        if (status == 2 && !releaseDate.isAfter(today)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Trạng thái sắp chiếu chỉ dành cho phim có ngày khởi chiếu trong tương lai");
+        }
+        if (status == 1 && releaseDate.isAfter(today)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Phim có ngày khởi chiếu trong tương lai phải để trạng thái sắp chiếu");
         }
     }
 
