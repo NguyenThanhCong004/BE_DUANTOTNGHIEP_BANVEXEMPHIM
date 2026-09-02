@@ -64,6 +64,21 @@ public class CustomerMeController {
         return userId;
     }
 
+    @DeleteMapping("/account")
+    @Operation(summary = "Xóa tài khoản", description = """
+            Khách tự yêu cầu xóa tài khoản từ app. Xóa thông tin đăng ký (tên, email, SĐT, avatar,
+            ngày sinh, mật khẩu) nhưng giữ nguyên dòng customer để không mất lịch sử đơn/vé/điểm.
+            Thu hồi ngay mọi token đang đăng nhập (đổi session_version) và khóa đăng nhập lại.
+            """)
+    public ResponseEntity<ApiResponse<Void>> deleteAccount(Authentication authentication) {
+        Integer userId = requireCustomerUserId(authentication);
+        customerMeService.deleteAccount(userId);
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .status(HttpStatus.OK.value())
+                .message("Đã xóa tài khoản")
+                .build());
+    }
+
     @GetMapping("/transactions")
     @Operation(summary = "Lịch sử giao dịch (đơn + điểm) — phân trang, page 0-based")
     public ResponseEntity<ApiResponse<PagedResponse<MeTransactionDto>>> transactions(
