@@ -237,7 +237,9 @@ public class CustomerMeService {
                 .createdAt(o.getCreatedAt())
                 .pointsEarned(0)
                 .voucherCode(voucherCode)
-                .receiptToken(!hasTickets ? o.getReceiptToken() : null)
+                // QR bắp nước hiện cho MỌI đơn có món ăn, kể cả khi đơn cũng có vé kèm theo
+                // (mua vé + bắp nước chung 1 đơn) — vé và bắp nước có 2 mã QR độc lập.
+                .receiptToken(!foods.isEmpty() ? o.getReceiptToken() : null)
                 .build();
     }
 

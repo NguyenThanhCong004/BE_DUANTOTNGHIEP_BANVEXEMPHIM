@@ -27,7 +27,8 @@ public class MeTransactionDto {
     private LocalDateTime createdAt;
     private int pointsEarned;
     private String voucherCode;
-    /** Mã QR riêng của đơn (bắp nước không vé) để khách xuất trình tại quầy — null nếu đơn có vé
-     * (đã có QR riêng cho từng vé) hoặc đơn chưa thanh toán. */
+    /** Mã QR riêng của đơn cho phần bắp nước, để khách xuất trình tại quầy — có ở MỌI đơn có món ăn
+     * kèm theo, kể cả khi đơn đó cũng có vé (2 mã QR độc lập: vé soát ở rạp, bắp nước nhận ở quầy).
+     * Null nếu đơn không có món ăn nào hoặc chưa thanh toán. */
     private String receiptToken;
 }
